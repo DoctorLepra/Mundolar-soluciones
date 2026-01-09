@@ -33,6 +33,7 @@ async function getFeaturedProducts() {
       brands (name)
     `)
     .eq('is_featured', true)
+    .eq('status', 'Activo')
     .limit(8);
 
   if (error) {

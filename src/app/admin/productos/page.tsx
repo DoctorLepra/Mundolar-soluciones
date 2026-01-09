@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
+import { formatCurrency } from '@/lib/utils';
 import * as XLSX from 'xlsx';
 
 interface Product {
@@ -33,8 +34,6 @@ interface Brand {
   name: string;
 }
 
-const ITEMS_PER_PAGE = 8;
-
 export default function AdminProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,9 +47,9 @@ export default function AdminProductsPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   
-  // Image handling states
-  const [newProductImage, setNewProductImage] = useState<File | null>(null);
-  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  // Image handling states - Supporting up to 5 images
+  const [imagePreviewUrls, setImagePreviewUrls] = useState<{ id: string, url: string, file?: File, isExisting?: boolean }[]>([]);
+  const [imagesToDelete, setImagesToDelete] = useState<string[]>([]);
   
   const [isOfferActive, setIsOfferActive] = useState(false);
   const [productForm, setProductForm] = useState({
@@ -64,16 +63,19 @@ export default function AdminProductsPage() {
     stock_quantity: '',
     offer_start_date: '',
     offer_end_date: '',
+    status: 'Activo', // Default status
   });
 
   // State for filtering and searching
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('all');
-  const [selectedStatusFilter, setSelectedStatusFilter] = useState('Activo');
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState('all'); // Change default to all
 
   // State for filter dropdowns visibility
   const [isCategoryFilterOpen, setIsCategoryFilterOpen] = useState(false);
   const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
+  const categoryRef = useRef<HTMLDivElement>(null);
+  const statusRef = useRef<HTMLDivElement>(null);
 
   // State for delete confirmation modal
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -82,6 +84,35 @@ export default function AdminProductsPage() {
 
   // State for pagination
   const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(8);
+
+  useEffect(() => {
+    const updateItemsPerPage = () => {
+      if (window.innerWidth >= 1024) {
+        setItemsPerPage(8); // Desktop
+      } else {
+        setItemsPerPage(5); // Mobile and Tablet
+      }
+    };
+
+    updateItemsPerPage();
+    window.addEventListener('resize', updateItemsPerPage);
+    return () => window.removeEventListener('resize', updateItemsPerPage);
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (categoryRef.current && !categoryRef.current.contains(event.target as Node)) {
+        setIsCategoryFilterOpen(false);
+      }
+      if (statusRef.current && !statusRef.current.contains(event.target as Node)) {
+        setIsStatusFilterOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -103,27 +134,41 @@ export default function AdminProductsPage() {
   const filteredProducts = useMemo(() => {
     return products.filter(product => {
       const searchTermLower = searchTerm.toLowerCase();
-      const matchesSearch = searchTermLower === '' || product.name.toLowerCase().includes(searchTermLower) || (product.sku && product.sku.toLowerCase().includes(searchTermLower)) || (product.description && product.description.toLowerCase().includes(searchTermLower));
+      const productCategory = categories.find(c => c.id === product.category_id)?.name.toLowerCase() || '';
+      const productBrand = product.brands?.name.toLowerCase() || '';
+      const productStatus = product.status === 'Archivado' ? 'inactivo' : product.status.toLowerCase();
+      
+      const matchesSearch = searchTermLower === '' || 
+        product.name.toLowerCase().includes(searchTermLower) || 
+        (product.sku && product.sku.toLowerCase().includes(searchTermLower)) || 
+        (product.description && product.description.toLowerCase().includes(searchTermLower)) ||
+        productBrand.includes(searchTermLower) ||
+        productCategory.includes(searchTermLower) ||
+        product.price.toString().includes(searchTermLower) ||
+        product.stock_quantity.toString().includes(searchTermLower) ||
+        productStatus.includes(searchTermLower);
+
       const matchesCategory = selectedCategoryFilter === 'all' || product.category_id?.toString() === selectedCategoryFilter;
-      const matchesStatus = selectedStatusFilter === 'all' || product.status === selectedStatusFilter;
+      const matchesStatus = selectedStatusFilter === 'all' || 
+        (selectedStatusFilter === 'Inactivo' ? product.status === 'Archivado' : product.status === selectedStatusFilter);
       return matchesSearch && matchesCategory && matchesStatus;
     });
-  }, [products, searchTerm, selectedCategoryFilter, selectedStatusFilter]);
+  }, [products, searchTerm, selectedCategoryFilter, selectedStatusFilter, categories]);
 
   // Pagination calculations
-  const totalPages = Math.ceil(filteredProducts.length / ITEMS_PER_PAGE);
+  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
   const paginatedProducts = useMemo(() => {
-    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filteredProducts.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-  }, [filteredProducts, currentPage]);
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredProducts.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredProducts, currentPage, itemsPerPage]);
 
   const handleOpenCreateModal = () => {
     setProductToEdit(null);
     setIsOfferActive(false);
     setFormError(null);
-    setProductForm({ name: '', description: '', category_id: '', brand_id: '', sku: '', price: '', original_price: '', stock_quantity: '', offer_start_date: '', offer_end_date: '' });
-    setNewProductImage(null);
-    setImagePreviewUrl(null);
+    setProductForm({ name: '', description: '', category_id: '', brand_id: '', sku: '', price: '', original_price: '', stock_quantity: '', offer_start_date: '', offer_end_date: '', status: 'Activo' });
+    setImagePreviewUrls([]);
+    setImagesToDelete([]);
     setIsProductModalOpen(true);
   };
   
@@ -149,7 +194,7 @@ export default function AdminProductsPage() {
   const handleOpenEditModal = (product: Product) => {
     setProductToEdit(product);
     setFormError(null);
-    const isOffer = !!product.original_price && product.original_price > 0 && product.price < product.original_price;
+    const isOffer = !!product.original_price && product.original_price > 0 && Number(product.price) < Number(product.original_price);
     setIsOfferActive(isOffer);
     setProductForm({
         name: product.name,
@@ -157,15 +202,17 @@ export default function AdminProductsPage() {
         category_id: product.category_id.toString(),
         brand_id: product.brand_id.toString(),
         sku: product.sku || '',
-        price: isOffer ? product.price.toString() : '', // Offer price
-        original_price: isOffer ? product.original_price!.toString() : product.price.toString(), // Regular price
+        price: isOffer ? product.price.toString() : '',
+        original_price: isOffer ? product.original_price!.toString() : product.price.toString(),
         stock_quantity: product.stock_quantity.toString(),
         offer_start_date: formatDateTimeLocal(product.offer_start_date),
         offer_end_date: formatDateTimeLocal(product.offer_end_date),
+        status: product.status === 'Archivado' ? 'Inactivo' : (product.status || 'Activo'),
     });
-    setNewProductImage(null);
+    
     const urls = parseImageUrls(product.image_urls);
-    setImagePreviewUrl(urls.length > 0 ? urls[0] : null);
+    setImagePreviewUrls(urls.map(url => ({ id: Math.random().toString(36).substr(2, 9), url, isExisting: true })));
+    setImagesToDelete([]);
     setIsProductModalOpen(true);
   };
 
@@ -178,17 +225,35 @@ export default function AdminProductsPage() {
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-        const file = e.target.files[0];
-        setNewProductImage(file);
-        setImagePreviewUrl(URL.createObjectURL(file));
+    if (e.target.files) {
+        const files = Array.from(e.target.files);
+        const currentCount = imagePreviewUrls.length;
+        const remaining = 5 - currentCount;
+        
+        if (remaining <= 0) {
+            alert('Solo puedes subir un máximo de 5 imágenes.');
+            return;
+        }
+
+        const newFiles = files.slice(0, remaining);
+        const newPreviews = newFiles.map(file => ({
+            id: Math.random().toString(36).substr(2, 9),
+            url: URL.createObjectURL(file),
+            file,
+            isExisting: false
+        }));
+
+        setImagePreviewUrls(prev => [...prev, ...newPreviews]);
         if (formError) setFormError(null);
     }
   };
   
-  const handleRemoveImage = () => {
-    setNewProductImage(null);
-    setImagePreviewUrl(null);
+  const handleRemoveImage = (previewId: string) => {
+    const previewToRemove = imagePreviewUrls.find(p => p.id === previewId);
+    if (previewToRemove?.isExisting) {
+        setImagesToDelete(prev => [...prev, previewToRemove.url]);
+    }
+    setImagePreviewUrls(prev => prev.filter(p => p.id !== previewId));
   };
   
   const handleFormSubmit = async (e: React.FormEvent) => {
@@ -200,7 +265,7 @@ export default function AdminProductsPage() {
     setIsSubmitting(true);
     setFormError(null);
 
-    const { name, description, category_id, brand_id, sku, price, original_price, stock_quantity, offer_start_date, offer_end_date } = productForm;
+    const { name, description, category_id, brand_id, sku, price, original_price, stock_quantity, offer_start_date, offer_end_date, status } = productForm;
 
     if (!name || !description || !category_id || !brand_id || !sku || !original_price || !stock_quantity) {
       setFormError('Todos los campos marcados con * son obligatorios.');
@@ -210,14 +275,10 @@ export default function AdminProductsPage() {
       setFormError('Si la oferta está activa, el precio de oferta y las fechas de inicio/fin son obligatorios.');
       setIsSubmitting(false); return;
     }
-    // Validation: Image required for new products
-    if(!isEditing && !newProductImage){
-      setFormError('Debe subir una imagen para un nuevo producto.');
-      setIsSubmitting(false); return;
-    }
-    // Validation: Image required when editing if prior image removed
-    if (isEditing && !newProductImage && !imagePreviewUrl) {
-      setFormError('El producto debe tener una imagen.');
+
+    // Validation: At least one image required
+    if (imagePreviewUrls.length === 0) {
+      setFormError('Debe subir al menos una imagen para el producto.');
       setIsSubmitting(false); return;
     }
 
@@ -247,37 +308,44 @@ export default function AdminProductsPage() {
     const finalOfferStartDate = isOfferActive ? new Date(offer_start_date).toISOString() : null;
     const finalOfferEndDate = isOfferActive ? new Date(offer_end_date).toISOString() : null;
 
-    let finalImageUrl = imagePreviewUrl; 
     const uploadedFileNames: string[] = [];
 
     try {
-      if (newProductImage) {
-        const file = newProductImage;
-        const fileName = `product-${Date.now()}-${Math.random()}.${file.name.split('.').pop()}`;
-        const { error } = await supabase.storage.from('product_images').upload(fileName, file);
-        if (error) throw new Error(`Error subiendo nueva imagen: ${error.message}`);
-        uploadedFileNames.push(fileName);
-        const { data: urlData } = supabase.storage.from('product_images').getPublicUrl(fileName);
-        finalImageUrl = `${urlData.publicUrl}?t=${new Date().getTime()}`;
-
-        if (isEditing && productToEdit) {
-            try {
-                const urls = parseImageUrls(productToEdit.image_urls);
-                const oldUrl = urls.length > 0 ? urls[0] : null;
-                if (oldUrl) {
-                    const urlObj = new URL(oldUrl);
-                    const pathParts = urlObj.pathname.split('/');
-                    const oldFileName = pathParts[pathParts.length - 1];
-                    await supabase.storage.from('product_images').remove([oldFileName]);
-                }
-            } catch (e) { console.error("Error eliminando imagen anterior (no crítico)", e); }
+      // 1. Upload new images
+      const finalUrls: string[] = [];
+      for (const preview of imagePreviewUrls) {
+        if (preview.isExisting) {
+          finalUrls.push(preview.url);
+        } else if (preview.file) {
+          const file = preview.file;
+          const fileName = `product-${Date.now()}-${Math.random()}.${file.name.split('.').pop()}`;
+          const { error } = await supabase.storage.from('product_images').upload(fileName, file);
+          if (error) throw new Error(`Error subiendo imagen: ${error.message}`);
+          
+          uploadedFileNames.push(fileName);
+          const { data: urlData } = supabase.storage.from('product_images').getPublicUrl(fileName);
+          finalUrls.push(`${urlData.publicUrl}?t=${new Date().getTime()}`);
         }
       }
 
-      // Ensure valid array of strings, properly handling Blob URLs
-      const finalImageUrlsArray = finalImageUrl && !finalImageUrl.startsWith('blob:') ? [finalImageUrl] : [];
+      // 2. Delete removed images from storage
+      if (imagesToDelete.length > 0) {
+        const filesToRemove = imagesToDelete.map(url => {
+          try {
+            const urlObj = new URL(url);
+            const pathParts = urlObj.pathname.split('/');
+            return pathParts[pathParts.length - 1];
+          } catch { return null; }
+        }).filter(Boolean) as string[];
 
-      const productData = { 
+        if (filesToRemove.length > 0) {
+          await supabase.storage.from('product_images').remove(filesToRemove);
+        }
+      }
+
+    const dbStatus = status === 'Inactivo' ? 'Archivado' : status;
+
+    const productData = { 
           name, 
           description, 
           category_id: parseInt(category_id), 
@@ -286,8 +354,8 @@ export default function AdminProductsPage() {
           price: finalPrice, 
           original_price: finalOriginalPrice, 
           stock_quantity: parseInt(stock_quantity), 
-          image_urls: finalImageUrlsArray, 
-          status: 'Activo', 
+          image_urls: finalUrls, 
+          status: dbStatus, 
           offer_start_date: finalOfferStartDate, 
           offer_end_date: finalOfferEndDate 
       };
@@ -305,8 +373,14 @@ export default function AdminProductsPage() {
       }
       handleCloseModal();
     } catch (err: any) {
-      console.error(err);
-      setFormError(`Error al guardar producto: ${err.message}`);
+      console.error('Error details:', {
+        message: err.message,
+        details: err.details,
+        hint: err.hint,
+        code: err.code
+      });
+      setFormError(`Error al guardar producto: ${err.message || 'Error desconocido'}`);
+      // Rollback newly uploaded files if DB save fails
       if(uploadedFileNames.length > 0) await supabase.storage.from('product_images').remove(uploadedFileNames);
     } finally {
       setIsSubmitting(false);
@@ -353,39 +427,50 @@ export default function AdminProductsPage() {
     XLSX.writeFile(wb, "mundolar-productos.xlsx");
   };
 
-  const getStatusInfo = (status: string) => { switch (status) { case 'Activo': return { color: 'emerald', label: 'Activo' }; case 'Borrador': return { color: 'slate', label: 'Borrador' }; case 'Archivado': return { color: 'gray', label: 'Archivado' }; default: return { color: 'slate', label: 'Desconocido' }; } };
+  const getStatusInfo = (status: string) => { switch (status) { case 'Activo': return { color: 'emerald', label: 'Activo' }; case 'Inactivo': case 'Archivado': return { color: 'slate', label: 'Inactivo' }; default: return { color: 'slate', label: status || 'Desconocido' }; } };
   const getStockInfo = (stock: number) => { if (stock === 0) return { color: 'red', unit: 'sin stock' }; if (stock > 0 && stock <= 10) return { color: 'amber', unit: 'crítico' }; return { color: 'slate', unit: 'unidades' }; };
-  const statuses = ['Activo', 'Borrador', 'Archivado'];
-  const startItem = (currentPage - 1) * ITEMS_PER_PAGE + 1;
-  const endItem = Math.min(currentPage * ITEMS_PER_PAGE, filteredProducts.length);
+  const statuses = ['Activo', 'Inactivo'];
+  const startItem = filteredProducts.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
+  const endItem = Math.min(currentPage * itemsPerPage, filteredProducts.length);
 
   return (
-    <>
-      <header className="bg-white border-b border-slate-200 px-8 py-6 sticky top-0 z-10">
+    <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-50">
+      <header className="bg-white border-b border-slate-200 px-8 py-6 relative z-30">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div><h2 className="text-2xl font-bold text-slate-900">Gestión de Productos</h2><p className="text-slate-500 mt-1">Administra tu inventario de radios y repuestos</p></div>
           <div className="flex items-center gap-3"><button onClick={handleExport} className="flex items-center gap-2 bg-white border border-slate-200 text-slate-700 px-4 py-2.5 rounded-lg font-medium hover:bg-slate-50 transition-all text-sm"><span className="material-symbols-outlined text-[20px]">file_upload</span>Exportar</button><button onClick={handleOpenCreateModal} className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2.5 rounded-lg font-bold shadow-lg shadow-primary/20 transition-all text-sm"><span className="material-symbols-outlined text-[20px]">add</span>Nuevo Producto</button></div>
         </div>
         <div className="mt-8 flex flex-col lg:flex-row gap-4 justify-between items-start lg:items-center">
-          <div className="relative w-full lg:max-w-md"><div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><span className="material-symbols-outlined text-slate-400">search</span></div><input value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }} className="block w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-lg leading-5 bg-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary sm:text-sm transition-shadow" placeholder="Buscar por nombre, modelo o SKU..." type="text" /></div>
+          <div className="relative w-full lg:max-w-md"><div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><span className="material-symbols-outlined text-slate-400">search</span></div><input value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }} className="block w-full pl-10 pr-3 py-2.5 border border-slate-600 rounded-lg leading-5 bg-white shadow-[0_2px_4px_rgba(0,0,0,0.25)] placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary sm:text-sm transition-shadow" placeholder="Buscar por nombre, marca, categoría, sku..." type="text" /></div>
           <div className="flex flex-wrap gap-3 w-full lg:w-auto">
-            <div className="relative"><button onClick={() => setIsCategoryFilterOpen(prev => !prev)} className="group w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-primary transition-colors"><span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Categoría:</span><span className="text-sm font-medium text-slate-900">{selectedCategoryFilter === 'all' ? 'Todas' : categories.find(c => c.id.toString() === selectedCategoryFilter)?.name}</span><span className="material-symbols-outlined text-slate-400 group-hover:text-primary text-[20px]">keyboard_arrow_down</span></button>
-              {isCategoryFilterOpen && (<div className="absolute right-0 mt-2 w-56 origin-top-right rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-20"><div className="py-1"><a href="#" onClick={e => { e.preventDefault(); setSelectedCategoryFilter('all'); setIsCategoryFilterOpen(false); setCurrentPage(1); }} className="text-gray-700 block px-4 py-2 text-sm hover:bg-gray-100">Todas</a>{categories.map(cat => <a href="#" key={cat.id} onClick={e => { e.preventDefault(); setSelectedCategoryFilter(cat.id.toString()); setIsCategoryFilterOpen(false); setCurrentPage(1); }} className="text-gray-700 block px-4 py-2 text-sm hover:bg-gray-100">{cat.name}</a>)}</div></div>)}
+            <div className="relative" ref={categoryRef}><button onClick={() => { setIsCategoryFilterOpen(prev => !prev); setIsStatusFilterOpen(false); }} className="group w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-primary transition-colors"><span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Categoría:</span><span className="text-sm font-medium text-slate-900 whitespace-nowrap">{selectedCategoryFilter === 'all' ? 'Todas' : categories.find(c => c.id.toString() === selectedCategoryFilter)?.name}</span><span className="material-symbols-outlined text-slate-400 group-hover:text-primary text-[20px]">keyboard_arrow_down</span></button>
+              {isCategoryFilterOpen && (<div className="absolute right-0 mt-2 w-56 origin-top-right rounded-md bg-white shadow-xl ring-1 ring-black ring-opacity-5 focus:outline-none z-50"><div className="py-1 max-h-60 overflow-y-auto custom-scrollbar"><a href="#" onClick={e => { e.preventDefault(); setSelectedCategoryFilter('all'); setIsCategoryFilterOpen(false); setCurrentPage(1); }} className="text-gray-700 block px-4 py-2 text-sm hover:bg-gray-100 italic">Todas</a>{categories.map(cat => <a href="#" key={cat.id} onClick={e => { e.preventDefault(); setSelectedCategoryFilter(cat.id.toString()); setIsCategoryFilterOpen(false); setCurrentPage(1); }} className="text-gray-700 block px-4 py-2 text-sm hover:bg-gray-100">{cat.name}</a>)}</div></div>)}
             </div>
-            <div className="relative"><button onClick={() => setIsStatusFilterOpen(prev => !prev)} className="group w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-primary transition-colors"><span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Estado:</span><span className="text-sm font-medium text-slate-900">{selectedStatusFilter === 'all' ? 'Todos' : selectedStatusFilter}</span><span className="material-symbols-outlined text-slate-400 group-hover:text-primary text-[20px]">keyboard_arrow_down</span></button>
-              {isStatusFilterOpen && (<div className="absolute right-0 mt-2 w-56 origin-top-right rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-20"><div className="py-1"><a href="#" onClick={e => { e.preventDefault(); setSelectedStatusFilter('all'); setIsStatusFilterOpen(false); setCurrentPage(1); }} className="text-gray-700 block px-4 py-2 text-sm hover:bg-gray-100">Todos</a>{statuses.map(status => <a href="#" key={status} onClick={e => { e.preventDefault(); setSelectedStatusFilter(status); setIsStatusFilterOpen(false); }} className="text-gray-700 block px-4 py-2 text-sm hover:bg-gray-100">{status}</a>)}</div></div>)}
+            <div className="relative" ref={statusRef}><button onClick={() => { setIsStatusFilterOpen(prev => !prev); setIsCategoryFilterOpen(false); }} className="group w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-primary transition-colors"><span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Estado:</span><span className="text-sm font-medium text-slate-900 whitespace-nowrap">{selectedStatusFilter === 'all' ? 'Todos' : selectedStatusFilter}</span><span className="material-symbols-outlined text-slate-400 group-hover:text-primary text-[20px]">keyboard_arrow_down</span></button>
+              {isStatusFilterOpen && (<div className="absolute right-0 mt-2 w-56 origin-top-right rounded-md bg-white shadow-xl ring-1 ring-black ring-opacity-5 focus:outline-none z-50"><div className="py-1"><a href="#" onClick={e => { e.preventDefault(); setSelectedStatusFilter('all'); setIsStatusFilterOpen(false); setCurrentPage(1); }} className="text-gray-700 block px-4 py-2 text-sm hover:bg-gray-100 italic">Todos</a>{statuses.map(status => <a href="#" key={status} onClick={e => { e.preventDefault(); setSelectedStatusFilter(status); setIsStatusFilterOpen(false); setCurrentPage(1); }} className="text-gray-700 block px-4 py-2 text-sm hover:bg-gray-100">{status}</a>)}</div></div>)}
             </div>
           </div>
         </div>
       </header>
       <div className="p-8 pt-4">
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <table className="w-full text-left border-collapse">
-            <thead><tr className="bg-slate-50 border-b border-slate-200"><th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Producto</th><th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Categoría</th><th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">SKU</th><th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Precio</th><th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Stock</th><th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Estado</th><th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Acciones</th></tr></thead>
-            <tbody className="divide-y divide-slate-200">
-              {loading ? (<tr><td colSpan={7} className="text-center p-8 text-slate-500">Cargando...</td></tr>) : error ? (<tr><td colSpan={7} className="text-center p-8 text-red-600 bg-red-50">{error}</td></tr>) : paginatedProducts.length > 0 ? (paginatedProducts.map((p) => {
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead className="sticky top-0 z-20 bg-slate-50">
+                <tr className="bg-slate-50 border-b border-slate-200">
+                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Producto</th>
+                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Categoría</th>
+                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">SKU</th>
+                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Precio</th>
+                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Stock</th>
+                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Estado</th>
+                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {loading ? (<tr><td colSpan={7} className="text-center p-8 text-slate-500">Cargando...</td></tr>) : error ? (<tr><td colSpan={7} className="text-center p-8 text-red-600 bg-red-50">{error}</td></tr>) : paginatedProducts.length > 0 ? (paginatedProducts.map((p) => {
                   const statusInfo = getStatusInfo(p.status); const stockInfo = getStockInfo(p.stock_quantity);
-                  const isOffer = p.original_price && p.original_price > 0;
+                  const isOffer = p.original_price && p.original_price > 0 && Number(p.price) < Number(p.original_price);
                   const urls = parseImageUrls(p.image_urls);
                   const imgUrl = urls.length > 0 ? urls[0] : null;
                   return (<tr key={p.id} className="hover:bg-slate-50 transition-colors group">
@@ -406,7 +491,7 @@ export default function AdminProductsPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm text-slate-700">{categories.find(c => c.id === p.category_id)?.name || 'Sin categoría'}</span></td>
                       <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm font-mono text-slate-600">{p.sku || 'N/A'}</span></td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right"><div className="flex flex-col items-end"><span className="text-sm font-bold text-slate-900">${Number(p.price).toFixed(2)}</span>{isOffer && <span className="text-xs text-red-500 line-through">${Number(p.original_price).toFixed(2)}</span>}</div></td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right"><div className="flex flex-col items-end"><span className="text-sm font-bold text-slate-900 font-mono">${formatCurrency(p.price)}</span>{isOffer && <span className="text-xs text-red-500 line-through font-mono">${formatCurrency(p.original_price || 0)}</span>}</div></td>
                       <td className="px-6 py-4 whitespace-nowrap text-center"><div className="flex flex-col items-center"><span className={`text-sm font-medium text-${stockInfo.color}-600`}>{p.stock_quantity}</span><span className={`text-[10px] text-${stockInfo.color}-500/70`}>{stockInfo.unit}</span></div></td>
                       <td className="px-6 py-4 whitespace-nowrap"><div className="flex items-center gap-1.5"><span className={`size-2 rounded-full bg-${statusInfo.color}-500`}></span><span className={`text-sm ${statusInfo.color === 'slate' ? 'text-slate-500' : 'text-slate-700'}`}>{statusInfo.label}</span></div></td>
                       <td className="px-6 py-4 whitespace-nowrap text-right"><div className="flex items-center justify-end gap-2"><button onClick={() => handleOpenEditModal(p)} className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"><span className="material-symbols-outlined text-[20px]">edit</span></button><button onClick={() => openDeleteModal(p)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"><span className="material-symbols-outlined text-[20px]">delete</span></button></div></td>
@@ -415,6 +500,7 @@ export default function AdminProductsPage() {
               }
             </tbody>
           </table>
+        </div>
           <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-slate-200 sm:px-6">
             <div className="flex-1 flex justify-between sm:hidden"><button onClick={() => setCurrentPage(p => p - 1)} disabled={currentPage === 1} className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">Anterior</button><button onClick={() => setCurrentPage(p => p + 1)} disabled={currentPage === totalPages} className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">Siguiente</button></div>
             <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
@@ -435,82 +521,101 @@ export default function AdminProductsPage() {
             </div>
           )}
 
-          <div><label className="block text-sm font-medium text-slate-700 mb-2">Nombre <span className="text-red-500">*</span></label><input type="text" name="name" value={productForm.name} onChange={handleFormChange} required className="block w-full rounded-lg border-slate-300 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" /></div>
-          <div><label className="block text-sm font-medium text-slate-700 mb-2">Descripción <span className="text-red-500">*</span></label><textarea name="description" value={productForm.description} onChange={handleFormChange} required rows={4} className="block w-full rounded-lg border-slate-300 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"></textarea></div>
+          <div><label className="block text-sm font-medium text-slate-700 mb-2">Nombre <span className="text-red-500">*</span></label><input type="text" name="name" value={productForm.name} onChange={handleFormChange} required className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm" /></div>
+          <div><label className="block text-sm font-medium text-slate-700 mb-2">Descripción <span className="text-red-500">*</span></label><textarea name="description" value={productForm.description} onChange={handleFormChange} required rows={4} className="block w-full rounded-lg border-slate-600 px-4 py-2 bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm"></textarea></div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div><label className="block text-sm font-medium text-slate-700 mb-2">Categoria <span className="text-red-500">*</span></label><select name="category_id" value={productForm.category_id} onChange={handleFormChange} required className="block w-full rounded-lg border-slate-300 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"><option value="" disabled>Seleccionar...</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
-            <div><label className="block text-sm font-medium text-slate-700 mb-2">Marca <span className="text-red-500">*</span></label><select name="brand_id" value={productForm.brand_id} onChange={handleFormChange} required className="block w-full rounded-lg border-slate-300 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"><option value="" disabled>Seleccionar...</option>{brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
+            <div><label className="block text-sm font-medium text-slate-700 mb-2">Categoria <span className="text-red-500">*</span></label><select name="category_id" value={productForm.category_id} onChange={handleFormChange} required className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm"><option value="" disabled>Seleccionar...</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+            <div><label className="block text-sm font-medium text-slate-700 mb-2">Marca <span className="text-red-500">*</span></label><select name="brand_id" value={productForm.brand_id} onChange={handleFormChange} required className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm"><option value="" disabled>Seleccionar...</option>{brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div><label className="block text-sm font-medium text-slate-700 mb-2">Sku <span className="text-red-500">*</span></label><input type="text" name="sku" value={productForm.sku} onChange={handleFormChange} required className="block w-full rounded-lg border-slate-300 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" /></div>
-            <div><label className="block text-sm font-medium text-slate-700 mb-2">Stock <span className="text-red-500">*</span></label><input type="number" name="stock_quantity" value={productForm.stock_quantity} onChange={handleFormChange} required className="block w-full rounded-lg border-slate-300 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" /></div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div><label className="block text-sm font-medium text-slate-700 mb-2">SKU <span className="text-red-500">*</span></label><input type="text" name="sku" value={productForm.sku} onChange={handleFormChange} required className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm" /></div>
+            <div><label className="block text-sm font-medium text-slate-700 mb-2">Stock <span className="text-red-500">*</span></label><input type="number" name="stock_quantity" value={productForm.stock_quantity} onChange={handleFormChange} required className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm" /></div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Estado</label>
+              <div className="flex items-center gap-3 h-[38px]">
+                <button
+                  type="button"
+                  onClick={() => setProductForm(prev => ({ ...prev, status: prev.status === 'Activo' ? 'Inactivo' : 'Activo' }))}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${productForm.status === 'Activo' ? 'bg-primary' : 'bg-slate-200'}`}
+                >
+                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${productForm.status === 'Activo' ? 'translate-x-5' : 'translate-x-0'}`} />
+                </button>
+                <span className={`text-sm font-medium ${productForm.status === 'Activo' ? 'text-emerald-600' : 'text-slate-500'}`}>
+                  {productForm.status}
+                </span>
+              </div>
+            </div>
           </div>
           
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">Precio Original <span className="text-red-500">*</span></label>
-            <input type="number" name="original_price" value={productForm.original_price} onChange={handleFormChange} required placeholder="Ej: 299.00" className="block w-full rounded-lg border-slate-300 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" step="0.01" />
+            <input type="number" name="original_price" value={productForm.original_price} onChange={handleFormChange} required placeholder="Ej: 299.00" className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm" step="0.01" />
           </div>
           <div className="flex items-center gap-3">
-             <input id="is-offer" type="checkbox" checked={isOfferActive} onChange={e => setIsOfferActive(e.target.checked)} className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"/>
+             <input id="is-offer" type="checkbox" checked={isOfferActive} onChange={e => setIsOfferActive(e.target.checked)} className="h-4 w-4 rounded border-slate-600 text-primary focus:ring-primary"/>
              <label htmlFor="is-offer" className="text-sm font-medium text-slate-700">Oferta</label>
           </div>
           {isOfferActive && (
             <div className="space-y-6 p-4 border border-slate-200 rounded-lg bg-slate-50">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Precio de Oferta <span className="text-red-500">*</span></label>
-                <input type="number" name="price" value={productForm.price} onChange={handleFormChange} required={isOfferActive} placeholder="Ej: 249.00" className="block w-full rounded-lg border-slate-300 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" step="0.01" />
+                <input type="number" name="price" value={productForm.price} onChange={handleFormChange} required={isOfferActive} placeholder="Ej: 249.00" className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm" step="0.01" />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                       <label className="block text-sm font-medium text-slate-700 mb-2">Inicio de Oferta <span className="text-red-500">*</span></label>
-                      <input type="datetime-local" name="offer_start_date" value={productForm.offer_start_date} onChange={handleFormChange} required={isOfferActive} className="block w-full rounded-lg border-slate-300 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
+                      <input type="datetime-local" name="offer_start_date" value={productForm.offer_start_date} onChange={handleFormChange} required={isOfferActive} className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm" />
                   </div>
                   <div>
                       <label className="block text-sm font-medium text-slate-700 mb-2">Finalización de Oferta <span className="text-red-500">*</span></label>
-                      <input type="datetime-local" name="offer_end_date" value={productForm.offer_end_date} onChange={handleFormChange} required={isOfferActive} className="block w-full rounded-lg border-slate-300 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary sm:text-sm" />
+                      <input type="datetime-local" name="offer_end_date" value={productForm.offer_end_date} onChange={handleFormChange} required={isOfferActive} className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm" />
                   </div>
               </div>
             </div>
           )}
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Imagen Principal <span className="text-red-500">*</span></label>
-            <div className="mt-1 flex justify-center items-center rounded-lg border-2 border-dashed border-slate-300 px-6 py-10 hover:border-primary transition-colors bg-slate-50 relative group aspect-video">
-                {imagePreviewUrl ? (
-                    <>
-                        <img src={imagePreviewUrl} alt="Vista previa" className="max-h-full max-w-full object-contain rounded-md" />
-                        <label htmlFor="product-file-upload" className="absolute inset-0 bg-black/60 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-lg">
-                            <div className="text-center">
-                                <span className="material-symbols-outlined text-4xl">sync_alt</span>
-                                <p className="font-bold mt-1">Cambiar imagen</p>
-                            </div>
-                            <input id="product-file-upload" name="file-upload" type="file" className="sr-only" onChange={handleImageChange} accept="image/*" />
-                        </label>
-                        <button type="button" onClick={handleRemoveImage} className="absolute top-2 right-2 p-1 bg-white rounded-full text-slate-500 hover:text-red-500 shadow-md z-20">
-                            <span className="material-symbols-outlined">delete</span>
+            <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-slate-700">Imágenes (Max 5) <span className="text-red-500">*</span></label>
+                <span className="text-xs text-slate-500">{imagePreviewUrls.length} / 5</span>
+            </div>
+            
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+                {imagePreviewUrls.map((preview) => (
+                    <div key={preview.id} className="relative aspect-square rounded-lg border border-slate-200 overflow-hidden bg-slate-100 group">
+                        <Image src={preview.url} alt="Preview" fill sizes="(max-width: 768px) 50vw, 10vw" className="object-cover" />
+                        <button 
+                            type="button" 
+                            onClick={() => handleRemoveImage(preview.id)}
+                            className="absolute top-1 right-1 size-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+                        >
+                            <span className="material-symbols-outlined text-[16px]">close</span>
                         </button>
-                    </>
-                ) : (
-                    <div className="text-center">
-                        <span className="material-symbols-outlined text-5xl text-slate-400">image</span>
-                        <div className="mt-4 flex text-sm leading-6 text-slate-600 justify-center">
-                            <label htmlFor="product-file-upload" className="relative cursor-pointer rounded-md font-semibold text-primary hover:text-primary-dark">
-                                <span>Subir un archivo</span>
-                                <input id="product-file-upload" name="file-upload" type="file" className="sr-only" onChange={handleImageChange} accept="image/*" />
-                            </label>
-                            <p className="pl-1">o arrástralo aquí</p>
-                        </div>
-                        <p className="text-xs text-slate-500 mt-1">PNG, JPG, GIF hasta 2MB</p>
+                        {!preview.isExisting && (
+                            <span className="absolute bottom-1 left-1 bg-primary text-white text-[8px] px-1 rounded uppercase font-bold">Nuevo</span>
+                        )}
                     </div>
+                ))}
+                
+                {imagePreviewUrls.length < 5 && (
+                    <label className="aspect-square flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-600 bg-slate-50 hover:border-primary hover:bg-slate-100 cursor-pointer transition-all">
+                        <span className="material-symbols-outlined text-slate-400 text-3xl">add_a_photo</span>
+                        <span className="text-[10px] font-medium text-slate-500 mt-1">Añadir</span>
+                        <input type="file" className="sr-only" onChange={handleImageChange} accept="image/*" multiple />
+                    </label>
                 )}
             </div>
           </div>
         </form>
-        <div className="p-6 border-t border-slate-200 bg-slate-50 flex justify-end gap-3"><button onClick={handleCloseModal} type="button" className="px-5 py-2.5 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm font-bold shadow-sm hover:bg-slate-50">Cancelar</button>
-<button form="product-form" disabled={isSubmitting} type="submit" className="px-5 py-2.5 rounded-lg bg-primary hover:bg-primary-dark text-white text-sm font-bold shadow-md disabled:bg-primary/50 disabled:cursor-not-allowed transition-all">{isSubmitting ? (productToEdit ? 'Guardando...' : 'Creando...') : (productToEdit ? 'Guardar Cambios' : 'Crear Producto')}</button></div>
+        <div className="p-6 border-t border-slate-200 bg-slate-50 flex justify-end gap-3">
+          <button onClick={handleCloseModal} type="button" className="px-5 py-2.5 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm font-bold shadow-sm hover:bg-slate-50">Cancelar</button>
+          <button form="product-form" disabled={isSubmitting} type="submit" className="px-5 py-2.5 rounded-lg bg-primary hover:bg-primary-dark text-white text-sm font-bold shadow-md disabled:bg-primary/50 disabled:cursor-not-allowed transition-all">
+            {isSubmitting ? (productToEdit ? 'Guardando...' : 'Creando...') : (productToEdit ? 'Guardar Cambios' : 'Crear Producto')}
+          </button>
+        </div>
       </div></div>)}
 
       {isDeleteModalOpen && productToDelete && (<div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true"><div className="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col"><div className="p-6 flex items-start gap-4"><div className="size-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center shrink-0"><span className="material-symbols-outlined text-3xl">warning</span></div><div><h2 className="text-xl font-bold text-slate-900">Eliminar Producto</h2><p className="text-slate-600 mt-2">¿Estás seguro de que quieres eliminar "<strong>{productToDelete.name}</strong>"? Esta acción es irreversible.</p></div></div><div className="p-6 border-t border-slate-200 bg-slate-50 flex justify-end gap-3"><button onClick={closeDeleteModal} type="button" className="px-5 py-2.5 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm font-bold shadow-sm hover:bg-slate-50">Cancelar</button><button onClick={handleConfirmDelete} disabled={isDeleting} type="button" className="px-5 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-bold shadow-md disabled:bg-red-600/50 disabled:cursor-not-allowed transition-all">{isDeleting ? 'Eliminando...' : 'Sí, eliminar'}</button></div></div></div>)}
-    </>
+    </div>
   );
 }

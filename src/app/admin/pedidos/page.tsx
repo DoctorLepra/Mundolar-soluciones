@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
+import { formatCurrency } from '@/lib/utils';
 
 export default function AdminOrdersPage() {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>('#10235');
@@ -25,7 +26,7 @@ export default function AdminOrdersPage() {
   const kpis = [
     { label: 'Total Pedidos', value: '1,245', trend: '+12%', trendColor: 'green' },
     { label: 'Pendientes', value: '12', trend: '2%', trendColor: 'amber' },
-    { label: 'Ingresos Hoy', value: '$2,450', trend: '+8%', trendColor: 'green' }
+    { label: 'Ingresos Hoy', value: `$${formatCurrency(2450)}`, trend: '+8%', trendColor: 'green' }
   ];
 
   return (
@@ -54,11 +55,11 @@ export default function AdminOrdersPage() {
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 justify-between items-center">
         <div className="relative w-full md:max-w-md group">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><span className="material-symbols-outlined text-slate-400">search</span></div>
-          <input className="block w-full pl-10 pr-3 py-2.5 border-none ring-1 ring-slate-200 rounded-lg bg-slate-50 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all font-display" placeholder="Buscar por ID, cliente o correo..." type="text"/>
+          <input className="block w-full pl-10 pr-4 py-2.5 border-none ring-1 ring-slate-400 rounded-lg bg-white shadow-[0_2px_4px_rgba(0,0,0,0.25)] text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary transition-all font-display" placeholder="Buscar por ID, cliente o correo..." type="text"/>
         </div>
         <div className="flex flex-wrap w-full md:w-auto gap-3 justify-end md:justify-start">
             <div className="relative min-w-[140px]">
-                <select className="appearance-none block w-full pl-3 pr-10 py-2.5 border-none ring-1 ring-slate-200 rounded-lg bg-slate-50 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary/50 cursor-pointer font-display">
+                <select className="appearance-none block w-full pl-4 pr-10 py-2.5 border-none ring-1 ring-slate-400 rounded-lg bg-white shadow-[0_2px_4px_rgba(0,0,0,0.1)] text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary cursor-pointer font-display">
                     <option value="">Estado: Todos</option>
                     <option value="pending">Pendiente</option>
                     <option value="processing">Procesando</option>
@@ -70,7 +71,7 @@ export default function AdminOrdersPage() {
                 </div>
             </div>
             <div className="relative min-w-[140px]">
-                <select className="appearance-none block w-full pl-3 pr-10 py-2.5 border-none ring-1 ring-slate-200 rounded-lg bg-slate-50 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary/50 cursor-pointer font-display">
+                <select className="appearance-none block w-full pl-4 pr-10 py-2.5 border-none ring-1 ring-slate-400 rounded-lg bg-white shadow-[0_2px_4px_rgba(0,0,0,0.1)] text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary cursor-pointer font-display">
                     <option value="">Fecha: Hoy</option>
                     <option value="week">Esta Semana</option>
                     <option value="month">Este Mes</option>
@@ -105,7 +106,7 @@ export default function AdminOrdersPage() {
                     <td className="py-4 px-6"><span className="font-bold text-primary group-hover:underline font-display">{o.id}</span></td>
                     <td className="py-4 px-6"><div className="flex flex-col"><span className="font-medium text-slate-900 font-display">{o.client}</span><span className="text-xs text-slate-500">{o.email}</span></div></td>
                     <td className="py-4 px-6 text-sm text-slate-600 font-display">{o.date}</td>
-                    <td className="py-4 px-6 text-right font-medium text-slate-900 font-display">{o.total}</td>
+                    <td className="py-4 px-6 text-right font-medium text-slate-900 font-display">${formatCurrency(o.total.replace('$', '').replace(',', ''))}</td>
                     <td className="py-4 px-6 text-center"><span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-${o.color}-100 text-${o.color}-800 border border-${o.color}-200 font-display`}>{o.status}</span></td>
                     <td className="py-4 px-6 text-right"><button className="text-slate-400 hover:text-primary transition-colors p-1"><span className="material-symbols-outlined text-[20px]">visibility</span></button><button className="text-slate-400 hover:text-primary transition-colors p-1"><span className="material-symbols-outlined text-[20px]">edit</span></button></td>
                   </tr>
@@ -172,9 +173,9 @@ export default function AdminOrdersPage() {
                   ))}
                 </div>
                 <div className="border-t border-slate-100 pt-3 mt-1 flex flex-col gap-1">
-                  <div className="flex justify-between text-sm text-slate-500 font-display"><span>Subtotal</span><span>${orderDetails.totals.subtotal.toFixed(2)}</span></div>
-                  <div className="flex justify-between text-sm text-slate-500 font-display"><span>Envío</span><span>${orderDetails.totals.shipping.toFixed(2)}</span></div>
-                  <div className="flex justify-between text-base font-bold text-slate-900 mt-1 font-display"><span>Total</span><span>${orderDetails.totals.total.toFixed(2)}</span></div>
+                  <div className="flex justify-between text-sm text-slate-500 font-display"><span>Subtotal</span><span>${formatCurrency(orderDetails.totals.subtotal)}</span></div>
+                  <div className="flex justify-between text-sm text-slate-500 font-display"><span>Envío</span><span>${formatCurrency(orderDetails.totals.shipping)}</span></div>
+                  <div className="flex justify-between text-base font-bold text-slate-900 mt-1 font-display"><span>Total</span><span>${formatCurrency(orderDetails.totals.total)}</span></div>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3 mt-2">

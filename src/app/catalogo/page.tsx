@@ -8,7 +8,8 @@ import Sidebar from '@/components/catalog/Sidebar';
 async function getProducts(categoryId?: string) {
   let query = supabase
     .from('products')
-    .select('*, brands(name)');
+    .select('*, brands(name)')
+    .eq('status', 'Activo');
   
   if (categoryId) {
     query = query.eq('category_id', categoryId);

@@ -1,176 +1,441 @@
+'use client';
 
-import React from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { supabase } from '@/lib/supabase';
+import { formatCurrency } from '@/lib/utils';
+import { 
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, BarChart, Bar, Legend
+} from 'recharts';
+import { AlertTriangle, TrendingUp, Package, MapPin, CheckCircle2, Clock } from 'lucide-react';
 
 export default function AdminDashboard() {
+  const [metrics, setMetrics] = useState({
+    totalSales: 0,
+    activeOrders: 0,
+    newClients: 0
+  });
+  const [recentInventory, setRecentInventory] = useState<any[]>([]);
+  const [recentOrders, setRecentOrders] = useState<any[]>([]);
+  const [salesTrend, setSalesTrend] = useState<any[]>([]);
+  const [statusDistribution, setStatusDistribution] = useState<any[]>([]);
+  const [topProducts, setTopProducts] = useState<any[]>([]);
+  const [lowStockProducts, setLowStockProducts] = useState<any[]>([]);
+  const [geoData, setGeoData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const recentProducts = [
-    { name: 'Motorola T400', category: 'Radio Portátil', sku: 'MOT-T400-BLK', stock: 45, price: '$89.99', status: 'Activo', statusColor: 'green', img: 'https://picsum.photos/100/100?random=101' },
-    { name: 'Batería Li-Ion 2000mAh', category: 'Repuestos', sku: 'BAT-LI-2000', stock: 12, price: '$24.50', status: 'Bajo Stock', statusColor: 'yellow', img: 'https://picsum.photos/100/100?random=102' },
-    { name: 'Antena VHF Larga', category: 'Accesorios', sku: 'ANT-VHF-LG', stock: 89, price: '$15.00', status: 'Activo', statusColor: 'green', img: 'https://picsum.photos/100/100?random=103' }
-  ];
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
 
-  const recentOrders = [
-    { id: '#ORD-00921', client: 'Juan López', avatar: 'JL', date: 'Oct 24, 2023', total: '$345.00', status: 'Procesando', statusColor: 'blue' },
-    { id: '#ORD-00920', client: 'Carlos Méndez', avatar: 'CM', date: 'Oct 23, 2023', total: '$1,200.00', status: 'Completado', statusColor: 'green' },
-    { id: '#ORD-00919', client: 'Empresa Polanco', avatar: 'EP', date: 'Oct 22, 2023', total: '$85.50', status: 'Enviado', statusColor: 'slate' }
-  ];
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      
+      // 1. Fetch Basic Metrics
+      const { data: ordersData } = await supabase
+        .from('orders')
+        .select('*, order_items(quantity, price_at_purchase, product_id)');
+      
+      if (!ordersData) return;
+
+      const totalSales = ordersData.reduce((acc, curr) => acc + (curr.total_amount || 0), 0);
+      const activeOrdersCount = ordersData.filter(o => ['Pendiente', 'Procesando', 'Procesado'].includes(o.status)).length;
+
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const { count: newClients } = await supabase
+        .from('clients')
+        .select('*', { count: 'exact', head: true })
+        .gte('created_at', thirtyDaysAgo.toISOString());
+
+      setMetrics({
+        totalSales,
+        activeOrders: activeOrdersCount,
+        newClients: newClients || 0
+      });
+
+      // 2. Sales Trend (Last 7 days)
+      const last7Days = Array.from({length: 7}, (_, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        return d.toISOString().split('T')[0];
+      }).reverse();
+
+      const trend = last7Days.map(date => {
+        const dayOrders = ordersData.filter(o => o.created_at.startsWith(date));
+        const total = dayOrders.reduce((acc, o) => acc + o.total_amount, 0);
+        return { name: date.split('-').slice(1).join('/'), total };
+      });
+      setSalesTrend(trend);
+
+      // 3. Status Distribution
+      const statusMap = ordersData.reduce((acc: any, o) => {
+        acc[o.status] = (acc[o.status] || 0) + 1;
+        return acc;
+      }, {});
+      setStatusDistribution(Object.entries(statusMap).map(([name, value]) => ({ name, value })));
+
+      // 4. Top Products & Low Stock
+      const { data: productsData } = await supabase.from('products').select('*');
+      if (productsData) {
+        // Low Stock (between 0 and 5 units, only with valid names)
+        const lowStock = productsData
+          .filter(p => p.stock_quantity >= 0 && p.stock_quantity <= 5 && p.name)
+          .sort((a, b) => a.stock_quantity - b.stock_quantity)
+          .slice(0, 5);
+        setLowStockProducts(lowStock);
+
+        // Top Selling (calculating from order_items)
+        const productSales: any = {};
+        ordersData.forEach(o => {
+          o.order_items?.forEach((item: any) => {
+            const pid = item.product_id;
+            if (pid) {
+              productSales[pid] = (productSales[pid] || 0) + item.quantity;
+            }
+          });
+        });
+        
+        const top = Object.entries(productSales)
+          .map(([id, qty]: any) => {
+            const p = productsData.find(prod => prod.id.toString() === id.toString());
+            return { name: p?.name || 'Desconocido', qty, id };
+          })
+          .filter(p => p.name !== 'Desconocido')
+          .sort((a: any, b: any) => b.qty - a.qty)
+          .slice(0, 5);
+        setTopProducts(top);
+      }
+
+      // 5. Geo Data (by Department)
+      const geoMap = ordersData.reduce((acc: any, o) => {
+        try {
+          const addr = typeof o.shipping_address === 'string' ? JSON.parse(o.shipping_address) : o.shipping_address;
+          const dept = addr?.department || 'Otros';
+          acc[dept] = (acc[dept] || 0) + 1;
+        } catch (e) {
+          acc['Otros'] = (acc['Otros'] || 0) + 1;
+        }
+        return acc;
+      }, {});
+      setGeoData(Object.entries(geoMap)
+        .map(([name, count]) => ({ name, count }))
+        .sort((a: any, b: any) => b.count - a.count)
+        .slice(0, 5));
+
+      // 6. Recent Lists
+      const { data: inventoryData } = await supabase
+        .from('products')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(5);
+      setRecentInventory(inventoryData || []);
+
+      const { data: recentOrdersData } = await supabase
+        .from('orders')
+        .select('*, clients(full_name, company_name)')
+        .order('created_at', { ascending: false })
+        .limit(5);
+      setRecentOrders(recentOrdersData || []);
+
+    } catch (error) {
+      console.error('Error dashboard:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-10 bg-slate-50 h-screen">
+        <div className="flex flex-col items-center gap-4">
+          <div className="size-12 border-4 border-primary border-t-transparent animate-spin rounded-full"></div>
+          <p className="text-slate-500 font-display font-medium animate-pulse">Analizando Mundolar...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <main className="flex-1 overflow-y-auto p-8">
-      <div className="max-w-6xl mx-auto space-y-8">
-        <div className="flex flex-col gap-1">
-          <div className="flex justify-between items-end">
-            <div>
-              <h2 className="text-3xl font-bold text-slate-900 font-display tracking-tight">Vista General</h2>
-              <p className="text-slate-500 mt-1">Resumen de actividad y rendimiento de la tienda hoy.</p>
-            </div>
-            <div className="flex gap-3">
-              <button className="bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium font-display flex items-center gap-2 hover:bg-slate-50 transition-colors">
-                <span className="material-symbols-outlined text-[18px]">download</span> Exportar
-              </button>
-              <button className="bg-primary text-white px-4 py-2 rounded-lg text-sm font-medium font-display flex items-center gap-2 hover:bg-primary/90 transition-colors shadow-lg shadow-primary/30">
-                <span className="material-symbols-outlined text-[18px]">add</span> Nuevo Producto
-              </button>
-            </div>
-          </div>
-        </div>
+    <main className="flex-1 overflow-y-auto p-4 md:p-8 bg-[#F8FAFC]">
+      <div className="max-w-7xl mx-auto space-y-6">
         
+        {/* Header */}
+        <div className="flex justify-between items-center">
+          <div>
+            <h2 className="text-3xl font-black text-slate-900 font-display tracking-tight text-balance">Panel de Control</h2>
+            <p className="text-slate-500 font-medium">Análisis en tiempo real de telecomunicaciones profesionales.</p>
+          </div>
+          <Link href="/admin/pedidos" className="hidden md:flex items-center gap-2 bg-white border border-slate-200 px-4 py-2 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 transition-all shadow-sm">
+            <Clock size={18} /> Ver Actividad
+          </Link>
+        </div>
+
+        {/* Top Metrics Row */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100">
-            <div className="flex justify-between items-start mb-4">
-              <div className="p-2 bg-blue-50 rounded-lg"><span className="material-symbols-outlined text-primary text-[24px]">attach_money</span></div>
-              <span className="text-green-600 bg-green-50 px-2 py-1 rounded text-xs font-bold font-display">+12.5%</span>
+          <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all group">
+            <div className="flex justify-between items-center mb-4">
+              <div className="p-3 bg-blue-50 rounded-2xl text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                <TrendingUp size={24} />
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Ingresos</span>
             </div>
-            <p className="text-slate-500 text-sm font-display mb-1">Ventas Totales</p>
-            <h3 className="text-2xl font-bold text-slate-900 font-display">$4,250.00</h3>
+            <h3 className="text-3xl font-black text-slate-900 font-display">${formatCurrency(metrics.totalSales)}</h3>
+            <p className="text-slate-400 text-xs mt-1 font-bold">HISTÓRICO ACUMULADO</p>
           </div>
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100">
-            <div className="flex justify-between items-start mb-4">
-              <div className="p-2 bg-orange-50 rounded-lg"><span className="material-symbols-outlined text-orange-500 text-[24px]">pending_actions</span></div>
-              <span className="text-slate-600 bg-slate-100 px-2 py-1 rounded text-xs font-bold font-display">Pendientes</span>
+
+          <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all group">
+            <div className="flex justify-between items-center mb-4">
+              <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                <Package size={24} />
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Pedidos Activos</span>
             </div>
-            <p className="text-slate-500 text-sm font-display mb-1">Pedidos Activos</p>
-            <h3 className="text-2xl font-bold text-slate-900 font-display">12</h3>
+            <h3 className="text-3xl font-black text-slate-900 font-display">{metrics.activeOrders}</h3>
+            <p className="text-slate-400 text-xs mt-1 font-bold">GESTIÓN EN CURSO</p>
           </div>
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100">
-            <div className="flex justify-between items-start mb-4">
-              <div className="p-2 bg-purple-50 rounded-lg"><span className="material-symbols-outlined text-purple-500 text-[24px]">group_add</span></div>
-              <span className="text-green-600 bg-green-50 px-2 py-1 rounded text-xs font-bold font-display">+3.2%</span>
+
+          <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all group">
+            <div className="flex justify-between items-center mb-4">
+              <div className="p-3 bg-purple-50 rounded-2xl text-purple-600 group-hover:bg-purple-600 group-hover:text-white transition-colors">
+                <MapPin size={24} />
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Nuevos Clientes 30D</span>
             </div>
-            <p className="text-slate-500 text-sm font-display mb-1">Nuevos Clientes</p>
-            <h3 className="text-2xl font-bold text-slate-900 font-display">156</h3>
+            <h3 className="text-3xl font-black text-slate-900 font-display">{metrics.newClients}</h3>
+            <p className="text-slate-400 text-xs mt-1 font-bold">CRECIMIENTO MENSUAL</p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 flex flex-col gap-4">
-            <div className="flex justify-between items-center">
-              <h3 className="text-lg font-bold text-slate-900 font-display">Inventario Reciente</h3>
-              <Link className="text-sm text-primary font-medium hover:underline font-display" href="/admin/productos">Ver todo</Link>
+        {/* Main Analytics Row */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Sales Trend Graph */}
+          <div className="lg:col-span-2 bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-black text-slate-900 font-display">Tendencia de Ventas (7D)</h3>
+              <span className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full">Automático</span>
             </div>
-            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200">
-                      <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider text-slate-500 font-display">Producto</th>
-                      <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider text-slate-500 font-display">SKU</th>
-                      <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider text-slate-500 font-display text-right">Stock</th>
-                      <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider text-slate-500 font-display text-right">Precio</th>
-                      <th className="py-3 px-4 text-xs font-semibold uppercase tracking-wider text-slate-500 font-display text-center">Estado</th>
-                      <th className="py-3 px-4"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {recentProducts.map(p => (
-                      <tr key={p.sku} className="hover:bg-slate-50 transition-colors">
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-lg bg-slate-100 flex-shrink-0 overflow-hidden relative">
-                              <Image 
-                                src={p.img} 
-                                className="object-cover" 
-                                alt={p.name}
-                                fill
-                                sizes="40px"
-                              />
-                            </div>
-                            <div>
-                              <p className="font-medium text-sm text-slate-900">{p.name}</p>
-                              <p className="text-xs text-slate-500">{p.category}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4 text-sm text-slate-600 font-mono">{p.sku}</td>
-                        <td className="py-3 px-4 text-sm text-slate-900 font-medium text-right">{p.stock}</td>
-                        <td className="py-3 px-4 text-sm text-slate-900 font-medium text-right">{p.price}</td>
-                        <td className="py-3 px-4 text-center"><span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-${p.statusColor}-100 text-${p.statusColor}-800`}>{p.status}</span></td>
-                        <td className="py-3 px-4 text-right"><button className="text-slate-400 hover:text-primary"><span className="material-symbols-outlined text-[20px]">more_vert</span></button></td>
-                      </tr>
+            <div className="h-[280px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={salesTrend}>
+                  <defs>
+                    <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1}/>
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94A3B8', fontSize: 11, fontWeight: 700}} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{fill: '#94A3B8', fontSize: 11, fontWeight: 700}} tickFormatter={(value) => `$${value/1000}k`} />
+                  <Tooltip 
+                    contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
+                    labelStyle={{fontWeight: 900, marginBottom: '4px'}}
+                  />
+                  <Area type="monotone" dataKey="total" stroke="#3b82f6" strokeWidth={4} fillOpacity={1} fill="url(#colorSales)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Status Distribution Donut */}
+          <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex flex-col">
+            <h3 className="text-lg font-black text-slate-900 font-display mb-6">Distribución de Pedidos</h3>
+            <div className="flex-1 relative">
+              <ResponsiveContainer width="100%" height={220}>
+                <PieChart>
+                  <Pie
+                    data={statusDistribution}
+                    innerRadius={65}
+                    outerRadius={85}
+                    paddingAngle={8}
+                    dataKey="value"
+                    cornerRadius={10}
+                  >
+                    {statusDistribution.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
-                  </tbody>
-                </table>
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none mb-6">
+                <span className="text-xs font-black text-slate-400 uppercase tracking-tighter">Estados</span>
               </div>
             </div>
-          </div>
-
-          <div className="lg:col-span-1 flex flex-col gap-4">
-            <div className="flex justify-between items-center">
-              <h3 className="text-lg font-bold text-slate-900 font-display">CMS Rápido</h3>
-              <button className="text-slate-400 hover:text-primary"><span className="material-symbols-outlined text-[20px]">open_in_new</span></button>
-            </div>
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex flex-col gap-4 h-full">
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 font-display">Editar Página</label>
-                <select defaultValue="promo" className="w-full bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 focus:ring-primary focus:border-primary p-2.5">
-                  <option value="promo">Promo - Radios Móviles</option>
-                  <option value="home">Inicio - Banner Principal</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 font-display">Contenido</label>
-                <textarea className="w-full bg-slate-50 border border-slate-200 rounded-lg text-sm p-3" rows={4} defaultValue="¡Oferta de Temporada! 20% OFF en Motorola."></textarea>
-              </div>
-              <div className="mt-auto pt-2 flex gap-3">
-                <button className="flex-1 bg-primary text-white py-2.5 rounded-lg text-sm font-bold font-display hover:bg-primary/90 shadow-lg shadow-primary/20">Publicar Cambios</button>
-              </div>
+            <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-slate-50">
+              {statusDistribution.slice(0, 4).map((s, i) => (
+                <div key={s.name} className="flex items-center gap-2">
+                  <div className="size-2 rounded-full" style={{backgroundColor: COLORS[i]}}></div>
+                  <span className="text-[10px] font-bold text-slate-600 truncate">{s.name}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
 
-        <div className="flex flex-col gap-4">
-          <div className="flex justify-between items-center">
-            <h3 className="text-lg font-bold text-slate-900 font-display">Pedidos Recientes</h3>
+        {/* Secondary Analytics Row */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          
+          {/* Top Selling Products */}
+          <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
+            <div className="flex items-center gap-2 mb-6">
+              <div className="p-2 bg-amber-50 text-amber-600 rounded-lg"><TrendingUp size={16}/></div>
+              <h3 className="text-md font-black text-slate-900 font-display uppercase tracking-tight">Top Ventas</h3>
+            </div>
+            <div className="space-y-4">
+              {topProducts.map((p, i) => (
+                <div key={p.id} className="flex items-center justify-between group">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-black text-slate-300 w-4">#0{i+1}</span>
+                    <span className="text-sm font-bold text-slate-700 group-hover:text-primary transition-colors truncate max-w-[140px]">{p.name}</span>
+                  </div>
+                  <span className="text-xs font-black bg-slate-50 text-slate-500 px-2 py-1 rounded-lg">{p.qty} unid.</span>
+                </div>
+              ))}
+              {topProducts.length === 0 && <p className="text-xs text-slate-400 font-display text-center py-4">Sin datos de ventas.</p>}
+            </div>
           </div>
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200">
-                  <th className="py-3 px-6 text-xs font-semibold uppercase tracking-wider text-slate-500">ID Pedido</th>
-                  <th className="py-3 px-6 text-xs font-semibold uppercase tracking-wider text-slate-500">Cliente</th>
-                  <th className="py-3 px-6 text-xs font-semibold uppercase tracking-wider text-slate-500">Fecha</th>
-                  <th className="py-3 px-6 text-xs font-semibold uppercase tracking-wider text-slate-500">Total</th>
-                  <th className="py-3 px-6 text-xs font-semibold uppercase tracking-wider text-slate-500">Estado</th>
-                  <th className="py-3 px-6 text-xs font-semibold uppercase tracking-wider text-slate-500 text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {recentOrders.map(o => (
-                  <tr key={o.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="py-4 px-6 text-sm font-mono text-primary font-medium">{o.id}</td>
-                    <td className="py-4 px-6"><div className="flex items-center gap-3"><div className="h-8 w-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-600">{o.avatar}</div><div className="text-sm font-medium text-slate-900">{o.client}</div></div></td>
-                    <td className="py-4 px-6 text-sm text-slate-500">{o.date}</td>
-                    <td className="py-4 px-6 text-sm font-medium text-slate-900">{o.total}</td>
-                    <td className="py-4 px-6"><span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-${o.statusColor}-100 text-${o.statusColor}-800`}><span className={`w-1.5 h-1.5 rounded-full bg-${o.statusColor}-500`}></span>{o.status}</span></td>
-                    <td className="py-4 px-6 text-right"><Link href="/admin/pedidos" className="text-sm font-medium text-slate-500 hover:text-primary underline decoration-slate-300 hover:decoration-primary underline-offset-4">Ver Detalles</Link></td>
+
+          {/* Low Stock Alerts */}
+          <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
+            <div className="flex items-center gap-2 mb-6">
+              <div className="p-2 bg-red-50 text-red-600 rounded-lg"><AlertTriangle size={16}/></div>
+              <h3 className="text-md font-black text-slate-900 font-display uppercase tracking-tight">Stock Crítico</h3>
+            </div>
+            <div className="space-y-4">
+              {lowStockProducts.map(p => (
+                <div key={p.id} className="flex items-center justify-between group">
+                  <div className="flex items-center gap-3">
+                    <div className="size-2 bg-red-500 rounded-full animate-pulse"></div>
+                    <span className="text-sm font-bold text-slate-700 truncate max-w-[180px] font-display">{p.name}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[12px] font-black text-red-600 bg-red-50 px-2 py-1 rounded-lg uppercase tracking-tighter border border-red-100">
+                      {p.stock_quantity} UNID.
+                    </span>
+                  </div>
+                </div>
+              ))}
+              {lowStockProducts.length === 0 && <div className="flex flex-col items-center py-4"><CheckCircle2 className="text-emerald-500 mb-2" size={24}/><p className="text-xs text-slate-400 font-bold uppercase">Stock Saludable</p></div>}
+            </div>
+          </div>
+
+          {/* Geo Segmentation */}
+          <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
+            <div className="flex items-center gap-2 mb-6">
+              <div className="p-2 bg-slate-900 text-white rounded-lg"><MapPin size={16}/></div>
+              <h3 className="text-md font-black text-slate-900 font-display uppercase tracking-tight">Geografía de Pedidos</h3>
+            </div>
+            <div className="space-y-4">
+              {geoData.map(g => (
+                <div key={g.name} className="space-y-1.5 font-display">
+                  <div className="flex justify-between text-[11px] font-bold">
+                    <span className="text-slate-600">{g.name}</span>
+                    <span className="text-slate-900">{g.count} pedidos</span>
+                  </div>
+                  <div className="w-full bg-slate-50 h-1.5 rounded-full overflow-hidden">
+                    <div className="bg-slate-900 h-full rounded-full transition-all duration-1000" style={{width: `${(g.count / (geoData[0]?.count || 1)) * 100}%`}}></div>
+                  </div>
+                </div>
+              ))}
+              {geoData.length === 0 && <p className="text-xs text-slate-400 font-display text-center py-4">Sin datos geográficos.</p>}
+            </div>
+          </div>
+
+        </div>
+
+        {/* Existing Activity Section - Redesigned to fit the New Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+          {/* Recent Orders - Occupies 2 columns now */}
+          <div className="lg:col-span-2 flex flex-col gap-4 bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+            <div className="p-6 pb-0 flex justify-between items-center">
+              <h3 className="text-lg font-black text-slate-900 font-display">Pedidos Recientes</h3>
+              <Link href="/admin/pedidos" className="text-xs font-bold text-primary hover:underline">Ver Historial Completo</Link>
+            </div>
+            <div className="overflow-x-auto p-4 pt-2">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50/50">
+                    <th className="py-3 px-4 text-[10px] font-black uppercase tracking-widest text-slate-400 font-display">Pedido</th>
+                    <th className="py-3 px-4 text-[10px] font-black uppercase tracking-widest text-slate-400 font-display">Cliente</th>
+                    <th className="py-3 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400 font-display text-right">Total</th>
+                    <th className="py-3 px-4 text-[10px] font-black uppercase tracking-widest text-slate-400 font-display text-center">Estado</th>
+                    <th className="py-3 px-4"></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {recentOrders.map(o => (
+                    <tr key={o.id} className="group hover:bg-slate-50/50 transition-colors">
+                      <td className="py-4 px-4 text-[11px] font-black text-primary font-mono tracking-tighter">#{o.id.toString().padStart(5, '0')}</td>
+                      <td className="py-4 px-4 font-display">
+                        <div className="flex items-center gap-2">
+                          <div className="size-6 rounded-full bg-slate-100 flex items-center justify-center text-[8px] font-black text-slate-500 border border-slate-200">
+                            {(o.clients?.full_name || o.clients?.company_name || 'C').substring(0, 1)}
+                          </div>
+                          <span className="text-xs font-bold text-slate-700 truncate max-w-[120px]">{o.clients?.full_name || o.clients?.company_name || 'Cliente'}</span>
+                        </div>
+                      </td>
+                      <td className="py-4 px-6 text-sm font-black text-slate-900 font-display text-right">${formatCurrency(o.total_amount)}</td>
+                      <td className="py-4 px-4 text-center">
+                        <span className={`px-2.5 py-1 rounded-xl text-[9px] font-black uppercase tracking-widest ${
+                          o.status === 'Completado' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'
+                        }`}>
+                          {o.status}
+                        </span>
+                      </td>
+                      <td className="py-4 px-4 text-right">
+                        <Link href={`/admin/pedidos?id=${o.id}`} className="p-1.5 bg-slate-50  text-slate-400 rounded-lg group-hover:bg-primary group-hover:text-white transition-all inline-flex">
+                          <span className="material-symbols-outlined text-[18px]">east</span>
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
+
+          {/* Quick Inventory / Recently Added */}
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
+            <div className="p-6 pb-2">
+              <h3 className="text-lg font-black text-slate-900 font-display">Inventario Reciente</h3>
+            </div>
+            <div className="flex-1 space-y-2 p-4 pt-2">
+              {recentInventory.map(p => (
+                <div key={p.id} className="flex items-center gap-3 p-2 rounded-2xl hover:bg-slate-50 transition-all group">
+                  <div className="size-10 bg-slate-100 rounded-xl overflow-hidden relative flex-shrink-0 border border-slate-100">
+                    {(() => {
+                      const images = typeof p.image_urls === 'string' ? JSON.parse(p.image_urls) : p.image_urls;
+                      const imageUrl = Array.isArray(images) && images.length > 0 ? images[0] : null;
+                      return imageUrl ? <Image src={imageUrl} alt={p.name} fill className="object-cover" /> : <Package className="text-slate-300 m-auto mt-2" size={18}/>;
+                    })()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-slate-900 truncate font-display">{p.name}</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono">{p.sku}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs font-black text-primary font-display">${formatCurrency(p.price)}</p>
+                    <p className={`text-[9px] font-black ${p.stock_quantity <= 5 ? 'text-red-500' : 'text-emerald-500'}`}>STOCK: {p.stock_quantity}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="p-4 border-t border-slate-50 bg-slate-50/50">
+              <Link href="/admin/productos" className="flex items-center justify-center gap-2 text-xs font-black text-slate-500 hover:text-primary transition-colors uppercase tracking-widest">
+                Gestionar Todo <TrendingUp size={12}/>
+              </Link>
+            </div>
+          </div>
+
         </div>
+
       </div>
     </main>
   );

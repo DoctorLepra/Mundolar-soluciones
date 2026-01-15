@@ -17,3 +17,12 @@ export const formatCurrency = (value: number | string): string => {
     maximumFractionDigits: 0,
   }).format(numericValue);
 };
+
+/**
+ * Formats a numerical ID into a standardized order string: PED-0001
+ */
+export const formatOrderId = (id: number | string | null | undefined): string => {
+  if (id === null || id === undefined) return 'N/A';
+  const numericId = typeof id === 'string' ? parseInt(id) : id;
+  return `PED-${numericId.toString().padStart(4, '0')}`;
+};

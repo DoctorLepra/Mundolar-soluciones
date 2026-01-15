@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency } from '@/lib/utils';
 import { colombiaData, departments } from '@/lib/colombia-data';
@@ -37,6 +38,7 @@ const AdminClientsPage = () => {
   const ITEMS_PER_PAGE = 6;
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
+  const router = useRouter();
   
   // Metrics State
   const [metrics, setMetrics] = useState({
@@ -44,6 +46,11 @@ const AdminClientsPage = () => {
     activeMonth: 0,
     new30d: 0
   });
+
+  // Client Detail Tabs & Orders
+  const [activeTab, setActiveTab] = useState<'General' | 'Historial'>('General');
+  const [clientOrders, setClientOrders] = useState<any[]>([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
 
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState('');
@@ -106,35 +113,81 @@ const AdminClientsPage = () => {
       if (data.length > 0 && !selectedClientId) {
         setSelectedClientId(data[0].id);
       }
+      
+      // DATA CORRECTION: Fix clients that should be active but are marked as inactive
+      const inactiveWithOrders = async () => {
+        const { data: ordersWithClients } = await supabase
+          .from('orders')
+          .select('client_id');
+        
+        if (ordersWithClients) {
+          const clientIdsWithOrders = new Set(ordersWithClients.map(o => o.client_id));
+          const clientsToUpdate = data.filter(c => c.status === 'Inactivo' && clientIdsWithOrders.has(c.id));
+          
+          if (clientsToUpdate.length > 0) {
+            console.log(`Fixing status for ${clientsToUpdate.length} clients...`);
+            await Promise.all(clientsToUpdate.map(c => 
+              supabase.from('clients').update({ status: 'Activo' }).eq('id', c.id)
+            ));
+            // Re-fetch to show updated status
+            const { data: updatedData } = await supabase.from('clients').select('*').order('created_at', { ascending: false });
+            if (updatedData) setClients(updatedData);
+          }
+        }
+      };
+      inactiveWithOrders();
     }
     setLoading(false);
   };
 
+  const fetchClientOrders = async (clientId: string) => {
+    setLoadingOrders(true);
+    const { data, error } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('client_id', clientId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching client orders:', error);
+    } else {
+      setClientOrders(data || []);
+    }
+    setLoadingOrders(false);
+  };
+
+  useEffect(() => {
+    if (selectedClientId && activeTab === 'Historial') {
+      fetchClientOrders(selectedClientId);
+    }
+  }, [selectedClientId, activeTab]);
+
   const calculateMetrics = async (allClients: Client[]) => {
+    const now = new Date();
+    // Start of current month
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    
+    // Thirty days ago for "Nuevos" metric
     const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    thirtyDaysAgo.setDate(now.getDate() - 30);
 
     const total = allClients.length;
     const new30d = allClients.filter(c => new Date(c.created_at) >= thirtyDaysAgo).length;
 
-    // Active clients calculation - logic based on orders if available
-    // Attempting to query unique client_ids from a hypothetical 'pedidos' or 'orders' table
     let activeMonth = 0;
     try {
       const { data: orderData } = await supabase
-        .from('pedidos') // or 'orders' - using 'pedidos' as prioritized in previous context
-        .select('full_name, created_at') // Fallback check if it's mock
-        .gte('created_at', thirtyDaysAgo.toISOString());
+        .from('orders')
+        .select('client_id, created_at')
+        .gte('created_at', startOfMonth.toISOString());
       
       if (orderData) {
-        // Unique clients by name/email in the last 30 days
-        const uniqueClients = new Set(orderData.map(o => o.full_name));
+        const uniqueClients = new Set(orderData.map(o => o.client_id));
         activeMonth = uniqueClients.size;
       }
     } catch (e) {
       console.log('Orders table check failed, using fallback metrics');
-      // Fallback: use a percentage or subset if no real table
-      activeMonth = Math.floor(total * 0.6); 
+      activeMonth = 0; 
     }
 
     setMetrics({ total, activeMonth, new30d });
@@ -676,71 +729,137 @@ const AdminClientsPage = () => {
                 </span>
               </div>
               <div className="flex gap-2 mb-6 border-b border-slate-200 pb-1">
-                <button className="flex-1 pb-2 text-sm font-bold border-b-2 border-primary text-primary font-display">General</button>
-                <button className="flex-1 pb-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 font-display transition-colors">Historial</button>
+                <button 
+                  onClick={() => setActiveTab('General')}
+                  className={`flex-1 pb-2 text-sm font-bold border-b-2 transition-all font-display ${activeTab === 'General' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                >
+                  General
+                </button>
+                <button 
+                  onClick={() => setActiveTab('Historial')}
+                  className={`flex-1 pb-2 text-sm font-bold border-b-2 transition-all font-display ${activeTab === 'Historial' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                >
+                  Historial
+                </button>
               </div>
-              <div className="space-y-6 pb-8">
-                <div className="space-y-3">
-                  <h4 className="text-sm font-bold text-slate-900 font-display uppercase tracking-widest text-[11px] text-slate-400">Información de Contacto</h4>
-                  <div className="flex items-center gap-3 text-sm text-slate-600 font-display">
-                    <div className="size-8 rounded-lg bg-slate-50 flex items-center justify-center shrink-0 border border-slate-100">
-                      <span className="material-symbols-outlined text-[18px] text-slate-400">mail</span>
+              
+              <div className="pb-8">
+                {activeTab === 'General' ? (
+                  <div className="space-y-6">
+                    <div className="space-y-3">
+                      <h4 className="text-sm font-bold text-slate-900 font-display uppercase tracking-widest text-[11px] text-slate-400">Información de Contacto</h4>
+                      <div className="flex items-center gap-3 text-sm text-slate-600 font-display">
+                        <div className="size-8 rounded-lg bg-slate-50 flex items-center justify-center shrink-0 border border-slate-100">
+                          <span className="material-symbols-outlined text-[18px] text-slate-400">mail</span>
+                        </div>
+                        <a href={`mailto:${selectedClient.email}`} className="text-primary hover:underline transition-all">
+                          {selectedClient.email || 'No registrado'}
+                        </a>
+                      </div>
+                      <div className="flex items-center gap-3 text-sm text-slate-600 font-display">
+                        <div className="size-8 rounded-lg bg-slate-50 flex items-center justify-center shrink-0 border border-slate-100">
+                          <span className="material-symbols-outlined text-[18px] text-slate-400">phone</span>
+                        </div>
+                        {selectedClient.phone ? (
+                          <a 
+                            href={`https://wa.me/${selectedClient.phone.replace(/\D/g, '')}`} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline transition-all"
+                          >
+                            {selectedClient.phone}
+                          </a>
+                        ) : (
+                          <span>No registrado</span>
+                        )}
+                      </div>
+                      <div className="flex items-start gap-3 text-sm text-slate-600 font-display">
+                        <div className="size-8 rounded-lg bg-slate-50 flex items-center justify-center shrink-0 border border-slate-100">
+                          <span className="material-symbols-outlined text-[18px] text-slate-400">location_on</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span>{selectedClient.address || 'Sin dirección'}</span>
+                          <span className="text-xs text-slate-400">{selectedClient.municipality}, {selectedClient.department}</span>
+                        </div>
+                      </div>
                     </div>
-                    <a href={`mailto:${selectedClient.email}`} className="text-primary hover:underline transition-all">
-                      {selectedClient.email || 'No registrado'}
-                    </a>
-                  </div>
-                  <div className="flex items-center gap-3 text-sm text-slate-600 font-display">
-                    <div className="size-8 rounded-lg bg-slate-50 flex items-center justify-center shrink-0 border border-slate-100">
-                      <span className="material-symbols-outlined text-[18px] text-slate-400">phone</span>
-                    </div>
-                    {selectedClient.phone ? (
-                      <a 
-                        href={`https://wa.me/${selectedClient.phone.replace(/\D/g, '')}`} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-primary hover:underline transition-all"
+                    
+                    {selectedClient.notes && (
+                      <div className="space-y-3">
+                        <h4 className="text-sm font-bold text-slate-900 font-display uppercase tracking-widest text-[11px] text-slate-400">Notas</h4>
+                        <div className="p-3 bg-amber-50 rounded-lg border border-amber-100 text-sm text-slate-700 font-display leading-relaxed italic">
+                          <p>"{selectedClient.notes}"</p>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="pt-4 grid grid-cols-2 gap-3">
+                      <button onClick={() => handleEditClick(selectedClient)} className="flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors font-display">
+                        <span className="material-symbols-outlined text-[18px]">edit</span>Editar
+                      </button>
+                      <button 
+                        onClick={() => setIsDeleteModalOpen(true)}
+                        disabled={isSubmitting}
+                        className="flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 text-red-600 rounded-lg text-sm font-bold hover:bg-red-100 transition-colors font-display disabled:opacity-50"
                       >
-                        {selectedClient.phone}
-                      </a>
+                        <span className="material-symbols-outlined text-[18px]">delete</span>
+                        {isSubmitting ? '...' : 'Eliminar'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <h4 className="text-sm font-bold text-slate-900 font-display uppercase tracking-widest text-[11px] text-slate-400 mb-4">Pedidos Recientes</h4>
+                    
+                    {loadingOrders ? (
+                      <div className="p-8 text-center">
+                        <div className="size-6 border-2 border-primary border-t-transparent animate-spin rounded-full mx-auto"></div>
+                      </div>
+                    ) : clientOrders.length === 0 ? (
+                      <div className="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                        <span className="material-symbols-outlined text-slate-300 text-3xl mb-2">shopping_bag</span>
+                        <p className="text-xs text-slate-500 font-display">Este cliente aún no tiene pedidos.</p>
+                      </div>
                     ) : (
-                      <span>No registrado</span>
+                      <div className="space-y-3">
+                        {clientOrders.map((order) => (
+                          <div key={order.id} className="p-4 bg-white border border-slate-200 rounded-xl hover:shadow-md transition-all group">
+                            <div className="flex justify-between items-start mb-2">
+                              <div>
+                                <p className="text-sm font-bold text-slate-900 font-display">#{order.id.toString().padStart(5, '0')}</p>
+                                <p className="text-[10px] text-slate-500 font-display">{new Date(order.created_at).toLocaleDateString()}</p>
+                              </div>
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                order.status === 'Completado' ? 'bg-emerald-100 text-emerald-700' : 
+                                order.status === 'Pendiente' ? 'bg-amber-100 text-amber-700' :
+                                'bg-blue-100 text-blue-700'
+                              }`}>
+                                {order.status}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <p className="text-sm font-bold text-primary font-mono">${formatCurrency(order.total_amount)}</p>
+                              <button 
+                                onClick={() => router.push(`/admin/pedidos?id=${order.id}`)}
+                                className="text-[10px] font-bold text-slate-400 group-hover:text-primary transition-colors flex items-center gap-1"
+                              >
+                                DETALLES <span className="material-symbols-outlined text-sm">arrow_forward</span>
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
-                  <div className="flex items-start gap-3 text-sm text-slate-600 font-display">
-                    <div className="size-8 rounded-lg bg-slate-50 flex items-center justify-center shrink-0 border border-slate-100">
-                      <span className="material-symbols-outlined text-[18px] text-slate-400">location_on</span>
-                    </div>
-                    <div className="flex flex-col">
-                      <span>{selectedClient.address || 'Sin dirección'}</span>
-                      <span className="text-xs text-slate-400">{selectedClient.municipality}, {selectedClient.department}</span>
-                    </div>
-                  </div>
-                </div>
-                
-                {selectedClient.notes && (
-                  <div className="space-y-3">
-                    <h4 className="text-sm font-bold text-slate-900 font-display uppercase tracking-widest text-[11px] text-slate-400">Notas</h4>
-                    <div className="p-3 bg-amber-50 rounded-lg border border-amber-100 text-sm text-slate-700 font-display leading-relaxed italic">
-                      <p>"{selectedClient.notes}"</p>
-                    </div>
-                  </div>
                 )}
-
-                <div className="pt-4 grid grid-cols-2 gap-3">
-                  <button onClick={() => handleEditClick(selectedClient)} className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors font-display">
-                    <span className="material-symbols-outlined text-[18px]">edit</span>Editar
-                  </button>
+                
+                {/* Fixed "Add Order" button at the bottom of the sidebar */}
+                <div className="mt-6">
                   <button 
-                    onClick={() => setIsDeleteModalOpen(true)}
-                    disabled={isSubmitting}
-                    className="flex items-center justify-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-bold hover:bg-red-100 transition-colors font-display disabled:opacity-50"
+                    onClick={() => router.push(`/admin/pedidos?create=true&clientId=${selectedClient.id}`)}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-bold hover:bg-blue-600 transition-colors shadow-md shadow-primary/20 font-display"
                   >
-                    <span className="material-symbols-outlined text-[18px]">delete</span>
-                    {isSubmitting ? 'Eliminando...' : 'Eliminar'}
-                  </button>
-                  <button className="col-span-2 flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-bold hover:bg-blue-600 transition-colors shadow-md shadow-primary/20 font-display">
-                    <span className="material-symbols-outlined text-[18px]">add_shopping_cart</span>Pedido
+                    <span className="material-symbols-outlined text-[18px]">add_shopping_cart</span>Nuevo Pedido
                   </button>
                 </div>
               </div>

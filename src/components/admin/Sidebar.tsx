@@ -1,11 +1,48 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
 
 export default function AdminSidebar() {
   const pathname = usePathname();
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => {
+    fetchPendingCount();
+
+    // Subscribe to realtime changes in orders table
+    const channel = supabase
+      .channel('orders-count')
+      .on(
+        'postgres_changes',
+        { event: '*', table: 'orders', schema: 'public' },
+        () => {
+          fetchPendingCount();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  const fetchPendingCount = async () => {
+    try {
+      const { count, error } = await supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'Pendiente');
+
+      if (!error) {
+        setPendingCount(count || 0);
+      }
+    } catch (error) {
+      console.error('Error fetching pending orders count:', error);
+    }
+  };
 
   const menuItems = [
     { label: 'Dashboard', path: '/admin', icon: 'dashboard' },
@@ -45,8 +82,10 @@ export default function AdminSidebar() {
           >
             <span className={`material-symbols-outlined text-[22px] ${isActive(item.path) ? 'icon-fill' : ''}`}>{item.icon}</span>
             <span className="text-sm font-medium font-display">{item.label}</span>
-            {item.label === 'Pedidos' && (
-               <span className="ml-auto bg-primary text-white text-[10px] font-bold px-2 py-0.5 rounded-full">12</span>
+            {item.label === 'Pedidos' && pendingCount > 0 && (
+               <span className="ml-auto bg-primary text-white text-[10px] font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center shadow-sm shadow-primary/30">
+                 {pendingCount}
+               </span>
             )}
           </Link>
         ))}

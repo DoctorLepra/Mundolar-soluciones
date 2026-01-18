@@ -48,6 +48,7 @@ export default function AdminSidebar() {
     { label: 'Dashboard', path: '/admin', icon: 'dashboard' },
     { label: 'Productos', path: '/admin/productos', icon: 'inventory_2' },
     { label: 'Categorías', path: '/admin/categorias', icon: 'category' },
+    { label: 'Marcas', path: '/admin/marcas', icon: 'verified' },
     { label: 'Pedidos', path: '/admin/pedidos', icon: 'shopping_cart' },
     { label: 'Clientes', path: '/admin/clientes', icon: 'group' },
   ];

@@ -25,6 +25,26 @@ interface Client {
   address: string | null;
   notes: string | null;
   photo_url: string | null;
+  // CRM fields
+  tags: string[] | null;
+  industry: string | null;
+  last_contact_at: string | null;
+  source: string | null;
+  referred_by_brand_id: number | null;
+}
+
+interface Brand {
+  id: number;
+  name: string;
+}
+
+interface Interaction {
+  id: number;
+  client_id: string;
+  type: 'Nota' | 'Llamada' | 'Reunión' | 'Correo' | 'Soporte';
+  content: string;
+  created_at: string;
+  created_by: string | null;
 }
 
 const AdminClientsPage = () => {
@@ -47,15 +67,40 @@ const AdminClientsPage = () => {
     new30d: 0
   });
 
+  const [brands, setBrands] = useState<Brand[]>([]);
+
   // Client Detail Tabs & Orders
-  const [activeTab, setActiveTab] = useState<'General' | 'Historial'>('General');
+  const [activeTab, setActiveTab] = useState<'General' | 'Historial' | 'CRM'>('General');
   const [clientOrders, setClientOrders] = useState<any[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
+
+  // CRM State
+  const [clientInteractions, setClientInteractions] = useState<Interaction[]>([]);
+  const [loadingInteractions, setLoadingInteractions] = useState(false);
+  const [isAddingInteraction, setIsAddingInteraction] = useState(false);
+  const [newInteraction, setNewInteraction] = useState({
+    type: 'Nota' as Interaction['type'],
+    content: ''
+  });
+  const [newTag, setNewTag] = useState('');
+  const [isSavingTags, setIsSavingTags] = useState(false);
+
+  // Google Calendar / Follow-up State
+  const [showFollowupForm, setShowFollowupForm] = useState(false);
+  const [followupData, setFollowupData] = useState({
+    title: '',
+    date: new Date().toISOString().split('T')[0],
+    time: '10:00',
+    type: 'Llamada' as Interaction['type'],
+    description: ''
+  });
 
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
+  const [sourceFilter, setSourceFilter] = useState('all');
+  const [tagFilter, setTagFilter] = useState('all');
   const [showOnlyNew, setShowOnlyNew] = useState(false);
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -87,7 +132,10 @@ const AdminClientsPage = () => {
     department: '',
     municipality: '',
     address: '',
-    notes: ''
+    notes: '',
+    industry: '',
+    source: 'Nuevo',
+    referred_by_brand_id: 0
   });
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -96,7 +144,13 @@ const AdminClientsPage = () => {
 
   useEffect(() => {
     fetchClients();
+    fetchBrands();
   }, []);
+
+  const fetchBrands = async () => {
+    const { data } = await supabase.from('brands').select('id, name').order('name');
+    if (data) setBrands(data);
+  };
 
   const fetchClients = async () => {
     setLoading(true);
@@ -156,9 +210,147 @@ const AdminClientsPage = () => {
     setLoadingOrders(false);
   };
 
+  const fetchInteractions = async (clientId: string) => {
+    setLoadingInteractions(true);
+    const { data, error } = await supabase
+      .from('client_interactions')
+      .select('*')
+      .eq('client_id', clientId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching interactions:', error);
+    } else {
+      setClientInteractions(data || []);
+    }
+    setLoadingInteractions(false);
+  };
+
+  const handleAddInteraction = async (e: React.FormEvent, override?: {type: Interaction['type'], content: string}) => {
+    e?.preventDefault();
+    const type = override?.type || newInteraction.type;
+    const content = override?.content || newInteraction.content;
+
+    if (!selectedClientId || !content.trim()) return;
+
+    setIsAddingInteraction(true);
+    try {
+      const { error } = await supabase
+        .from('client_interactions')
+        .insert([{
+          client_id: selectedClientId,
+          type,
+          content
+        }]);
+
+      if (error) throw error;
+
+      if (!override) setNewInteraction({ type: 'Nota', content: '' });
+      fetchInteractions(selectedClientId);
+      
+      // Update last_contact_at
+      await supabase
+        .from('clients')
+        .update({ last_contact_at: new Date().toISOString() })
+        .eq('id', selectedClientId);
+        
+    } catch (error: any) {
+      alert(`Error al guardar interacción: ${error.message}`);
+    } finally {
+      setIsAddingInteraction(false);
+    }
+  };
+
+  // Derive all unique tags from clients
+  const allTags = Array.from(new Set(clients.flatMap(c => c.tags || []))).sort();
+
+  const handleAddTag = async () => {
+    if (!selectedClient || !newTag.trim()) return;
+    
+    const currentTags = selectedClient.tags || [];
+    if (currentTags.includes(newTag.trim())) {
+      setNewTag('');
+      return;
+    }
+
+    setIsSavingTags(true);
+    try {
+      const updatedTags = [...currentTags, newTag.trim()];
+      const { error } = await supabase
+        .from('clients')
+        .update({ tags: updatedTags })
+        .eq('id', selectedClient.id);
+
+      if (error) throw error;
+      
+      setClients(prev => prev.map(c => c.id === selectedClient.id ? {...c, tags: updatedTags} : c));
+      setNewTag('');
+    } catch (error: any) {
+      alert(`Error al guardar etiquetas: ${error.message}`);
+    } finally {
+      setIsSavingTags(false);
+    }
+  };
+
+  const handleRemoveTag = async (tagToRemove: string) => {
+    if (!selectedClient || !selectedClient.tags) return;
+
+    setIsSavingTags(true);
+    try {
+      const updatedTags = selectedClient.tags.filter(t => t !== tagToRemove);
+      const { error } = await supabase
+        .from('clients')
+        .update({ tags: updatedTags })
+        .eq('id', selectedClient.id);
+
+      if (error) throw error;
+      
+      setClients(prev => prev.map(c => c.id === selectedClient.id ? {...c, tags: updatedTags} : c));
+    } catch (error: any) {
+      alert(`Error al eliminar etiqueta: ${error.message}`);
+    } finally {
+      setIsSavingTags(false);
+    }
+  };
+
+  const handleCreateGoogleCalendarEvent = () => {
+    if (!selectedClient) return;
+
+    const dateStr = followupData.date.replace(/-/g, '');
+    const timeStr = followupData.time.replace(/:/g, '') + '00';
+    const startDateTime = `${dateStr}T${timeStr}`;
+    
+    const [hours, minutes] = followupData.time.split(':').map(Number);
+    const endMinutes = minutes + 30;
+    const endHours = hours + Math.floor(endMinutes / 60);
+    const finalMinutes = endMinutes % 60;
+    const endDateTime = `${dateStr}T${endHours.toString().padStart(2, '0')}${finalMinutes.toString().padStart(2, '0')}00`;
+
+    const title = encodeURIComponent(`${followupData.title || `Seguimiento: ${followupData.type}`} - ${selectedClient.full_name || selectedClient.company_name}`);
+    const details = encodeURIComponent(`${followupData.description}\n\nCliente: ${selectedClient.full_name}\nTel: ${selectedClient.phone}\nEmail: ${selectedClient.email}`);
+    
+    const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startDateTime}/${endDateTime}&details=${details}`;
+    
+    window.open(url, '_blank');
+    
+    handleAddInteraction({
+      preventDefault: () => {},
+      target: null
+    } as any, {
+      type: followupData.type,
+      content: `[PROGRAMADO EN CALENDAR] ${followupData.title || `Seguimiento`}: ${followupData.description} (Para el ${followupData.date} a las ${followupData.time})`
+    });
+    
+    setShowFollowupForm(false);
+  };
+
   useEffect(() => {
-    if (selectedClientId && activeTab === 'Historial') {
-      fetchClientOrders(selectedClientId);
+    if (selectedClientId) {
+       if (activeTab === 'Historial') {
+         fetchClientOrders(selectedClientId);
+       } else if (activeTab === 'CRM') {
+         fetchInteractions(selectedClientId);
+       }
     }
   }, [selectedClientId, activeTab]);
 
@@ -195,7 +387,7 @@ const AdminClientsPage = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, statusFilter, typeFilter, showOnlyNew]);
+  }, [searchTerm, statusFilter, typeFilter, showOnlyNew, tagFilter, sourceFilter]);
 
   const filteredClients = clients.filter(client => {
     const searchStr = searchTerm.toLowerCase();
@@ -209,6 +401,11 @@ const AdminClientsPage = () => {
 
     const matchesStatus = statusFilter === 'all' || client.status === statusFilter;
     const matchesType = typeFilter === 'all' || client.client_type === typeFilter;
+    const matchesSource = sourceFilter === 'all' || 
+                        (sourceFilter === 'Nuevo' && client.source === 'Nuevo') ||
+                        (sourceFilter === 'Mercado Libre' && client.source === 'Mercado Libre') ||
+                        (sourceFilter.startsWith('brand_') && client.referred_by_brand_id === parseInt(sourceFilter.split('_')[1]));
+    const matchesTag = tagFilter === 'all' || (client.tags && client.tags.includes(tagFilter));
     
     let matchesNew = true;
     if (showOnlyNew) {
@@ -217,7 +414,7 @@ const AdminClientsPage = () => {
       matchesNew = new Date(client.created_at) >= thirtyDaysAgo;
     }
 
-    return matchesSearch && matchesStatus && matchesType && matchesNew;
+    return matchesSearch && matchesStatus && matchesType && matchesNew && matchesSource && matchesTag;
   });
 
   const totalPages = Math.ceil(filteredClients.length / ITEMS_PER_PAGE);
@@ -232,6 +429,8 @@ const AdminClientsPage = () => {
   const handleClearFilters = () => {
     setStatusFilter('all');
     setTypeFilter('all');
+    setSourceFilter('all');
+    setTagFilter('all');
     setShowOnlyNew(false);
   };
 
@@ -241,20 +440,27 @@ const AdminClientsPage = () => {
       return;
     }
 
-    const exportData = filteredClients.map(c => ({
-      ID: c.id,
-      Nombre: c.full_name || c.company_name,
-      Tipo: c.client_type,
-      Documento: c.document_number,
-      'Info Doc/NIT': c.document_info || 'N/A',
-      Email: c.email || 'N/A',
-      Teléfono: c.phone || 'N/A',
-      Departamento: c.department || 'N/A',
-      Municipio: c.municipality || 'N/A',
-      Dirección: c.address || 'N/A',
-      Estado: c.status,
-      'Fecha Registro': new Date(c.created_at).toLocaleDateString()
-    }));
+    const exportData = filteredClients.map(c => {
+      const referralBrand = c.referred_by_brand_id ? brands.find(b => b.id === c.referred_by_brand_id)?.name : '';
+
+      return {
+        ID: c.id,
+        Nombre: c.full_name || c.company_name,
+        Tipo: c.client_type,
+        Documento: c.document_number,
+        'Info Doc/NIT': c.document_info || 'N/A',
+        Email: c.email || 'N/A',
+        Teléfono: c.phone || 'N/A',
+        Departamento: c.department || 'N/A',
+        Municipio: c.municipality || 'N/A',
+        Dirección: c.address || 'N/A',
+        Procedencia: c.source || 'Nuevo',
+        'Marca Referida': referralBrand || 'N/A',
+        Etiquetas: c.tags ? c.tags.join(', ') : '',
+        Estado: c.status,
+        'Fecha Registro': new Date(c.created_at).toLocaleDateString()
+      };
+    });
 
     const ws = XLSX.utils.json_to_sheet(exportData);
     const wb = XLSX.utils.book_new();
@@ -264,7 +470,12 @@ const AdminClientsPage = () => {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    
+    if (name === 'referred_by_brand_id') {
+      setFormData(prev => ({ ...prev, [name]: parseInt(value) || 0 }));
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
     
     // Reset municipality if department changes
     if (name === 'department') {
@@ -283,6 +494,12 @@ const AdminClientsPage = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+
+    if (formData.source === 'Referido por marca' && !formData.referred_by_brand_id) {
+        alert('Por favor selecciona una marca referida.');
+        setIsSubmitting(false);
+        return;
+    }
 
     try {
       let photo_url = selectedClient?.photo_url || '';
@@ -316,7 +533,10 @@ const AdminClientsPage = () => {
         photo_url,
         document_number: formData.document_number,
         document_type: clientType === 'Natural' ? formData.document_type : 'NIT',
-        status: isEditMode ? selectedClient?.status : 'Inactivo'
+        status: isEditMode ? selectedClient?.status : 'Inactivo',
+        industry: formData.industry,
+        source: formData.source,
+        referred_by_brand_id: formData.source === 'Referido por marca' ? formData.referred_by_brand_id : null
       };
 
       let error;
@@ -362,7 +582,10 @@ const AdminClientsPage = () => {
       department: client.department || '',
       municipality: client.municipality || '',
       address: client.address || '',
-      notes: client.notes || ''
+      notes: client.notes || '',
+      industry: client.industry || '',
+      source: client.source || 'Nuevo',
+      referred_by_brand_id: client.referred_by_brand_id as number || 0
     });
     setImagePreview(client.photo_url);
     setIsModalOpen(true);
@@ -387,7 +610,10 @@ const AdminClientsPage = () => {
       department: '',
       municipality: '',
       address: '',
-      notes: ''
+      notes: '',
+      industry: '',
+      source: 'Nuevo',
+      referred_by_brand_id: 0
     });
     setImageFile(null);
     setImagePreview(null);
@@ -532,6 +758,36 @@ const AdminClientsPage = () => {
                             <option value="Empresa">Empresa</option>
                           </select>
                         </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">Procedencia</label>
+                          <select 
+                            value={sourceFilter} 
+                            onChange={(e) => setSourceFilter(e.target.value)}
+                            className="w-full text-sm border-slate-200 rounded-lg focus:ring-primary py-1.5"
+                          >
+                            <option value="all">Todas</option>
+                            <option value="Nuevo">Nuevo</option>
+                            <option value="Mercado Libre">Mercado Libre</option>
+                            <optgroup label="Referido por Marca">
+                              {brands.map(brand => (
+                                <option key={brand.id} value={`brand_${brand.id}`}>{brand.name}</option>
+                              ))}
+                            </optgroup>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">Etiqueta</label>
+                          <select 
+                            value={tagFilter} 
+                            onChange={(e) => setTagFilter(e.target.value)}
+                            className="w-full text-sm border-slate-200 rounded-lg focus:ring-primary py-1.5"
+                          >
+                            <option value="all">Todas</option>
+                            {allTags.map(tag => (
+                              <option key={tag} value={tag}>{tag}</option>
+                            ))}
+                          </select>
+                        </div>
                         <label className="flex items-center gap-2 cursor-pointer pt-1">
                           <input 
                             type="checkbox" 
@@ -574,6 +830,8 @@ const AdminClientsPage = () => {
                       <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">Cliente</th>
                       <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden md:table-cell font-display">Empresa</th>
                       <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden lg:table-cell font-display">Contacto</th>
+                      <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden xl:table-cell font-display">Procedencia</th>
+                      <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden xl:table-cell font-display">Etiquetas</th>
                       <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">Estado</th>
                       <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right font-display"></th>
                     </tr>
@@ -581,14 +839,14 @@ const AdminClientsPage = () => {
                   <tbody className="divide-y divide-slate-200">
                     {loading ? (
                       <tr>
-                        <td colSpan={5} className="p-10 text-center">
+                        <td colSpan={7} className="p-10 text-center">
                           <div className="size-8 border-2 border-primary border-t-transparent animate-spin rounded-full mx-auto mb-2"></div>
                           <p className="text-sm text-slate-500 font-display">Cargando clientes...</p>
                         </td>
                       </tr>
                     ) : paginatedClients.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="p-10 text-center">
+                        <td colSpan={7} className="p-10 text-center">
                           <p className="text-sm text-slate-500 font-display">No hay clientes que coincidan con la búsqueda.</p>
                         </td>
                       </tr>
@@ -620,6 +878,32 @@ const AdminClientsPage = () => {
                             <div className="flex flex-col font-display">
                               <span className="text-sm text-slate-700">{client.email}</span>
                               <span className="text-xs text-slate-500">{client.phone}</span>
+                            </div>
+                          </td>
+                          <td className="p-4 hidden xl:table-cell">
+                            <div className="flex flex-col font-display">
+                              <span className="text-sm text-slate-700 font-medium">{client.source || 'Nuevo'}</span>
+                              {client.source === 'Referido por marca' && client.referred_by_brand_id && (
+                                <span className="text-xs text-slate-500">
+                                  {brands.find(b => b.id === client.referred_by_brand_id)?.name || ''}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="p-4 hidden xl:table-cell">
+                            <div className="flex flex-wrap gap-1 max-w-[200px]">
+                              {client.tags && client.tags.length > 0 ? (
+                                client.tags.slice(0, 3).map(tag => (
+                                  <span key={tag} className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-bold border border-slate-200">
+                                    {tag}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-xs text-slate-400">-</span>
+                              )}
+                              {client.tags && client.tags.length > 3 && (
+                                <span className="px-1.5 py-0.5 text-[10px] text-slate-400 font-medium">+{client.tags.length - 3}</span>
+                              )}
                             </div>
                           </td>
                           <td className="p-4 whitespace-nowrap">
@@ -727,6 +1011,13 @@ const AdminClientsPage = () => {
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 font-display border border-blue-100">
                   {selectedClient.document_type}: {selectedClient.document_number}
                 </span>
+                
+                {selectedClient.industry && (
+                  <span className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-bold uppercase tracking-wider">
+                    <span className="material-symbols-outlined text-[12px]">factory</span>
+                    {selectedClient.industry}
+                  </span>
+                )}
               </div>
               <div className="flex gap-2 mb-6 border-b border-slate-200 pb-1">
                 <button 
@@ -740,6 +1031,12 @@ const AdminClientsPage = () => {
                   className={`flex-1 pb-2 text-sm font-bold border-b-2 transition-all font-display ${activeTab === 'Historial' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
                 >
                   Historial
+                </button>
+                <button 
+                  onClick={() => setActiveTab('CRM')}
+                  className={`flex-1 pb-2 text-sm font-bold border-b-2 transition-all font-display ${activeTab === 'CRM' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                >
+                  CRM
                 </button>
               </div>
               
@@ -788,10 +1085,45 @@ const AdminClientsPage = () => {
                       <div className="space-y-3">
                         <h4 className="text-sm font-bold text-slate-900 font-display uppercase tracking-widest text-[11px] text-slate-400">Notas</h4>
                         <div className="p-3 bg-amber-50 rounded-lg border border-amber-100 text-sm text-slate-700 font-display leading-relaxed italic">
-                          <p>"{selectedClient.notes}"</p>
+                          <p>&quot;{selectedClient.notes}&quot;</p>
                         </div>
                       </div>
                     )}
+
+                    <div className="space-y-3">
+                      <h4 className="text-sm font-bold text-slate-900 font-display uppercase tracking-widest text-[11px] text-slate-400">Etiquetas (Segmentación)</h4>
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {selectedClient.tags && selectedClient.tags.length > 0 ? (
+                          selectedClient.tags.map(tag => (
+                            <span key={tag} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 text-primary text-xs font-bold font-display group">
+                              {tag}
+                              <button onClick={() => handleRemoveTag(tag)} className="opacity-0 group-hover:opacity-100 hover:text-red-500 transition-all">
+                                <span className="material-symbols-outlined text-[14px]">close</span>
+                              </button>
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-xs text-slate-400 font-display italic">Sin etiquetas asignadas</span>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <input 
+                          type="text" 
+                          placeholder="Añadir etiqueta..." 
+                          value={newTag}
+                          onChange={(e) => setNewTag(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && handleAddTag()}
+                          className="flex-1 text-xs border-slate-200 rounded-lg focus:ring-primary py-1.5"
+                        />
+                        <button 
+                          onClick={handleAddTag}
+                          disabled={isSavingTags || !newTag.trim()}
+                          className="bg-slate-100 hover:bg-slate-200 text-slate-600 p-1.5 rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          <span className="material-symbols-outlined text-[20px]">add</span>
+                        </button>
+                      </div>
+                    </div>
 
                     <div className="pt-4 grid grid-cols-2 gap-3">
                       <button onClick={() => handleEditClick(selectedClient)} className="flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors font-display">
@@ -807,7 +1139,7 @@ const AdminClientsPage = () => {
                       </button>
                     </div>
                   </div>
-                ) : (
+                ) : activeTab === 'Historial' ? (
                   <div className="space-y-4">
                     <h4 className="text-sm font-bold text-slate-900 font-display uppercase tracking-widest text-[11px] text-slate-400 mb-4">Pedidos Recientes</h4>
                     
@@ -850,6 +1182,146 @@ const AdminClientsPage = () => {
                         ))}
                       </div>
                     )}
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                      <h4 className="text-xs font-bold text-slate-900 font-display uppercase tracking-widest mb-3">Registrar Interacción</h4>
+                      <form onSubmit={handleAddInteraction} className="space-y-3">
+                        <div className="flex gap-2">
+                          {(['Nota', 'Llamada', 'Reunión', 'Correo', 'Soporte'] as const).map(type => (
+                            <button
+                              key={type}
+                              type="button"
+                              onClick={() => setNewInteraction(prev => ({...prev, type}))}
+                              className={`flex-1 py-1 px-2 rounded-lg text-[10px] font-bold border transition-all ${newInteraction.type === type ? 'bg-primary border-primary text-white shadow-sm' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+                            >
+                              {type}
+                            </button>
+                          ))}
+                        </div>
+                        <textarea 
+                          value={newInteraction.content}
+                          onChange={(e) => setNewInteraction(prev => ({...prev, content: e.target.value}))}
+                          rows={3}
+                          placeholder="Escribe los detalles aquí..."
+                          className="w-full text-xs border-slate-200 rounded-lg focus:ring-primary p-3"
+                          required
+                        />
+                        <button 
+                          type="submit"
+                          disabled={isAddingInteraction || !newInteraction.content.trim()}
+                          className="w-full bg-primary text-white py-2 rounded-lg text-xs font-bold hover:bg-blue-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">save</span>
+                          {isAddingInteraction ? 'Guardando...' : 'Guardar en Historial'}
+                        </button>
+                      </form>
+                    </div>
+
+                    <div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
+                      {!showFollowupForm ? (
+                        <button 
+                          onClick={() => setShowFollowupForm(true)}
+                          className="w-full flex items-center justify-center gap-2 py-2 text-primary font-bold text-xs hover:bg-blue-100/50 rounded-lg transition-all"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">calendar_add_on</span>
+                          Programar Seguimiento (GC)
+                        </button>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-center">
+                            <h4 className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">Programar Seguimiento</h4>
+                            <button onClick={() => setShowFollowupForm(false)} className="text-blue-400 hover:text-blue-600">
+                              <span className="material-symbols-outlined text-[16px]">close</span>
+                            </button>
+                          </div>
+                          <input 
+                            type="text" 
+                            placeholder="Asunto (ej: Revisar cotización)" 
+                            value={followupData.title}
+                            onChange={e => setFollowupData(prev => ({...prev, title: e.target.value}))}
+                            className="w-full text-[11px] border-blue-100 rounded-lg focus:ring-primary py-1.5"
+                          />
+                          <div className="grid grid-cols-2 gap-2">
+                             <input 
+                               type="date" 
+                               value={followupData.date}
+                               onChange={e => setFollowupData(prev => ({...prev, date: e.target.value}))}
+                               className="w-full text-[11px] border-blue-100 rounded-lg focus:ring-primary py-1.5"
+                             />
+                             <input 
+                               type="time" 
+                               value={followupData.time}
+                               onChange={e => setFollowupData(prev => ({...prev, time: e.target.value}))}
+                               className="w-full text-[11px] border-blue-100 rounded-lg focus:ring-primary py-1.5"
+                             />
+                          </div>
+                          <textarea 
+                            placeholder="Descripción adicional..." 
+                            value={followupData.description}
+                            onChange={e => setFollowupData(prev => ({...prev, description: e.target.value}))}
+                            rows={2}
+                            className="w-full text-[11px] border-blue-100 rounded-lg focus:ring-primary py-1.5"
+                          />
+                          <button 
+                            onClick={handleCreateGoogleCalendarEvent}
+                            className="w-full bg-blue-600 text-white py-2 rounded-lg text-[10px] font-bold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                          >
+                            <span className="material-symbols-outlined text-[18px]">event</span>
+                            Sincronizar con Google Calendar
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-4">
+                      <h4 className="text-sm font-bold text-slate-900 font-display uppercase tracking-widest text-[11px] text-slate-400">Línea de Tiempo</h4>
+                      
+                      {loadingInteractions ? (
+                        <div className="p-8 text-center">
+                          <div className="size-6 border-2 border-primary border-t-transparent animate-spin rounded-full mx-auto"></div>
+                        </div>
+                      ) : clientInteractions.length === 0 ? (
+                        <div className="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                          <span className="material-symbols-outlined text-slate-300 text-3xl mb-2">history</span>
+                          <p className="text-xs text-slate-500 font-display">Aún no hay registros de interacción.</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-4 relative before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-px before:bg-slate-200">
+                          {clientInteractions.map((item) => (
+                            <div key={item.id} className="relative pl-8">
+                              <div className={`absolute left-0 top-1 size-6 rounded-full border-2 border-white shadow-sm flex items-center justify-center z-10 ${
+                                item.type === 'Nota' ? 'bg-amber-100 text-amber-600' :
+                                item.type === 'Llamada' ? 'bg-emerald-100 text-emerald-600' :
+                                item.type === 'Reunión' ? 'bg-purple-100 text-purple-600' :
+                                item.type === 'Correo' ? 'bg-blue-100 text-blue-600' :
+                                'bg-red-100 text-red-600'
+                              }`}>
+                                <span className="material-symbols-outlined text-[14px]">
+                                  {item.type === 'Nota' ? 'sticky_note' :
+                                   item.type === 'Llamada' ? 'call' :
+                                   item.type === 'Reunión' ? 'groups' :
+                                   item.type === 'Correo' ? 'mail' :
+                                   'support_agent'}
+                                </span>
+                              </div>
+                              <div className="p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-900">{item.type}</span>
+                                  <span className="text-[10px] text-slate-400 font-medium">
+                                    {new Date(item.created_at).toLocaleString('es-CO', { 
+                                      day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' 
+                                    })}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-slate-700 font-display leading-relaxed">{item.content}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
                 
@@ -988,6 +1460,39 @@ const AdminClientsPage = () => {
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">Dirección de Residencia <span className="text-red-500">*</span></label>
                     <input type="text" name="address" value={formData.address} onChange={handleInputChange} required className="block w-full rounded-lg border-slate-600 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium" placeholder="Calle 123 #45-67..." />
                 </div>
+
+                <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">Sector / Industria</label>
+                        <input type="text" name="industry" value={formData.industry} onChange={handleInputChange} className="block w-full rounded-lg border-slate-600 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium" placeholder="Ej: Minería, Seguridad..." />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">Procedencia</label>
+                        <select name="source" value={formData.source} onChange={handleInputChange} className="block w-full rounded-lg border-slate-600 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium">
+                            <option value="Nuevo">Nuevo</option>
+                            <option value="Mercado Libre">Mercado Libre</option>
+                            <option value="Referido por marca">Referido por marca</option>
+                        </select>
+                    </div>
+                </div>
+
+                {formData.source === 'Referido por marca' && (
+                  <div className="md:col-span-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">Marca Referida <span className="text-red-500">*</span></label>
+                     <select 
+                       name="referred_by_brand_id" 
+                       value={formData.referred_by_brand_id} 
+                       onChange={handleInputChange} 
+                       required={formData.source === 'Referido por marca'}
+                       className="block w-full rounded-lg border-slate-600 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                     >
+                       <option value={0}>Seleccionar Marca...</option>
+                       {brands.map(brand => (
+                         <option key={brand.id} value={brand.id}>{brand.name}</option>
+                       ))}
+                     </select>
+                  </div>
+                )}
 
                 <div className="md:col-span-2">
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">Notas</label>

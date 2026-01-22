@@ -14,6 +14,9 @@ interface Product {
   sku: string | null;
   price: number;
   original_price: number | null;
+  price_usd: number | null;
+  price_with_iva: number | null;
+  specs: string | null;
   stock_quantity: number;
   status: string;
   image_urls: string[] | null;
@@ -22,6 +25,7 @@ interface Product {
   brands: { name: string } | null;
   offer_start_date: string | null;
   offer_end_date: string | null;
+  last_trm_sync: string | null;
 }
 
 interface Category {
@@ -60,11 +64,24 @@ export default function AdminProductsPage() {
     sku: '',
     price: '', // This will hold the OFFER price
     original_price: '', // This will hold the REGULAR price
+    price_usd: '',
+    price_with_iva: '',
+    specs: '',
     stock_quantity: '',
     offer_start_date: '',
     offer_end_date: '',
     status: 'Activo', // Default status
   });
+
+  const [trm, setTrm] = useState<number | null>(null);
+  const [loadingTrm, setLoadingTrm] = useState(false);
+  const [isBulkImportModalOpen, setIsBulkImportModalOpen] = useState(false);
+  const [bulkImportData, setBulkImportData] = useState<any[]>([]);
+  const [processedBulkData, setProcessedBulkData] = useState<any[]>([]);
+  const [importErrors, setImportErrors] = useState<any[]>([]);
+  const [isConfirmingImportErrors, setIsConfirmingImportErrors] = useState(false);
+  const [isCargaMasivaDropdownOpen, setIsCargaMasivaDropdownOpen] = useState(false);
+  const cargaMasivaRef = useRef<HTMLDivElement>(null);
 
   // State for filtering and searching
   const [searchTerm, setSearchTerm] = useState('');
@@ -108,6 +125,9 @@ export default function AdminProductsPage() {
       if (statusRef.current && !statusRef.current.contains(event.target as Node)) {
         setIsStatusFilterOpen(false);
       }
+      if (cargaMasivaRef.current && !cargaMasivaRef.current.contains(event.target as Node)) {
+        setIsCargaMasivaDropdownOpen(false);
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
@@ -123,13 +143,79 @@ export default function AdminProductsPage() {
         supabase.from('categories').select('id, name').eq('status', 'Activo'),
         supabase.from('brands').select('id, name'),
       ]);
-      if (productsPromise.error) setError(`Error al cargar productos: ${productsPromise.error.message}`); else setProducts(productsPromise.data as Product[]);
+      if (productsPromise.error) setError(`Error al cargar productos: ${productsPromise.error.message}`); 
+      else {
+        const productsData = productsPromise.data as Product[];
+        setProducts(productsData);
+        // Trigger TRM sync if needed
+        await handleSyncTRM(productsData);
+      }
       if (categoriesPromise.error) setError(prev => `${prev || ''}, ${categoriesPromise.error.message}`); else setCategories(categoriesPromise.data as Category[]);
       if (brandsPromise.error) setError(prev => `${prev || ''}, ${brandsPromise.error.message}`); else setBrands(brandsPromise.data as Brand[]);
       setLoading(false);
     };
     fetchData();
   }, []);
+
+  const fetchTRM = async () => {
+    setLoadingTrm(true);
+    try {
+      // Socrata API - Tasa Representativa del Mercado (Historico)
+      const response = await fetch('https://www.datos.gov.co/resource/m97v-7y6z.json?$limit=1&$order=vigenciadesde DESC');
+      const data = await response.json();
+      if (data && data.length > 0 && data[0].valor) {
+        const val = parseFloat(data[0].valor);
+        setTrm(val);
+        return val;
+      }
+      return null;
+    } catch (err) {
+      console.error("Error fetching TRM from Socrata:", err);
+      return null;
+    } finally {
+      setLoadingTrm(false);
+    }
+  };
+
+  const handleSyncTRM = async (currentProducts: Product[]) => {
+    const today = new Date().toISOString().split('T')[0];
+    const productsToSync = currentProducts.filter(p => 
+      p.price_usd && p.price_usd > 0 && (!p.last_trm_sync || p.last_trm_sync.split('T')[0] !== today)
+    );
+
+    if (productsToSync.length === 0) return;
+
+    const currentTrm = await fetchTRM();
+    if (!currentTrm) return;
+
+    console.log(`Sincronizando ${productsToSync.length} productos con TRM: ${currentTrm}`);
+
+    const updates = productsToSync.map(p => ({
+      id: p.id,
+      original_price: Math.round(p.price_usd! * currentTrm),
+      price: Math.round(p.price_usd! * currentTrm), // Assuming price is same as original if no offer, but we need to check offer logic
+      last_trm_sync: new Date().toISOString()
+    }));
+
+    // Perform updates in batch (Supabase doesn't support bulk update with different values easily in a single call without RPC, 
+    // but we can do it one by one or via a loop for now or a custom RPC)
+    // For simplicity and to avoid too many RPCs, we'll do them one by one or in a Promise.all
+    try {
+      await Promise.all(updates.map(u => 
+        supabase.from('products').update({ 
+          original_price: u.original_price,
+          price: u.price, // Note: This might overwrite active offers if not careful. 
+          last_trm_sync: u.last_trm_sync 
+        }).eq('id', u.id)
+      ));
+      
+      // Refresh products list after sync
+      const { data: refreshedProducts } = await supabase.from('products').select('*, brands(name)').order('created_at', { ascending: false });
+      if (refreshedProducts) setProducts(refreshedProducts as Product[]);
+    } catch (err) {
+      console.error("Error syncing TRM prices:", err);
+    }
+  };
 
   const filteredProducts = useMemo(() => {
     return products.filter(product => {
@@ -166,10 +252,26 @@ export default function AdminProductsPage() {
     setProductToEdit(null);
     setIsOfferActive(false);
     setFormError(null);
-    setProductForm({ name: '', description: '', category_id: '', brand_id: '', sku: '', price: '', original_price: '', stock_quantity: '', offer_start_date: '', offer_end_date: '', status: 'Activo' });
+    setProductForm({ 
+      name: '', 
+      description: '', 
+      category_id: '', 
+      brand_id: '', 
+      sku: '', 
+      price: '', 
+      original_price: '', 
+      price_usd: '',
+      price_with_iva: '',
+      specs: '',
+      stock_quantity: '', 
+      offer_start_date: '', 
+      offer_end_date: '', 
+      status: 'Activo' 
+    });
     setImagePreviewUrls([]);
     setImagesToDelete([]);
     setIsProductModalOpen(true);
+    fetchTRM(); // Also fetch TRM when opening create modal
   };
   
   const formatDateTimeLocal = (dateString: string | null) => {
@@ -199,11 +301,14 @@ export default function AdminProductsPage() {
     setProductForm({
         name: product.name,
         description: product.description || '',
-        category_id: product.category_id.toString(),
-        brand_id: product.brand_id.toString(),
+        category_id: product.category_id?.toString() || '',
+        brand_id: product.brand_id?.toString() || '',
         sku: product.sku || '',
         price: isOffer ? product.price.toString() : '',
         original_price: isOffer ? product.original_price!.toString() : product.price.toString(),
+        price_usd: product.price_usd?.toString() || '',
+        price_with_iva: product.price_with_iva?.toString() || '',
+        specs: product.specs || '',
         stock_quantity: product.stock_quantity.toString(),
         offer_start_date: formatDateTimeLocal(product.offer_start_date),
         offer_end_date: formatDateTimeLocal(product.offer_end_date),
@@ -265,7 +370,7 @@ export default function AdminProductsPage() {
     setIsSubmitting(true);
     setFormError(null);
 
-    const { name, description, category_id, brand_id, sku, price, original_price, stock_quantity, offer_start_date, offer_end_date, status } = productForm;
+    const { name, description, category_id, brand_id, sku, price, original_price, stock_quantity, offer_start_date, offer_end_date, status, price_usd, price_with_iva, specs } = productForm;
 
     if (!name || !description || !category_id || !brand_id || !sku || !original_price || !stock_quantity) {
       setFormError('Todos los campos marcados con * son obligatorios.');
@@ -353,11 +458,15 @@ export default function AdminProductsPage() {
           sku, 
           price: finalPrice, 
           original_price: finalOriginalPrice, 
+          price_usd: price_usd ? parseFloat(price_usd) : null,
+          price_with_iva: price_with_iva ? parseFloat(price_with_iva) : null,
+          specs: specs || null,
           stock_quantity: parseInt(stock_quantity), 
           image_urls: finalUrls, 
           status: dbStatus, 
           offer_start_date: finalOfferStartDate, 
-          offer_end_date: finalOfferEndDate 
+          offer_end_date: finalOfferEndDate,
+          last_trm_sync: price_usd ? new Date().toISOString() : null
       };
       
       if (isEditing && productToEdit) {
@@ -427,6 +536,127 @@ export default function AdminProductsPage() {
     XLSX.writeFile(wb, "mundolar-productos.xlsx");
   };
 
+  const handleBulkImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      const bstr = evt.target?.result;
+      const wb = XLSX.read(bstr, { type: 'binary' });
+      const wsname = wb.SheetNames[0];
+      const ws = wb.Sheets[wsname];
+      const data = XLSX.utils.sheet_to_json(ws);
+      
+      if (data.length === 0) {
+        alert("El archivo está vacío.");
+        return;
+      }
+
+      setBulkImportData(data);
+      await processBulkImport(data);
+    };
+    reader.readAsBinaryString(file);
+    // Reset input
+    e.target.value = '';
+  };
+
+  const processBulkImport = async (data: any[]) => {
+    const errors: any[] = [];
+    const processed: any[] = [];
+    
+    // Ensure we have TRM if needed
+    let currentTrm = trm;
+    if (!currentTrm) {
+        currentTrm = await fetchTRM();
+    }
+
+    for (const row of data) {
+        const sku = row.SKU?.toString() || '';
+        const brandId = parseInt(row.IDMARCA) || 0;
+        const catId = parseInt(row.IDCATEGORIA) || 0;
+        const name = row.NOMBRE?.toString() || '';
+        const desc = row.DESCRIPCIÓN?.toString() || '';
+        const specs = row.ESPECTEC?.toString() || '';
+        const valUsd = parseFloat(row.VALORUSD) || 0;
+        const valCop = parseFloat(row.VALORCOP) || 0;
+        const valIva = parseFloat(row.VALOR_IVA) || parseFloat(row["VALOR+IVA"]) || 0;
+        const stock = parseInt(row.STOCK) || 0;
+
+        const rowErrors: string[] = [];
+        if (!sku) rowErrors.push('SKU');
+        if (!name) rowErrors.push('Nombre');
+        if (!brandId) rowErrors.push('IDMARCA');
+        if (!catId) rowErrors.push('IDCATEGORIA');
+        if (!desc) rowErrors.push('Descripción');
+        if (valUsd <= 0 && valCop <= 0) rowErrors.push('Valor (USD o COP)');
+
+        // Validate Brand and Category exist
+        const brand = brands.find(b => b.id === brandId);
+        const category = categories.find(c => c.id === catId);
+
+        if (!brand && brandId) rowErrors.push(`IDMARCA "${brandId}" no existe`);
+        if (!category && catId) rowErrors.push(`IDCATEGORIA "${catId}" no existe`);
+
+        // Calculate COP from USD if needed
+        let finalPrice = valCop;
+        if (valUsd > 0 && valCop <= 0 && currentTrm) {
+            finalPrice = Math.round(valUsd * currentTrm);
+        }
+
+        const productData = {
+            sku,
+            name,
+            description: desc,
+            specs,
+            price_usd: valUsd > 0 ? valUsd : null,
+            original_price: finalPrice,
+            price: finalPrice,
+            price_with_iva: valIva > 0 ? valIva : null,
+            stock_quantity: stock,
+            brand_id: brand ? brand.id : null,
+            category_id: category ? category.id : null,
+            status: 'Activo',
+            last_trm_sync: valUsd > 0 ? new Date().toISOString() : null,
+            _incomplete: rowErrors.length > 0,
+            _errorFields: rowErrors
+        };
+
+        if (rowErrors.length > 0) {
+            errors.push({ sku, name, fields: rowErrors, data: productData });
+        }
+        processed.push(productData);
+    }
+
+    if (errors.length > 0) {
+        setImportErrors(errors);
+        setProcessedBulkData(processed);
+        setIsConfirmingImportErrors(true);
+    } else {
+        await finalizeImport(processed);
+    }
+  };
+
+  const finalizeImport = async (data: any[]) => {
+    setIsSubmitting(true);
+    try {
+        const { error } = await supabase.from('products').insert(data.map(({_incomplete, _errorFields, ...rest}) => rest));
+        if (error) throw error;
+        
+        alert(`Se han cargado ${data.length} productos con éxito.`);
+        // Refresh products
+        const { data: refreshed } = await supabase.from('products').select('*, brands(name)').order('created_at', { ascending: false });
+        if (refreshed) setProducts(refreshed as Product[]);
+        
+        setIsConfirmingImportErrors(false);
+        setIsBulkImportModalOpen(false);
+    } catch (err: any) {
+        alert(`Error al importar: ${err.message}`);
+    } finally {
+        setIsSubmitting(false);
+    }
+  };
+
   const getStatusInfo = (status: string) => { switch (status) { case 'Activo': return { color: 'emerald', label: 'Activo' }; case 'Inactivo': case 'Archivado': return { color: 'slate', label: 'Inactivo' }; default: return { color: 'slate', label: status || 'Desconocido' }; } };
   const getStockInfo = (stock: number) => { if (stock === 0) return { color: 'red', unit: 'sin stock' }; if (stock > 0 && stock <= 10) return { color: 'amber', unit: 'crítico' }; return { color: 'slate', unit: 'unidades' }; };
   const statuses = ['Activo', 'Inactivo'];
@@ -438,7 +668,48 @@ export default function AdminProductsPage() {
       <header className="bg-white border-b border-slate-200 px-8 py-6 relative z-30">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div><h2 className="text-2xl font-bold text-slate-900">Gestión de Productos</h2><p className="text-slate-500 mt-1">Administra tu inventario de radios y repuestos</p></div>
-          <div className="flex items-center gap-3"><button onClick={handleExport} className="flex items-center gap-2 bg-white border border-slate-200 text-slate-700 px-4 py-2.5 rounded-lg font-medium hover:bg-slate-50 transition-all text-sm"><span className="material-symbols-outlined text-[20px]">file_upload</span>Exportar</button><button onClick={handleOpenCreateModal} className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2.5 rounded-lg font-bold shadow-lg shadow-primary/20 transition-all text-sm"><span className="material-symbols-outlined text-[20px]">add</span>Nuevo Producto</button></div>
+          <div className="flex items-center gap-3">
+            {trm && (
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-100 rounded-lg" title="TRM Oficial Superintendencia Financiera">
+                <span className="material-symbols-outlined text-emerald-600 text-[18px]">payments</span>
+                <span className="text-xs font-bold text-emerald-700 font-mono">TRM Oficial: ${formatCurrency(trm)}</span>
+              </div>
+            )}
+            <button onClick={handleExport} className="flex items-center gap-2 bg-white border border-slate-200 text-slate-700 px-4 py-2.5 rounded-lg font-medium hover:bg-slate-50 transition-all text-sm">
+              <span className="material-symbols-outlined text-[20px]">file_upload</span>
+              Exportar
+            </button>
+            
+            <div className="relative" ref={cargaMasivaRef}>
+              <button 
+                onClick={() => setIsCargaMasivaDropdownOpen(!isCargaMasivaDropdownOpen)}
+                className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2.5 rounded-lg font-bold shadow-lg shadow-primary/20 transition-all text-sm"
+              >
+                <span className="material-symbols-outlined text-[20px]">add</span>
+                Nuevo Producto
+                <span className="material-symbols-outlined text-[18px]">keyboard_arrow_down</span>
+              </button>
+              
+              {isCargaMasivaDropdownOpen && (
+                <div className="absolute right-0 mt-2 w-48 origin-top-right rounded-xl bg-white shadow-2xl ring-1 ring-black ring-opacity-5 focus:outline-none z-[100] border border-slate-100 overflow-hidden animate-in fade-in zoom-in duration-200">
+                  <div className="py-1">
+                    <button
+                      onClick={() => { handleOpenCreateModal(); setIsCargaMasivaDropdownOpen(false); }}
+                      className="flex items-center gap-3 w-full px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors border-b border-slate-50"
+                    >
+                      <span className="material-symbols-outlined text-primary">add_circle</span>
+                      <span className="font-medium">Nuevo Producto</span>
+                    </button>
+                    <label className="flex items-center gap-3 w-full px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer">
+                      <span className="material-symbols-outlined text-emerald-500">upload_file</span>
+                      <span className="font-medium">Carga Masiva</span>
+                      <input type="file" className="sr-only" accept=".xlsx, .xls" onChange={(e) => { handleBulkImport(e); setIsCargaMasivaDropdownOpen(false); }} />
+                    </label>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
         <div className="mt-8 flex flex-col lg:flex-row gap-4 justify-between items-start lg:items-center">
           <div className="relative w-full lg:max-w-md"><div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><span className="material-symbols-outlined text-slate-400">search</span></div><input value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }} className="block w-full pl-10 pr-3 py-2.5 border border-slate-600 rounded-lg leading-5 bg-white shadow-[0_2px_4px_rgba(0,0,0,0.25)] placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary sm:text-sm transition-shadow" placeholder="Buscar por nombre, marca, categoría, sku..." type="text" /></div>
@@ -473,7 +744,7 @@ export default function AdminProductsPage() {
                   const isOffer = p.original_price && p.original_price > 0 && Number(p.price) < Number(p.original_price);
                   const urls = parseImageUrls(p.image_urls);
                   const imgUrl = urls.length > 0 ? urls[0] : null;
-                  return (<tr key={p.id} className="hover:bg-slate-50 transition-colors group">
+                  return (<tr key={p.id} className={`hover:bg-slate-50 transition-colors group ${(!p.sku || !p.description || !p.brand_id || !p.category_id) ? 'bg-red-50/50' : ''}`}>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-4">
                             <div className="size-12 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0 border border-slate-200 overflow-hidden relative">
@@ -522,7 +793,8 @@ export default function AdminProductsPage() {
           )}
 
           <div><label className="block text-sm font-medium text-slate-700 mb-2">Nombre <span className="text-red-500">*</span></label><input type="text" name="name" value={productForm.name} onChange={handleFormChange} required className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm" /></div>
-          <div><label className="block text-sm font-medium text-slate-700 mb-2">Descripción <span className="text-red-500">*</span></label><textarea name="description" value={productForm.description} onChange={handleFormChange} required rows={4} className="block w-full rounded-lg border-slate-600 px-4 py-2 bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm"></textarea></div>
+          <div><label className="block text-sm font-medium text-slate-700 mb-2">Especificaciones Técnicas</label><textarea name="specs" value={productForm.specs} onChange={handleFormChange} rows={3} placeholder="Ingrese las especificaciones técnicas..." className="block w-full rounded-lg border-slate-600 px-4 py-2 bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm"></textarea></div>
+          <div><label className="block text-sm font-medium text-slate-700 mb-2">Descripción <span className="text-red-500">*</span></label><textarea name="description" value={productForm.description} onChange={handleFormChange} required rows={3} className="block w-full rounded-lg border-slate-600 px-4 py-2 bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm"></textarea></div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div><label className="block text-sm font-medium text-slate-700 mb-2">Categoria <span className="text-red-500">*</span></label><select name="category_id" value={productForm.category_id} onChange={handleFormChange} required className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm"><option value="" disabled>Seleccionar...</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
             <div><label className="block text-sm font-medium text-slate-700 mb-2">Marca <span className="text-red-500">*</span></label><select name="brand_id" value={productForm.brand_id} onChange={handleFormChange} required className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm"><option value="" disabled>Seleccionar...</option>{brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
@@ -547,9 +819,28 @@ export default function AdminProductsPage() {
             </div>
           </div>
           
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Precio Original <span className="text-red-500">*</span></label>
-            <input type="number" name="original_price" value={productForm.original_price} onChange={handleFormChange} required placeholder="Ej: 299.00" className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm" step="0.01" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Valor USD</label>
+              <input type="number" name="price_usd" value={productForm.price_usd} onChange={(e) => {
+                const val = e.target.value;
+                setProductForm(prev => {
+                  const newState = { ...prev, price_usd: val };
+                  if (val && trm) {
+                    newState.original_price = (parseFloat(val) * trm).toFixed(0);
+                  }
+                  return newState;
+                });
+              }} placeholder="0.00" className="block w-full rounded-lg border-emerald-600 px-4 py-[10.5px] bg-emerald-50/30 text-emerald-900 shadow-[0_2px_4px_rgba(16,185,129,0.1)] focus:border-emerald-500 focus:ring-emerald-500 sm:text-sm font-bold" step="0.01" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Precio Original (COP) <span className="text-red-500">*</span></label>
+              <input type="number" name="original_price" value={productForm.original_price} onChange={handleFormChange} required placeholder="Ej: 299000" className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm font-bold" step="1" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Valor + IVA</label>
+              <input type="number" name="price_with_iva" value={productForm.price_with_iva} onChange={handleFormChange} placeholder="0" className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm" step="1" />
+            </div>
           </div>
           <div className="flex items-center gap-3">
              <input id="is-offer" type="checkbox" checked={isOfferActive} onChange={e => setIsOfferActive(e.target.checked)} className="h-4 w-4 rounded border-slate-600 text-primary focus:ring-primary"/>
@@ -616,6 +907,64 @@ export default function AdminProductsPage() {
       </div></div>)}
 
       {isDeleteModalOpen && productToDelete && (<div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true"><div className="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col"><div className="p-6 flex items-start gap-4"><div className="size-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center shrink-0"><span className="material-symbols-outlined text-3xl">warning</span></div><div><h2 className="text-xl font-bold text-slate-900">Eliminar Producto</h2><p className="text-slate-600 mt-2">¿Estás seguro de que quieres eliminar "<strong>{productToDelete.name}</strong>"? Esta acción es irreversible.</p></div></div><div className="p-6 border-t border-slate-200 bg-slate-50 flex justify-end gap-3"><button onClick={closeDeleteModal} type="button" className="px-5 py-2.5 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm font-bold shadow-sm hover:bg-slate-50">Cancelar</button><button onClick={handleConfirmDelete} disabled={isDeleting} type="button" className="px-5 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-bold shadow-md disabled:bg-red-600/50 disabled:cursor-not-allowed transition-all">{isDeleting ? 'Eliminando...' : 'Sí, eliminar'}</button></div></div></div>)}
+
+      {/* Modal de Confirmación de Errores en Carga Masiva */}
+      {isConfirmingImportErrors && (
+        <div className="fixed inset-0 bg-slate-900/60 z-[110] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="p-6 border-b border-slate-100 flex items-center gap-4 bg-amber-50">
+              <div className="size-12 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-3xl">report_problem</span>
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-slate-900 font-display">Errores de Validación</h2>
+                <p className="text-sm text-slate-600 mt-1">Se han encontrado inconsistencias en {importErrors.length} productos.</p>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
+              {importErrors.map((err, idx) => (
+                <div key={idx} className="p-4 rounded-xl border border-slate-200 bg-white shadow-sm border-l-4 border-l-amber-500">
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="text-sm font-bold text-slate-900 font-mono">SKU: {err.sku || 'SIN SKU'}</span>
+                    <span className="text-xs font-semibold px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full">{err.name || 'Sin nombre'}</span>
+                  </div>
+                  <p className="text-xs text-slate-500">Falta información en los campos:</p>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {err.fields.map((f: string, i: number) => (
+                      <span key={i} className="px-2 py-0.5 bg-red-50 text-red-600 rounded text-[10px] font-bold uppercase tracking-wider border border-red-100">{f}</span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="p-6 bg-slate-50 border-t border-slate-100">
+              <div className="p-4 bg-white border border-slate-200 rounded-xl mb-4">
+                <p className="text-xs text-slate-500 leading-relaxed text-center">
+                  ¿Desea continuar con el cargue? Los productos marcados con errores se cargarán pero deberán ser completados manualmente.
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setIsConfirmingImportErrors(false)} 
+                  className="flex-1 px-4 py-3 border border-slate-200 bg-white text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-100 transition-all font-display"
+                >
+                  Cancelar Cargue
+                </button>
+                <button 
+                  onClick={async () => {
+                    await finalizeImport(processedBulkData);
+                  }}
+                  className="flex-1 px-4 py-3 bg-primary text-white rounded-xl text-sm font-bold hover:bg-blue-600 transition-all shadow-md shadow-primary/20 font-display"
+                >
+                  Continuar con el Cargue
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

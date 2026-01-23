@@ -79,7 +79,9 @@ export default function AdminProductsPage() {
   const [bulkImportData, setBulkImportData] = useState<any[]>([]);
   const [processedBulkData, setProcessedBulkData] = useState<any[]>([]);
   const [importErrors, setImportErrors] = useState<any[]>([]);
-  const [isConfirmingImportErrors, setIsConfirmingImportErrors] = useState(false);
+  const [isShowImportPreview, setIsShowImportPreview] = useState(false);
+  const [isProcessingImport, setIsProcessingImport] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
   const [isCargaMasivaDropdownOpen, setIsCargaMasivaDropdownOpen] = useState(false);
   const cargaMasivaRef = useRef<HTMLDivElement>(null);
 
@@ -138,10 +140,11 @@ export default function AdminProductsPage() {
     const fetchData = async () => {
       setLoading(true);
       setError(null);
-      const [productsPromise, categoriesPromise, brandsPromise] = await Promise.all([
+      const [productsPromise, categoriesPromise, brandsPromise, trmValue] = await Promise.all([
         supabase.from('products').select('*, brands(name)').order('created_at', { ascending: false }),
         supabase.from('categories').select('id, name').eq('status', 'Activo'),
         supabase.from('brands').select('id, name'),
+        fetchTRM()
       ]);
       if (productsPromise.error) setError(`Error al cargar productos: ${productsPromise.error.message}`); 
       else {
@@ -160,17 +163,16 @@ export default function AdminProductsPage() {
   const fetchTRM = async () => {
     setLoadingTrm(true);
     try {
-      // Socrata API - Tasa Representativa del Mercado (Historico)
-      const response = await fetch('https://www.datos.gov.co/resource/m97v-7y6z.json?$limit=1&$order=vigenciadesde DESC');
+      // DolarApi.com - Tasa Representativa del Mercado
+      const response = await fetch('https://co.dolarapi.com/v1/cotizaciones/usd');
       const data = await response.json();
-      if (data && data.length > 0 && data[0].valor) {
-        const val = parseFloat(data[0].valor);
-        setTrm(val);
-        return val;
+      if (data && data.compra) {
+        setTrm(data.compra);
+        return data.compra;
       }
       return null;
     } catch (err) {
-      console.error("Error fetching TRM from Socrata:", err);
+      console.error("Error fetching TRM from DolarApi:", err);
       return null;
     } finally {
       setLoadingTrm(false);
@@ -387,6 +389,23 @@ export default function AdminProductsPage() {
       setIsSubmitting(false); return;
     }
 
+    // Validation: Enforce data completion for Activation
+    if (status === 'Activo') {
+        const missingFields: string[] = [];
+        if (!name) missingFields.push('Nombre');
+        if (!description) missingFields.push('Descripción');
+        if (!category_id) missingFields.push('Categoría');
+        if (!brand_id) missingFields.push('Marca');
+        if (!sku) missingFields.push('SKU');
+        if (!original_price) missingFields.push('Precio');
+        
+        if (missingFields.length > 0 || imagePreviewUrls.length === 0) {
+            setFormError(`No se puede activar el producto. Faltan campos obligatorios o imágenes.`);
+            setIsSubmitting(false);
+            return;
+        }
+    }
+
     try {
         const { data: existingSku, error: skuError } = await supabase
             .from('products')
@@ -562,6 +581,8 @@ export default function AdminProductsPage() {
   };
 
   const processBulkImport = async (data: any[]) => {
+    setIsProcessingImport(true);
+    setImportProgress(0);
     const errors: any[] = [];
     const processed: any[] = [];
     
@@ -571,7 +592,15 @@ export default function AdminProductsPage() {
         currentTrm = await fetchTRM();
     }
 
-    for (const row of data) {
+    const total = data.length;
+    for (let i = 0; i < data.length; i++) {
+        const row = data[i];
+        // Simulate processing delay to show progress bar
+        if (total > 10 && i % Math.ceil(total / 10) === 0) {
+            await new Promise(r => setTimeout(r, 100));
+        }
+        setImportProgress(Math.round(((i + 1) / total) * 100));
+
         const sku = row.SKU?.toString() || '';
         const brandId = parseInt(row.IDMARCA) || 0;
         const catId = parseInt(row.IDCATEGORIA) || 0;
@@ -583,13 +612,29 @@ export default function AdminProductsPage() {
         const valIva = parseFloat(row.VALOR_IVA) || parseFloat(row["VALOR+IVA"]) || 0;
         const stock = parseInt(row.STOCK) || 0;
 
+        // Calculate COP from USD if needed
+        let finalPrice = valCop;
+        if (valUsd > 0 && valCop <= 0 && currentTrm) {
+            finalPrice = Math.round(valUsd * currentTrm);
+        }
+
+        // Calculate IVA if missing
+        let finalValIva = valIva;
+        if (finalValIva <= 0 && finalPrice > 0) {
+            finalValIva = Math.round(finalPrice * 1.19);
+        }
+
         const rowErrors: string[] = [];
-        if (!sku) rowErrors.push('SKU');
-        if (!name) rowErrors.push('Nombre');
-        if (!brandId) rowErrors.push('IDMARCA');
-        if (!catId) rowErrors.push('IDCATEGORIA');
-        if (!desc) rowErrors.push('Descripción');
-        if (valUsd <= 0 && valCop <= 0) rowErrors.push('Valor (USD o COP)');
+        if (!sku) rowErrors.push('Agregar SKU');
+        if (!name) rowErrors.push('Agregar Nombre');
+        if (brandId <= 0) rowErrors.push('Agregar Marca');
+        if (catId <= 0) rowErrors.push('Agregar Categoría');
+        if (!desc) rowErrors.push('Agregar Descripción');
+        if (valUsd <= 0 && valCop <= 0) rowErrors.push('Agregar Precio');
+        if (stock <= 0) rowErrors.push('Agregar Stock');
+        
+        // Mandatory Image Observation
+        rowErrors.push('Agregar imagen');
 
         // Validate Brand and Category exist
         const brand = brands.find(b => b.id === brandId);
@@ -598,28 +643,24 @@ export default function AdminProductsPage() {
         if (!brand && brandId) rowErrors.push(`IDMARCA "${brandId}" no existe`);
         if (!category && catId) rowErrors.push(`IDCATEGORIA "${catId}" no existe`);
 
-        // Calculate COP from USD if needed
-        let finalPrice = valCop;
-        if (valUsd > 0 && valCop <= 0 && currentTrm) {
-            finalPrice = Math.round(valUsd * currentTrm);
-        }
-
         const productData = {
             sku,
             name,
             description: desc,
-            specs,
+            specs: specs || null,
             price_usd: valUsd > 0 ? valUsd : null,
             original_price: finalPrice,
             price: finalPrice,
-            price_with_iva: valIva > 0 ? valIva : null,
+            price_with_iva: finalValIva > 0 ? finalValIva : null,
             stock_quantity: stock,
             brand_id: brand ? brand.id : null,
             category_id: category ? category.id : null,
-            status: 'Activo',
+            status: 'Archivado', // Always Inactivo from bulk import due to missing images
             last_trm_sync: valUsd > 0 ? new Date().toISOString() : null,
-            _incomplete: rowErrors.length > 0,
-            _errorFields: rowErrors
+            _incomplete: true, // Always incomplete because of mandatory images
+            _errorFields: rowErrors,
+            _brandName: brand?.name || 'ID ' + brandId || 'N/A',
+            _categoryName: category?.name || 'ID ' + catId || 'N/A'
         };
 
         if (rowErrors.length > 0) {
@@ -628,27 +669,28 @@ export default function AdminProductsPage() {
         processed.push(productData);
     }
 
-    if (errors.length > 0) {
-        setImportErrors(errors);
-        setProcessedBulkData(processed);
-        setIsConfirmingImportErrors(true);
-    } else {
-        await finalizeImport(processed);
-    }
+    setImportErrors(errors);
+    setProcessedBulkData(processed);
+    setIsProcessingImport(false);
+    setIsShowImportPreview(true);
   };
-
   const finalizeImport = async (data: any[]) => {
     setIsSubmitting(true);
     try {
-        const { error } = await supabase.from('products').insert(data.map(({_incomplete, _errorFields, ...rest}) => rest));
+        const { error } = await supabase
+            .from('products')
+            .upsert(
+              data.map(({_incomplete, _errorFields, _brandName, _categoryName, ...rest}) => rest),
+              { onConflict: 'sku' }
+            );
         if (error) throw error;
         
-        alert(`Se han cargado ${data.length} productos con éxito.`);
+        // Removed browser alert as requested
         // Refresh products
         const { data: refreshed } = await supabase.from('products').select('*, brands(name)').order('created_at', { ascending: false });
         if (refreshed) setProducts(refreshed as Product[]);
         
-        setIsConfirmingImportErrors(false);
+        setIsShowImportPreview(false);
         setIsBulkImportModalOpen(false);
     } catch (err: any) {
         alert(`Error al importar: ${err.message}`);
@@ -669,10 +711,12 @@ export default function AdminProductsPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div><h2 className="text-2xl font-bold text-slate-900">Gestión de Productos</h2><p className="text-slate-500 mt-1">Administra tu inventario de radios y repuestos</p></div>
           <div className="flex items-center gap-3">
-            {trm && (
-              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-100 rounded-lg" title="TRM Oficial Superintendencia Financiera">
+            {(trm || loadingTrm) && (
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-100 rounded-lg" title="USD TRM Oficial">
                 <span className="material-symbols-outlined text-emerald-600 text-[18px]">payments</span>
-                <span className="text-xs font-bold text-emerald-700 font-mono">TRM Oficial: ${formatCurrency(trm)}</span>
+                <span className="text-xs font-bold text-emerald-700 font-mono">
+                  {loadingTrm ? 'Cargando...' : `USD: $${formatCurrency(trm!)}`}
+                </span>
               </div>
             )}
             <button onClick={handleExport} className="flex items-center gap-2 bg-white border border-slate-200 text-slate-700 px-4 py-2.5 rounded-lg font-medium hover:bg-slate-50 transition-all text-sm">
@@ -744,7 +788,8 @@ export default function AdminProductsPage() {
                   const isOffer = p.original_price && p.original_price > 0 && Number(p.price) < Number(p.original_price);
                   const urls = parseImageUrls(p.image_urls);
                   const imgUrl = urls.length > 0 ? urls[0] : null;
-                  return (<tr key={p.id} className={`hover:bg-slate-50 transition-colors group ${(!p.sku || !p.description || !p.brand_id || !p.category_id) ? 'bg-red-50/50' : ''}`}>
+                  const isIncomplete = !p.sku || !p.description || !p.brand_id || !p.category_id || urls.length === 0;
+                  return (<tr key={p.id} className={`hover:bg-slate-50 transition-colors group ${isIncomplete ? 'bg-red-50 border-l-4 border-l-red-500' : ''}`}>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-4">
                             <div className="size-12 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0 border border-slate-200 overflow-hidden relative">
@@ -908,47 +953,126 @@ export default function AdminProductsPage() {
 
       {isDeleteModalOpen && productToDelete && (<div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true"><div className="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col"><div className="p-6 flex items-start gap-4"><div className="size-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center shrink-0"><span className="material-symbols-outlined text-3xl">warning</span></div><div><h2 className="text-xl font-bold text-slate-900">Eliminar Producto</h2><p className="text-slate-600 mt-2">¿Estás seguro de que quieres eliminar "<strong>{productToDelete.name}</strong>"? Esta acción es irreversible.</p></div></div><div className="p-6 border-t border-slate-200 bg-slate-50 flex justify-end gap-3"><button onClick={closeDeleteModal} type="button" className="px-5 py-2.5 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm font-bold shadow-sm hover:bg-slate-50">Cancelar</button><button onClick={handleConfirmDelete} disabled={isDeleting} type="button" className="px-5 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-bold shadow-md disabled:bg-red-600/50 disabled:cursor-not-allowed transition-all">{isDeleting ? 'Eliminando...' : 'Sí, eliminar'}</button></div></div></div>)}
 
-      {/* Modal de Confirmación de Errores en Carga Masiva */}
-      {isConfirmingImportErrors && (
+      {/* Modal de Progreso/Procesamiento */}
+      {isProcessingImport && (
+        <div className="fixed inset-0 bg-slate-900/60 z-[120] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 text-center animate-in fade-in zoom-in duration-200">
+            <div className="size-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
+              <span className="material-symbols-outlined text-4xl text-primary animate-pulse">upload_file</span>
+            </div>
+            <h3 className="text-xl font-bold text-slate-900 mb-2">Procesando Archivo</h3>
+            <p className="text-slate-500 mb-6 text-sm">Estamos analizando y validando la información de los productos...</p>
+            
+            <div className="w-full bg-slate-100 rounded-full h-3 mb-2 overflow-hidden">
+              <div 
+                className="bg-primary h-full transition-all duration-300 ease-out" 
+                style={{ width: `${importProgress}%` }}
+              ></div>
+            </div>
+            <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              <span>{importProgress}% completado</span>
+              <span>{bulkImportData.length} productos detectados</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmación de Carga Masiva (Preview) */}
+      {isShowImportPreview && (
         <div className="fixed inset-0 bg-slate-900/60 z-[110] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="p-6 border-b border-slate-100 flex items-center gap-4 bg-amber-50">
-              <div className="size-12 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
-                <span className="material-symbols-outlined text-3xl">report_problem</span>
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-slate-900 font-display">Errores de Validación</h2>
-                <p className="text-sm text-slate-600 mt-1">Se han encontrado inconsistencias en {importErrors.length} productos.</p>
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
-              {importErrors.map((err, idx) => (
-                <div key={idx} className="p-4 rounded-xl border border-slate-200 bg-white shadow-sm border-l-4 border-l-amber-500">
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="text-sm font-bold text-slate-900 font-mono">SKU: {err.sku || 'SIN SKU'}</span>
-                    <span className="text-xs font-semibold px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full">{err.name || 'Sin nombre'}</span>
-                  </div>
-                  <p className="text-xs text-slate-500">Falta información en los campos:</p>
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {err.fields.map((f: string, i: number) => (
-                      <span key={i} className="px-2 py-0.5 bg-red-50 text-red-600 rounded text-[10px] font-bold uppercase tracking-wider border border-red-100">{f}</span>
-                    ))}
-                  </div>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-white relative z-10">
+              <div className="flex items-center gap-4">
+                <div className="size-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                  <span className="material-symbols-outlined text-3xl">fact_check</span>
                 </div>
-              ))}
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 font-display">Confirmación de Carga</h2>
+                  <p className="text-sm text-slate-500 mt-1">Revisa los detalles antes de subir al sistema.</p>
+                </div>
+              </div>
+              <div className="flex gap-4">
+                <div className="text-center px-4 py-2 bg-emerald-50 rounded-lg border border-emerald-100">
+                  <span className="block text-xl font-bold text-emerald-600 leading-tight">
+                    {processedBulkData.filter(p => !p._incomplete).length}
+                  </span>
+                  <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider">Correctos</span>
+                </div>
+                <div className="text-center px-4 py-2 bg-amber-50 rounded-lg border border-amber-100">
+                  <span className="block text-xl font-bold text-amber-600 leading-tight">
+                    {processedBulkData.filter(p => p._incomplete).length}
+                  </span>
+                  <span className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">Incompletos</span>
+                </div>
+              </div>
             </div>
 
-            <div className="p-6 bg-slate-50 border-t border-slate-100">
-              <div className="p-4 bg-white border border-slate-200 rounded-xl mb-4">
-                <p className="text-xs text-slate-500 leading-relaxed text-center">
-                  ¿Desea continuar con el cargue? Los productos marcados con errores se cargarán pero deberán ser completados manualmente.
-                </p>
-              </div>
-              <div className="flex gap-3">
+            <div className="flex-1 overflow-auto p-0 custom-scrollbar bg-slate-50">
+              <table className="w-full text-left border-collapse min-w-[1000px]">
+                <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-200 shadow-sm">
+                  <tr>
+                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">SKU</th>
+                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Nombre</th>
+                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Marca</th>
+                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Categoría</th>
+                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Precio USD / COP</th>
+                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Precio + IVA</th>
+                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Stock</th>
+                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Observaciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {processedBulkData.map((p, idx) => (
+                    <tr key={idx} className="hover:bg-white transition-colors bg-white">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-slate-900 font-mono">
+                        {p.sku || <span className="text-red-500 italic">SIN SKU</span>}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm font-medium text-slate-900 line-clamp-1">{p.name || 'N/A'}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="px-2 py-0.5 bg-slate-100 border border-slate-200 rounded text-[10px] font-bold text-slate-600 uppercase">{p._brandName}</span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="px-2 py-0.5 bg-slate-100 border border-slate-200 rounded text-[10px] font-bold text-slate-600 uppercase">{p._categoryName}</span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-bold text-slate-900">${formatCurrency(p.original_price)} COP</div>
+                        {p.price_usd && <div className="text-[10px] font-medium text-emerald-600">(${formatCurrency(p.price_usd)} USD)</div>}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-bold text-primary">${formatCurrency(p.price_with_iva)}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-700">
+                        {p.stock_quantity} und
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex flex-wrap gap-1">
+                          {p._errorFields.map((f: string, i: number) => (
+                            <span key={i} className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase border ${f === 'Agregar imagen' ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-red-50 text-red-600 border-red-200'}`}>{f}</span>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="p-6 bg-white border-t border-slate-100 flex flex-col gap-4">
+              {processedBulkData.some(p => p._incomplete) && (
+                <div className="px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3">
+                  <span className="material-symbols-outlined text-amber-600">warning</span>
+                  <p className="text-xs text-amber-800 leading-relaxed font-medium">
+                    Hay productos con información faltante. Se cargarán en el sistema y aparecerán resaltados en rojo para que los completes manualmente.
+                  </p>
+                </div>
+              )}
+              
+              <div className="flex gap-4">
                 <button 
-                  onClick={() => setIsConfirmingImportErrors(false)} 
-                  className="flex-1 px-4 py-3 border border-slate-200 bg-white text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-100 transition-all font-display"
+                  onClick={() => setIsShowImportPreview(false)} 
+                  className="flex-1 px-6 py-4 border border-slate-200 bg-white text-slate-700 rounded-2xl text-sm font-bold hover:bg-slate-50 transition-all font-display shadow-sm"
                 >
                   Cancelar Cargue
                 </button>
@@ -956,9 +1080,10 @@ export default function AdminProductsPage() {
                   onClick={async () => {
                     await finalizeImport(processedBulkData);
                   }}
-                  className="flex-1 px-4 py-3 bg-primary text-white rounded-xl text-sm font-bold hover:bg-blue-600 transition-all shadow-md shadow-primary/20 font-display"
+                  className="flex-[2] px-6 py-4 bg-primary text-white rounded-2xl text-base font-bold hover:bg-blue-600 transition-all shadow-xl shadow-primary/30 font-display flex items-center justify-center gap-2"
                 >
-                  Continuar con el Cargue
+                  <span className="material-symbols-outlined text-2xl">publish</span>
+                  Confirmar y Subir {processedBulkData.length} Productos
                 </button>
               </div>
             </div>

@@ -421,7 +421,10 @@ export default function AdminBrandsPage() {
           ) : (
             <>
               <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                <h2 className="text-xl font-bold text-slate-900 font-display">Editar Marca</h2>
+                <div>
+                    <h2 className="text-xl font-bold text-slate-900 font-display">Editar Marca</h2>
+                    <p className="text-xs text-slate-500 font-medium mt-0.5">ID: #{selectedBrand?.id}</p>
+                </div>
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-bold text-slate-500 font-display">Estado:</span>

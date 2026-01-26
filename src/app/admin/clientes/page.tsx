@@ -55,6 +55,13 @@ interface Interaction {
   created_by: string | null;
 }
 
+const CLIENT_SECTORS = [
+  'Turìsmo', 'Agricultura', 'Comercial', 'Educaciòn', 'Salud', 'Industrial', 
+  'Seguridad-Vigilancia', 'Hoteleria', 'Restaurante', 'Construcciòn', 
+  'Conjunto Residenciales', 'Servicios', 'Transporte', 'Gobierno', 
+  'Petroleras', 'Minerìa', 'Manufactura'
+];
+
 const AdminClientsPage = () => {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
@@ -764,12 +771,12 @@ const AdminClientsPage = () => {
         contact_person: clientType === 'Empresa' ? formData.contact_person : null,
         position: clientType === 'Empresa' ? formData.position : null,
         whatsapp: clientType === 'Empresa' ? formData.whatsapp : null,
-        industry_sector: clientType === 'Empresa' ? formData.industry_sector : null,
-        industry: clientType === 'Natural' ? formData.industry : formData.industry_sector,
-        source: clientType === 'Natural' ? formData.source : formData.source_type,
-        source_type: clientType === 'Empresa' ? formData.source_type : null,
-        source_sub_type: clientType === 'Empresa' ? formData.source_sub_type : null,
-        referred_by_brand_id: (clientType === 'Natural' && formData.source === 'Referido por marca') || (clientType === 'Empresa' && formData.source_type === 'Referido por cliente') ? formData.referred_by_brand_id : null,
+        industry_sector: formData.industry_sector,
+        industry: formData.industry_sector,
+        source: formData.source_type, // Maintain source as primary category
+        source_type: formData.source_type,
+        source_sub_type: formData.source_sub_type,
+        referred_by_brand_id: (formData.source_type === 'Referido por marca' || formData.source_type === 'Referido por cliente') ? formData.referred_by_brand_id : null,
         assigned_to_name: clientType === 'Empresa' ? formData.assigned_to_name : null,
         photo_url: clientType === 'Natural' ? photo_url : null,
       };
@@ -1253,38 +1260,20 @@ const AdminClientsPage = () => {
                           <td className="p-4 hidden xl:table-cell">
                             <div className="flex flex-col font-display">
                               <span className="text-sm text-slate-700 font-medium">
-                                {client.client_type === 'Empresa' ? (client.source_type || client.source || 'Nuevo') : (client.source || "Nuevo")}
+                                {client.source_type || client.source || 'Nuevo'}
                               </span>
-                              {client.client_type === 'Empresa' ? (
-                                <>
-                                  {client.source_type === 'Referido por cliente' && client.referred_by_brand_id && (
-                                    <span className="text-xs text-slate-500">
-                                      Ref: {brands.find(b => b.id === client.referred_by_brand_id)?.name || "Marca desconocida"}
-                                    </span>
-                                  )}
-                                  {client.source_type === 'Redes sociales' && client.source_sub_type && (
-                                    <span className="text-xs text-slate-500">
-                                      Red: {client.source_sub_type}
-                                    </span>
-                                  )}
-                                  {client.source_type === 'Gestion marketing' && client.source_sub_type && (
-                                    <span className="text-xs text-slate-500">
-                                      Mkt: {client.source_sub_type}
-                                    </span>
-                                  )}
-                                </>
-                              ) : (
-                                <>
-                                  {client.source === "Referido por marca" &&
-                                    client.referred_by_brand_id && (
-                                      <span className="text-xs text-slate-500">
-                                        {brands.find(
-                                          (b) =>
-                                            b.id === client.referred_by_brand_id,
-                                        )?.name || ""}
-                                      </span>
-                                    )}
-                                </>
+                              {client.source_sub_type && (
+                                <span className="text-xs text-slate-500 italic">
+                                  {client.source_type === 'Redes sociales' ? 'Red: ' : 
+                                   client.source_type === 'Gestion marketing' ? 'Mkt: ' : 
+                                   client.source_type === 'Referido por cliente' ? 'Ref: ' : ''}
+                                  {client.source_sub_type}
+                                </span>
+                              )}
+                              {client.referred_by_brand_id && client.source_type === 'Referido por marca' && (
+                                <span className="text-xs text-slate-500">
+                                  Marca: {brands.find(b => b.id === client.referred_by_brand_id)?.name || "Marca"}
+                                </span>
                               )}
                             </div>
                           </td>
@@ -1586,16 +1575,21 @@ const AdminClientsPage = () => {
                         </div>
                         <div className="flex flex-col">
                           <span className="text-sm text-slate-700 font-medium">
-                            {selectedClient.client_type === 'Empresa' ? (selectedClient.source_type || selectedClient.source || 'Nuevo') : (selectedClient.source || 'Nuevo')}
+                            {selectedClient.source_type || selectedClient.source || 'Nuevo'}
                           </span>
-                          {selectedClient.client_type === 'Empresa' && selectedClient.source_sub_type && (
-                            <span className="text-[10px] text-slate-500 italic">{selectedClient.source_sub_type}</span>
+                          {selectedClient.source_sub_type && (
+                            <span className="text-[10px] text-slate-500 italic">
+                              {selectedClient.source_type === 'Redes sociales' ? 'Red: ' : 
+                               selectedClient.source_type === 'Gestion marketing' ? 'Mkt: ' : 
+                               selectedClient.source_type === 'Referido por cliente' ? 'Ref: ' : ''}
+                              {selectedClient.source_sub_type}
+                            </span>
                           )}
-                          {selectedClient.referred_by_brand_id ? (
+                          {selectedClient.referred_by_brand_id && selectedClient.source_type === 'Referido por marca' && (
                              <span className="text-[10px] text-primary italic font-medium">
-                               Ref: {brands.find(b => b.id === selectedClient.referred_by_brand_id)?.name || "Marca"}
+                               Marca: {brands.find(b => b.id === selectedClient.referred_by_brand_id)?.name || "Marca"}
                              </span>
-                          ) : null}
+                          )}
                         </div>
                       </div>
                     </div>
@@ -2199,50 +2193,92 @@ const AdminClientsPage = () => {
                     <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div>
                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
-                          Sector / Industria
-                        </label>
-                        <input
-                          type="text"
-                          name="industry"
-                          value={formData.industry}
-                          onChange={handleInputChange}
-                          className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
-                          placeholder="Ej: Minería, Seguridad..."
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
-                          Procedencia
+                          Sector / Industria <span className="text-red-500">*</span>
                         </label>
                         <select
-                          name="source"
-                          value={formData.source}
-                          onChange={handleInputChange}
-                          className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
-                        >
-                          <option value="Nuevo">Nuevo</option>
-                          <option value="Mercado Libre">Mercado Libre</option>
-                          <option value="Referido por marca">Referido por marca</option>
-                        </select>
-                      </div>
-                    </div>
-                    {formData.source === "Referido por marca" && (
-                      <div className="md:col-span-2 animate-in fade-in slide-in-from-top-2 duration-300">
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
-                          Marca Referida <span className="text-red-500">*</span>
-                        </label>
-                        <select
-                          name="referred_by_brand_id"
-                          value={formData.referred_by_brand_id}
+                          name="industry_sector"
+                          value={formData.industry_sector}
                           onChange={handleInputChange}
                           required
                           className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
                         >
-                          <option value={0}>Seleccionar Marca...</option>
-                          {brands.map((brand) => (
-                            <option key={brand.id} value={brand.id}>{brand.name}</option>
+                          <option value="">Seleccionar...</option>
+                          {CLIENT_SECTORS.map((sector) => (
+                            <option key={sector} value={sector}>{sector}</option>
                           ))}
                         </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
+                          Procedencia <span className="text-red-500">*</span>
+                        </label>
+                        <select
+                          name="source_type"
+                          value={formData.source_type}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setFormData(prev => ({ ...prev, source_type: val, source_sub_type: '', source: val }));
+                          }}
+                          required
+                          className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                        >
+                          <option value="Nuevo">Nuevo</option>
+                          <option value="Redes sociales">Redes sociales</option>
+                          <option value="Gestion marketing">Gestión marketing</option>
+                          <option value="Referido por cliente">Referido por cliente</option>
+                          <option value="Mercado Libre">Mercado Libre</option>
+                          <option value="Otro">Otro</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Procedencia Condicional (Natural) */}
+                    {(formData.source_type === 'Redes sociales' || formData.source_type === 'Gestion marketing' || formData.source_type === 'Referido por cliente' || formData.source_type === 'Otro') && (
+                      <div className="md:col-span-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
+                          {formData.source_type === 'Redes sociales' ? 'Seleccionar Red Social' : 
+                           formData.source_type === 'Gestion marketing' ? 'Seleccionar Gestión' :
+                           formData.source_type === 'Referido por cliente' ? '¿Quién lo refirió?' :
+                           'Especifique Procedencia'} <span className="text-red-500">*</span>
+                        </label>
+                        {formData.source_type === 'Redes sociales' ? (
+                          <select 
+                            name="source_sub_type" 
+                            value={formData.source_sub_type} 
+                            onChange={handleInputChange} 
+                            required
+                            className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                          >
+                            <option value="">Seleccionar...</option>
+                            <option value="Facebook">Facebook</option>
+                            <option value="Instagram">Instagram</option>
+                            <option value="Tiktok">Tiktok</option>
+                            <option value="X">X (Twitter)</option>
+                            <option value="LinkedIn">LinkedIn</option>
+                          </select>
+                        ) : formData.source_type === 'Gestion marketing' ? (
+                          <select 
+                            name="source_sub_type" 
+                            value={formData.source_sub_type} 
+                            onChange={handleInputChange} 
+                            required
+                            className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                          >
+                            <option value="">Seleccionar...</option>
+                            <option value="Bases de datos">Bases de datos</option>
+                            <option value="Correos masivos">Correos masivos</option>
+                          </select>
+                        ) : (
+                          <input
+                            type="text"
+                            name="source_sub_type"
+                            value={formData.source_sub_type}
+                            onChange={handleInputChange}
+                            required
+                            className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                            placeholder={formData.source_type === 'Referido por cliente' ? 'Nombre del cliente...' : 'Escriba aquí...'}
+                          />
+                        )}
                       </div>
                     )}
                     <div className="md:col-span-2">
@@ -2341,7 +2377,7 @@ const AdminClientsPage = () => {
                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">Sector Industria <span className="text-red-500">*</span></label>
                         <select name="industry_sector" value={formData.industry_sector} onChange={handleInputChange} required className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium">
                             <option value="">Seleccionar...</option>
-                            {['Turìsmo', 'Agricultura', 'Comercial', 'Educaciòn', 'Salud', 'Industrial', 'Seguridad-Vigilancia', 'Hoteleria', 'Restaurante', 'Construcciòn', 'Conjunto Residenciales', 'Servicios', 'Transporte', 'Gobierno', 'Petroleras', 'Minerìa', 'Manufactura'].map(sector => (
+                            {CLIENT_SECTORS.map(sector => (
                                 <option key={sector} value={sector}>{sector}</option>
                             ))}
                         </select>
@@ -2349,64 +2385,72 @@ const AdminClientsPage = () => {
 
                     <div>
                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">Procedencia <span className="text-red-500">*</span></label>
-                        <select name="source_type" value={formData.source_type} onChange={handleInputChange} required className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium">
+                        <select 
+                          name="source_type" 
+                          value={formData.source_type} 
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setFormData(prev => ({ ...prev, source_type: val, source_sub_type: '', source: val }));
+                          }} 
+                          required 
+                          className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                        >
                             <option value="Nuevo">Nuevo</option>
-                            <option value="Referido por cliente">Referido por cliente</option>
                             <option value="Redes sociales">Redes sociales</option>
-                            <option value="Gestion marketing">Gestion marketing</option>
+                            <option value="Gestion marketing">Gestión marketing</option>
+                            <option value="Referido por cliente">Referido por cliente</option>
+                            <option value="Mercado Libre">Mercado Libre</option>
+                            <option value="Otro">Otro</option>
                         </select>
                     </div>
 
-                    {formData.source_type === 'Referido por cliente' && (
+                    {/* Procedencia Condicional (Empresa) */}
+                    {(formData.source_type === 'Redes sociales' || formData.source_type === 'Gestion marketing' || formData.source_type === 'Referido por cliente' || formData.source_type === 'Otro') && (
                       <div className="md:col-span-2 animate-in fade-in slide-in-from-top-2 duration-300">
-                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">Marca que lo refirió <span className="text-red-500">*</span></label>
-                         <select 
-                           name="referred_by_brand_id" 
-                           value={formData.referred_by_brand_id} 
-                           onChange={handleInputChange} 
-                           required
-                           className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
-                         >
-                           <option value={0}>Seleccionar Marca...</option>
-                           {brands.map(brand => (
-                             <option key={brand.id} value={brand.id}>{brand.name}</option>
-                           ))}
-                         </select>
-                      </div>
-                    )}
-
-                    {formData.source_type === 'Redes sociales' && (
-                      <div className="md:col-span-2 animate-in fade-in slide-in-from-top-2 duration-300">
-                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">Seleccionar Red Social <span className="text-red-500">*</span></label>
-                         <select 
-                           name="source_sub_type" 
-                           value={formData.source_sub_type} 
-                           onChange={handleInputChange} 
-                           required
-                           className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
-                         >
-                           <option value="">Seleccionar...</option>
-                           <option value="Facebook">Facebook</option>
-                           <option value="Instagram">Instagram</option>
-                           <option value="X">X (Twitter)</option>
-                         </select>
-                      </div>
-                    )}
-
-                    {formData.source_type === 'Gestion marketing' && (
-                      <div className="md:col-span-2 animate-in fade-in slide-in-from-top-2 duration-300">
-                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">Seleccionar Gestión <span className="text-red-500">*</span></label>
-                         <select 
-                           name="source_sub_type" 
-                           value={formData.source_sub_type} 
-                           onChange={handleInputChange} 
-                           required
-                           className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
-                         >
-                           <option value="">Seleccionar...</option>
-                           <option value="Bases de datos">Bases de datos</option>
-                           <option value="Correos masivos">Correos masivos</option>
-                         </select>
+                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
+                           {formData.source_type === 'Redes sociales' ? 'Seleccionar Red Social' : 
+                            formData.source_type === 'Gestion marketing' ? 'Seleccionar Gestión' :
+                            formData.source_type === 'Referido por cliente' ? '¿Quién lo refirió?' :
+                            'Especifique Procedencia'} <span className="text-red-500">*</span>
+                         </label>
+                         {formData.source_type === 'Redes sociales' ? (
+                           <select 
+                             name="source_sub_type" 
+                             value={formData.source_sub_type} 
+                             onChange={handleInputChange} 
+                             required
+                             className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                           >
+                             <option value="">Seleccionar...</option>
+                             <option value="Facebook">Facebook</option>
+                             <option value="Instagram">Instagram</option>
+                             <option value="Tiktok">Tiktok</option>
+                             <option value="X">X (Twitter)</option>
+                             <option value="LinkedIn">LinkedIn</option>
+                           </select>
+                         ) : formData.source_type === 'Gestion marketing' ? (
+                           <select 
+                             name="source_sub_type" 
+                             value={formData.source_sub_type} 
+                             onChange={handleInputChange} 
+                             required
+                             className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                           >
+                             <option value="">Seleccionar...</option>
+                             <option value="Bases de datos">Bases de datos</option>
+                             <option value="Correos masivos">Correos masivos</option>
+                           </select>
+                         ) : (
+                           <input
+                             type="text"
+                             name="source_sub_type"
+                             value={formData.source_sub_type}
+                             onChange={handleInputChange}
+                             required
+                             className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                             placeholder={formData.source_type === 'Referido por cliente' ? 'Nombre del cliente...' : 'Escriba aquí...'}
+                           />
+                         )}
                       </div>
                     )}
 

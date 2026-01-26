@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
+import { convertToWebP } from '@/lib/image-utils';
 
 // Interfaces based on original project
 interface Category {
@@ -178,18 +179,48 @@ export default function AdminCategoriesPage() {
             let imageUrlToUpdate = selectedCategory.image_url;
 
             if (editCategoryImage) {
-                const fileExt = editCategoryImage.name.split('.').pop();
-                const newFileName = `category-${selectedCategory.id}.${fileExt}`;
-                const bucketName = 'category_images';
+                // Optimization: Convert to WebP
+                const webpBlob = await convertToWebP(editCategoryImage);
+                // Fixed naming to overwrite existing images
+                const fileName = `category-${id}.webp`;
+                const newPublicUrl = `${process.env.NEXT_PUBLIC_R2_PUBLIC_URL}/categorias/${fileName}`;
 
-                const { error: uploadError } = await supabase.storage
-                    .from(bucketName)
-                    .upload(newFileName, editCategoryImage, { cacheControl: '3600', upsert: true });
-                
-                if (uploadError) throw new Error(`Error al subir la imagen: ${uploadError.message}`);
+                // If the old image has a different name, delete it
+                if (selectedCategory.image_url && selectedCategory.image_url !== newPublicUrl) {
+                    try {
+                        const urlObj = new URL(selectedCategory.image_url);
+                        if (urlObj.hostname.includes('r2.dev')) {
+                            await fetch('/api/upload/presigned', {
+                                method: 'DELETE',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ publicUrl: selectedCategory.image_url })
+                            });
+                        }
+                    } catch (e) { console.error("Could not delete old image:", e); }
+                }
 
-                const { data: urlData } = supabase.storage.from(bucketName).getPublicUrl(newFileName);
-                imageUrlToUpdate = `${urlData.publicUrl}?t=${new Date().getTime()}`;
+                const presignedRes = await fetch('/api/upload/presigned', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        fileName,
+                        contentType: 'image/webp',
+                        folder: 'categorias'
+                    })
+                });
+
+                if (!presignedRes.ok) throw new Error('Error al obtener URL de subida');
+                const { signedUrl, publicUrl } = await presignedRes.json();
+
+                const uploadRes = await fetch(signedUrl, {
+                    method: 'PUT',
+                    body: webpBlob,
+                    headers: { 'Content-Type': 'image/webp' }
+                });
+
+                if (!uploadRes.ok) throw new Error('Error al subir la imagen a Cloudflare');
+                // Use a timestamp to bypass browser cache
+                imageUrlToUpdate = `${publicUrl}?t=${Date.now()}`;
             }
 
             const { error: updateError } = await supabase
@@ -223,14 +254,43 @@ export default function AdminCategoriesPage() {
         if (!categoryToDelete) return;
         setIsUpdating(true);
         try {
+            // 1. Attempt to delete from database first
             const { error: deleteError } = await supabase.from('categories').delete().eq('id', categoryToDelete.id);
-            if (deleteError) throw deleteError;
+            
+            if (deleteError) {
+                // Handle foreign key constraint (has products linked)
+                const isForeignKeyError = deleteError.code === '23503' || 
+                                         deleteError.message?.toLowerCase().includes('foreign key constraint');
+
+                if (isForeignKeyError) {
+                    alert("Este elemento no se puede eliminar ya que está enlazado con productos u otros registros.");
+                    setIsUpdating(false);
+                    return;
+                }
+                throw deleteError;
+            }
+
+            // 2. If deletion successful, clean up image from storage
+            if (categoryToDelete.image_url) {
+                const urlObj = new URL(categoryToDelete.image_url);
+                if (urlObj.hostname.includes('r2.dev')) {
+                    await fetch('/api/upload/presigned', {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ publicUrl: categoryToDelete.image_url })
+                    });
+                } else if (urlObj.hostname.includes('supabase.co')) {
+                    const pathParts = urlObj.pathname.split('/');
+                    const fileName = pathParts[pathParts.length - 1];
+                    await supabase.storage.from('category_images').remove([fileName]);
+                }
+            }
 
             setSelectedCategory(null);
             setIsDeleteModalOpen(false);
             setCategoryToDelete(null);
             await fetchAndStructureCategories();
-            alert('Categoría eliminada con éxito.');
+            alert('Categoría eliminada con éxito y almacenamiento liberado.');
         } catch (err: any) {
             console.error('Error deleting category:', err);
             alert(`Error al eliminar la categoría: ${err.message}`);
@@ -258,13 +318,30 @@ export default function AdminCategoriesPage() {
         setIsSubmitting(true);
 
         try {
-            const fileExt = newCategoryImage.name.split('.').pop();
-            const fileName = `${Date.now()}.${fileExt}`;
-            const { error: uploadError } = await supabase.storage.from('category_images').upload(fileName, newCategoryImage);
+            // Optimization: Convert to WebP
+            const webpBlob = await convertToWebP(newCategoryImage);
+            const fileName = `${Date.now()}.webp`;
 
-            if (uploadError) throw new Error(`Error al subir la imagen: ${uploadError.message}`);
+            const presignedRes = await fetch('/api/upload/presigned', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    fileName,
+                    contentType: 'image/webp',
+                    folder: 'categorias'
+                })
+            });
 
-            const { data: urlData } = supabase.storage.from('category_images').getPublicUrl(fileName);
+            if (!presignedRes.ok) throw new Error('Error al obtener URL de subida');
+            const { signedUrl, publicUrl } = await presignedRes.json();
+
+            const uploadRes = await fetch(signedUrl, {
+                method: 'PUT',
+                body: webpBlob,
+                headers: { 'Content-Type': 'image/webp' }
+            });
+
+            if (!uploadRes.ok) throw new Error('Error al subir la imagen a Cloudflare');
 
             const newCategoryData = { 
                 name: newCategoryName, 
@@ -272,7 +349,7 @@ export default function AdminCategoriesPage() {
                 parent_id: newCategoryParent === 'none' ? null : parseInt(newCategoryParent, 10), 
                 description: newCategoryDescription, 
                 status: 'Borrador' as const, 
-                image_url: `${urlData.publicUrl}?t=${new Date().getTime()}`,
+                image_url: publicUrl,
                 position: allCategories.filter(c => c.parent_id === (newCategoryParent === 'none' ? null : parseInt(newCategoryParent, 10))).length
             };
 

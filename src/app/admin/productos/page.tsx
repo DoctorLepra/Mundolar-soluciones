@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency } from '@/lib/utils';
+import { convertToWebP } from '@/lib/image-utils';
 import * as XLSX from 'xlsx';
 
 interface Product {
@@ -21,6 +22,8 @@ interface Product {
   status: string;
   image_urls: string[] | null;
   category_id: number;
+  cost: number | null;
+  profit_percentage: number | null;
   brand_id: number;
   brands: { name: string } | null;
   offer_start_date: string | null;
@@ -68,6 +71,8 @@ export default function AdminProductsPage() {
     price_with_iva: '',
     specs: '',
     stock_quantity: '',
+    cost: '',
+    profit_percentage: '',
     offer_start_date: '',
     offer_end_date: '',
     status: 'Activo', // Default status
@@ -266,6 +271,8 @@ export default function AdminProductsPage() {
       price_with_iva: '',
       specs: '',
       stock_quantity: '', 
+      cost: '',
+      profit_percentage: '',
       offer_start_date: '', 
       offer_end_date: '', 
       status: 'Activo' 
@@ -312,6 +319,8 @@ export default function AdminProductsPage() {
         price_with_iva: product.price_with_iva?.toString() || '',
         specs: product.specs || '',
         stock_quantity: product.stock_quantity.toString(),
+        cost: product.cost?.toString() || '',
+        profit_percentage: product.profit_percentage?.toString() || '',
         offer_start_date: formatDateTimeLocal(product.offer_start_date),
         offer_end_date: formatDateTimeLocal(product.offer_end_date),
         status: product.status === 'Archivado' ? 'Inactivo' : (product.status || 'Activo'),
@@ -372,7 +381,7 @@ export default function AdminProductsPage() {
     setIsSubmitting(true);
     setFormError(null);
 
-    const { name, description, category_id, brand_id, sku, price, original_price, stock_quantity, offer_start_date, offer_end_date, status, price_usd, price_with_iva, specs } = productForm;
+    const { name, description, category_id, brand_id, sku, price, original_price, stock_quantity, offer_start_date, offer_end_date, status, price_usd, price_with_iva, specs, cost, profit_percentage } = productForm;
 
     if (!name || !description || !category_id || !brand_id || !sku || !original_price || !stock_quantity) {
       setFormError('Todos los campos marcados con * son obligatorios.');
@@ -435,35 +444,66 @@ export default function AdminProductsPage() {
     const uploadedFileNames: string[] = [];
 
     try {
-      // 1. Upload new images
+      // 1. Upload new images to Cloudflare R2
       const finalUrls: string[] = [];
       for (const preview of imagePreviewUrls) {
         if (preview.isExisting) {
           finalUrls.push(preview.url);
         } else if (preview.file) {
           const file = preview.file;
-          const fileName = `product-${Date.now()}-${Math.random()}.${file.name.split('.').pop()}`;
-          const { error } = await supabase.storage.from('product_images').upload(fileName, file);
-          if (error) throw new Error(`Error subiendo imagen: ${error.message}`);
           
-          uploadedFileNames.push(fileName);
-          const { data: urlData } = supabase.storage.from('product_images').getPublicUrl(fileName);
-          finalUrls.push(`${urlData.publicUrl}?t=${new Date().getTime()}`);
+          // Optimization: Convert to WebP on the fly
+          const webpBlob = await convertToWebP(file);
+          const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.webp`;
+
+          // Request presigned URL from our API
+          const presignedRes = await fetch('/api/upload/presigned', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fileName,
+              contentType: 'image/webp',
+              folder: 'productos'
+            })
+          });
+
+          if (!presignedRes.ok) throw new Error('Error al obtener URL de subida');
+          const { signedUrl, publicUrl } = await presignedRes.json();
+
+          // Upload directly to Cloudflare R2
+          const uploadRes = await fetch(signedUrl, {
+            method: 'PUT',
+            body: webpBlob,
+            headers: { 'Content-Type': 'image/webp' }
+          });
+
+          if (!uploadRes.ok) throw new Error('Error al subir imagen a Cloudflare');
+          
+          finalUrls.push(publicUrl);
         }
       }
 
-      // 2. Delete removed images from storage
+      // 2. Delete removed images from storage (Both Supabase and R2)
       if (imagesToDelete.length > 0) {
-        const filesToRemove = imagesToDelete.map(url => {
-          try {
-            const urlObj = new URL(url);
-            const pathParts = urlObj.pathname.split('/');
-            return pathParts[pathParts.length - 1];
-          } catch { return null; }
-        }).filter(Boolean) as string[];
-
-        if (filesToRemove.length > 0) {
-          await supabase.storage.from('product_images').remove(filesToRemove);
+        for (const urlToDelete of imagesToDelete) {
+            try {
+                const urlObj = new URL(urlToDelete);
+                if (urlObj.hostname.includes('r2.dev')) {
+                    // It's an R2 image, call our DELETE API
+                    await fetch('/api/upload/presigned', {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ publicUrl: urlToDelete })
+                    });
+                } else if (urlObj.hostname.includes('supabase.co')) {
+                    // It's an old Supabase image
+                    const pathParts = urlObj.pathname.split('/');
+                    const fileName = pathParts[pathParts.length - 1];
+                    await supabase.storage.from('product_images').remove([fileName]);
+                }
+            } catch (err) {
+                console.error("Error deleting image from storage:", err);
+            }
         }
       }
 
@@ -481,6 +521,8 @@ export default function AdminProductsPage() {
           price_with_iva: price_with_iva ? parseFloat(price_with_iva) : null,
           specs: specs || null,
           stock_quantity: parseInt(stock_quantity), 
+          cost: cost ? parseFloat(cost) : null,
+          profit_percentage: profit_percentage ? parseFloat(profit_percentage) : null,
           image_urls: finalUrls, 
           status: dbStatus, 
           offer_start_date: finalOfferStartDate, 
@@ -522,28 +564,82 @@ export default function AdminProductsPage() {
   const closeDeleteModal = () => { setProductToDelete(null); setIsDeleteModalOpen(false); };
 
   const handleConfirmDelete = async () => {
-    if (!productToDelete) return; setIsDeleting(true);
+    if (!productToDelete) return; 
+    setIsDeleting(true);
     try {
+      // 1. First attempt to delete from the database
+      const { error: dbError } = await supabase.from('products').delete().eq('id', productToDelete.id);
+      
+      if (dbError) {
+        // Handle Foreign Key constraint error (it has sales history)
+        const isForeignKeyError = dbError.code === '23503' || 
+                                 dbError.message?.toLowerCase().includes('foreign key constraint');
+
+        if (isForeignKeyError) {
+          alert("Este elemento no se puede eliminar ya que está enlazado con pedidos u otros registros.");
+          setIsDeleting(false);
+          return;
+        }
+        throw dbError;
+      }
+
+      // 2. If deletion was successful, NOW clean up images from storage
       const urls = parseImageUrls(productToDelete.image_urls);
       if (urls.length > 0) {
-        // Attempt to cleanup images logic
-        const fileNames = urls.map(url => {
+        for (const urlToDelete of urls) {
             try {
-                const urlObj = new URL(url);
-                const pathParts = urlObj.pathname.split('/');
-                return pathParts[pathParts.length - 1];
-            } catch { return null; }
-        }).filter(Boolean) as string[];
-        
-        if (fileNames.length > 0) await supabase.storage.from('product_images').remove(fileNames);
+                const urlObj = new URL(urlToDelete);
+                if (urlObj.hostname.includes('r2.dev')) {
+                    await fetch('/api/upload/presigned', {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ publicUrl: urlToDelete })
+                    });
+                } else if (urlObj.hostname.includes('supabase.co')) {
+                    const pathParts = urlObj.pathname.split('/');
+                    const fileName = pathParts[pathParts.length - 1];
+                    await supabase.storage.from('product_images').remove([fileName]);
+                }
+            } catch (err) {
+                console.error("Error deleting image during product deletion:", err);
+            }
+        }
       }
-      const { error: dbError } = await supabase.from('products').delete().eq('id', productToDelete.id);
-      if (dbError) throw dbError;
-      alert("Producto eliminado con éxito."); 
+
+      alert("Producto eliminado por completo."); 
       setProducts(products.filter(p => p.id !== productToDelete.id)); 
       closeDeleteModal();
-    } catch (err: any) { alert(`Error al eliminar el producto: ${err.message}`);
-    } finally { setIsDeleting(false); }
+    } catch (err: any) { 
+      alert(`Error al eliminar el producto: ${err.message}`);
+    } finally { 
+      setIsDeleting(false); 
+    }
+  };
+
+  const toggleStatus = async (product: Product) => {
+    const newStatus = product.status === 'Activo' ? 'Inactivo' : 'Activo';
+    
+    // Incomplete products cannot be activated
+    if (newStatus === 'Activo') {
+        const urls = parseImageUrls(product.image_urls);
+        if (!product.sku || !product.description || !product.brand_id || !product.category_id || urls.length === 0) {
+            alert("No se puede activar un producto incompleto. Por favor, completa SKU, Descripción, Marca, Categoría e Imágenes.");
+            return;
+        }
+    }
+
+    try {
+      const { error: updateError } = await supabase
+        .from('products')
+        .update({ status: newStatus })
+        .eq('id', product.id);
+
+      if (updateError) throw updateError;
+
+      setProducts(prev => prev.map(p => p.id === product.id ? { ...p, status: newStatus } : p));
+    } catch (err: any) {
+      alert(`Error al cambiar el estado: ${err.message}`);
+    }
   };
 
   const handleExport = () => {
@@ -607,21 +703,27 @@ export default function AdminProductsPage() {
         const name = row.NOMBRE?.toString() || '';
         const desc = row.DESCRIPCIÓN?.toString() || '';
         const specs = row.ESPECTEC?.toString() || '';
-        const valUsd = parseFloat(row.VALORUSD) || 0;
-        const valCop = parseFloat(row.VALORCOP) || 0;
-        const valIva = parseFloat(row.VALOR_IVA) || parseFloat(row["VALOR+IVA"]) || 0;
+        
+        const rawCostUsd = parseFloat(row.COSTOUSD) || 0;
+        let rawCostCop = parseFloat(row.COSTO) || 0;
+        const profitPct = parseFloat(row.PORVENTA) || 0;
+        let valVenta = parseFloat(row.VALORVENTA) || 0;
+        let valIvaPlus = parseFloat(row["VALOR+IVA"]) || 0;
         const stock = parseInt(row.STOCK) || 0;
 
-        // Calculate COP from USD if needed
-        let finalPrice = valCop;
-        if (valUsd > 0 && valCop <= 0 && currentTrm) {
-            finalPrice = Math.round(valUsd * currentTrm);
+        // 1. Calculate Cost if USD is provided but COP is empty
+        if (rawCostUsd > 0 && rawCostCop <= 0 && currentTrm) {
+            rawCostCop = Math.round(rawCostUsd * currentTrm);
         }
 
-        // Calculate IVA if missing
-        let finalValIva = valIva;
-        if (finalValIva <= 0 && finalPrice > 0) {
-            finalValIva = Math.round(finalPrice * 1.19);
+        // 2. Calculate Sale Price if Profit Percentage is provided
+        if (profitPct > 0 && rawCostCop > 0 && valVenta <= 0) {
+            valVenta = Math.round(rawCostCop * (1 + profitPct / 100));
+        }
+
+        // 3. Calculate Final Price with IVA if empty
+        if (valIvaPlus <= 0 && valVenta > 0) {
+            valIvaPlus = Math.round(valVenta * 1.19);
         }
 
         const rowErrors: string[] = [];
@@ -630,7 +732,7 @@ export default function AdminProductsPage() {
         if (brandId <= 0) rowErrors.push('Agregar Marca');
         if (catId <= 0) rowErrors.push('Agregar Categoría');
         if (!desc) rowErrors.push('Agregar Descripción');
-        if (valUsd <= 0 && valCop <= 0) rowErrors.push('Agregar Precio');
+        if (rawCostCop <= 0 && valVenta <= 0) rowErrors.push('Agregar Precio/Costo');
         if (stock <= 0) rowErrors.push('Agregar Stock');
         
         // Mandatory Image Observation
@@ -648,15 +750,17 @@ export default function AdminProductsPage() {
             name,
             description: desc,
             specs: specs || null,
-            price_usd: valUsd > 0 ? valUsd : null,
-            original_price: finalPrice,
-            price: finalPrice,
-            price_with_iva: finalValIva > 0 ? finalValIva : null,
+            cost: rawCostCop > 0 ? rawCostCop : null,
+            profit_percentage: profitPct > 0 ? profitPct : null,
+            price_usd: rawCostUsd > 0 ? rawCostUsd : null,
+            original_price: valVenta > 0 ? valVenta : (rawCostCop > 0 ? rawCostCop : null),
+            price: valVenta > 0 ? valVenta : (rawCostCop > 0 ? rawCostCop : null),
+            price_with_iva: valIvaPlus > 0 ? valIvaPlus : null,
             stock_quantity: stock,
             brand_id: brand ? brand.id : null,
             category_id: category ? category.id : null,
             status: 'Archivado', // Always Inactivo from bulk import due to missing images
-            last_trm_sync: valUsd > 0 ? new Date().toISOString() : null,
+            last_trm_sync: rawCostUsd > 0 ? new Date().toISOString() : null,
             _incomplete: true, // Always incomplete because of mandatory images
             _errorFields: rowErrors,
             _brandName: brand?.name || 'ID ' + brandId || 'N/A',
@@ -776,7 +880,7 @@ export default function AdminProductsPage() {
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Producto</th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Categoría</th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">SKU</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Precio</th>
+                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Venta / +IVA</th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Stock</th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Estado</th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Acciones</th>
@@ -807,9 +911,38 @@ export default function AdminProductsPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm text-slate-700">{categories.find(c => c.id === p.category_id)?.name || 'Sin categoría'}</span></td>
                       <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm font-mono text-slate-600">{p.sku || 'N/A'}</span></td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right"><div className="flex flex-col items-end"><span className="text-sm font-bold text-slate-900 font-mono">${formatCurrency(p.price)}</span>{isOffer && <span className="text-xs text-red-500 line-through font-mono">${formatCurrency(p.original_price || 0)}</span>}</div></td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right">
+                        <div className="flex flex-col items-end">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">Venta:</span>
+                            <span className="text-sm font-bold text-slate-900 font-mono">${formatCurrency(p.original_price || p.price)}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-bold text-primary/70 uppercase">+IVA:</span>
+                            <span className="text-sm font-black text-primary font-mono">${formatCurrency(p.price_with_iva || 0)}</span>
+                          </div>
+                          {isOffer && (
+                            <span className="text-[10px] text-red-500 line-through font-mono opacity-70">
+                              Ant: ${formatCurrency(p.original_price || 0)}
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center"><div className="flex flex-col items-center"><span className={`text-sm font-medium text-${stockInfo.color}-600`}>{p.stock_quantity}</span><span className={`text-[10px] text-${stockInfo.color}-500/70`}>{stockInfo.unit}</span></div></td>
-                      <td className="px-6 py-4 whitespace-nowrap"><div className="flex items-center gap-1.5"><span className={`size-2 rounded-full bg-${statusInfo.color}-500`}></span><span className={`text-sm ${statusInfo.color === 'slate' ? 'text-slate-500' : 'text-slate-700'}`}>{statusInfo.label}</span></div></td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => toggleStatus(p)}
+                            className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 ${p.status === 'Activo' ? 'bg-primary' : 'bg-slate-200'}`}
+                          >
+                            <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${p.status === 'Activo' ? 'translate-x-4' : 'translate-x-0'}`} />
+                          </button>
+                          <span className={`text-xs font-medium ${p.status === 'Activo' ? 'text-emerald-600' : 'text-slate-500'}`}>
+                            {p.status}
+                          </span>
+                        </div>
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right"><div className="flex items-center justify-end gap-2"><button onClick={() => handleOpenEditModal(p)} className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"><span className="material-symbols-outlined text-[20px]">edit</span></button><button onClick={() => openDeleteModal(p)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"><span className="material-symbols-outlined text-[20px]">delete</span></button></div></td>
                     </tr>);
                 })) : (<tr><td colSpan={7} className="text-center p-8 text-slate-500">No se encontraron productos.</td></tr>)
@@ -837,15 +970,26 @@ export default function AdminProductsPage() {
             </div>
           )}
 
-          <div><label className="block text-sm font-medium text-slate-700 mb-2">Nombre <span className="text-red-500">*</span></label><input type="text" name="name" value={productForm.name} onChange={handleFormChange} required className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm" /></div>
-          <div><label className="block text-sm font-medium text-slate-700 mb-2">Especificaciones Técnicas</label><textarea name="specs" value={productForm.specs} onChange={handleFormChange} rows={3} placeholder="Ingrese las especificaciones técnicas..." className="block w-full rounded-lg border-slate-600 px-4 py-2 bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm"></textarea></div>
-          <div><label className="block text-sm font-medium text-slate-700 mb-2">Descripción <span className="text-red-500">*</span></label><textarea name="description" value={productForm.description} onChange={handleFormChange} required rows={3} className="block w-full rounded-lg border-slate-600 px-4 py-2 bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm"></textarea></div>
+          {/* 1. Marca y Categoría */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div><label className="block text-sm font-medium text-slate-700 mb-2">Categoria <span className="text-red-500">*</span></label><select name="category_id" value={productForm.category_id} onChange={handleFormChange} required className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm"><option value="" disabled>Seleccionar...</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
             <div><label className="block text-sm font-medium text-slate-700 mb-2">Marca <span className="text-red-500">*</span></label><select name="brand_id" value={productForm.brand_id} onChange={handleFormChange} required className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm"><option value="" disabled>Seleccionar...</option>{brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
+            <div><label className="block text-sm font-medium text-slate-700 mb-2">Categoría <span className="text-red-500">*</span></label><select name="category_id" value={productForm.category_id} onChange={handleFormChange} required className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm"><option value="" disabled>Seleccionar...</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+          {/* 2. SKU y Nombre */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div><label className="block text-sm font-medium text-slate-700 mb-2">SKU <span className="text-red-500">*</span></label><input type="text" name="sku" value={productForm.sku} onChange={handleFormChange} required className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm" /></div>
+            <div><label className="block text-sm font-medium text-slate-700 mb-2">Nombre <span className="text-red-500">*</span></label><input type="text" name="name" value={productForm.name} onChange={handleFormChange} required className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm" /></div>
+          </div>
+
+          {/* 3. Descripción */}
+          <div><label className="block text-sm font-medium text-slate-700 mb-2">Descripción <span className="text-red-500">*</span></label><textarea name="description" value={productForm.description} onChange={handleFormChange} required rows={3} className="block w-full rounded-lg border-slate-600 px-4 py-2 bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm"></textarea></div>
+
+          {/* 4. Especificaciones Técnicas */}
+          <div><label className="block text-sm font-medium text-slate-700 mb-2">Especificaciones Técnicas</label><textarea name="specs" value={productForm.specs} onChange={handleFormChange} rows={3} placeholder="Ingrese las especificaciones técnicas..." className="block w-full rounded-lg border-slate-600 px-4 py-2 bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm"></textarea></div>
+
+          {/* 5. Stock y Estado */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div><label className="block text-sm font-medium text-slate-700 mb-2">Stock <span className="text-red-500">*</span></label><input type="number" name="stock_quantity" value={productForm.stock_quantity} onChange={handleFormChange} required className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm" /></div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Estado</label>
@@ -863,30 +1007,105 @@ export default function AdminProductsPage() {
               </div>
             </div>
           </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Valor USD</label>
-              <input type="number" name="price_usd" value={productForm.price_usd} onChange={(e) => {
-                const val = e.target.value;
-                setProductForm(prev => {
-                  const newState = { ...prev, price_usd: val };
-                  if (val && trm) {
-                    newState.original_price = (parseFloat(val) * trm).toFixed(0);
-                  }
-                  return newState;
-                });
-              }} placeholder="0.00" className="block w-full rounded-lg border-emerald-600 px-4 py-[10.5px] bg-emerald-50/30 text-emerald-900 shadow-[0_2px_4px_rgba(16,185,129,0.1)] focus:border-emerald-500 focus:ring-emerald-500 sm:text-sm font-bold" step="0.01" />
+
+          {/* Bloque de Precios (Azul) */}
+          <div className="bg-blue-50/50 p-6 rounded-2xl border border-blue-100 space-y-6">
+            <h3 className="text-sm font-bold text-blue-900 flex items-center gap-2 border-b border-blue-100 pb-2">
+              <span className="material-symbols-outlined text-[20px]">payments</span>
+              Gestión de Costos y Precios
+            </h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-xs font-bold text-blue-800 mb-2 uppercase tracking-tight">Costo de Compra (COP) <span className="text-red-500">*</span></label>
+                <input type="number" name="cost" value={productForm.cost} onChange={(e) => {
+                  const val = e.target.value;
+                  setProductForm(prev => {
+                      const newState = { ...prev, cost: val };
+                      if (val && prev.profit_percentage) {
+                          const venta = Math.round(parseFloat(val) * (1 + parseFloat(prev.profit_percentage) / 100));
+                          newState.original_price = venta.toString();
+                          newState.price_with_iva = Math.round(venta * 1.19).toString();
+                      }
+                      return newState;
+                  });
+                }} required placeholder="0" className="block w-full rounded-lg border-blue-200 px-4 py-2.5 bg-white text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-bold" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-blue-800 mb-2 uppercase tracking-tight">Costo USD (Auto-conversión)</label>
+                <input type="number" name="price_usd" value={productForm.price_usd} onChange={(e) => {
+                  const val = e.target.value;
+                  setProductForm(prev => {
+                    const newState = { ...prev, price_usd: val };
+                    if (val && trm) {
+                      const convertedCost = Math.round(parseFloat(val) * trm);
+                      newState.cost = convertedCost.toString();
+                      // Also cascade to sale price if profit exists
+                      if (prev.profit_percentage) {
+                        const venta = Math.round(convertedCost * (1 + parseFloat(prev.profit_percentage) / 100));
+                        newState.original_price = venta.toString();
+                        newState.price_with_iva = Math.round(venta * 1.19).toString();
+                      }
+                    }
+                    return newState;
+                  });
+                }} placeholder="0.00" className="block w-full rounded-lg border-emerald-200 px-4 py-2.5 bg-emerald-50/30 text-emerald-900 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 sm:text-sm font-bold" step="0.01" />
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Precio Original (COP) <span className="text-red-500">*</span></label>
-              <input type="number" name="original_price" value={productForm.original_price} onChange={handleFormChange} required placeholder="Ej: 299000" className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm font-bold" step="1" />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-xs font-bold text-blue-800 mb-2 uppercase tracking-tight">Margen Ganancia (%)</label>
+                <div className="relative">
+                  <input type="number" name="profit_percentage" value={productForm.profit_percentage} onChange={(e) => {
+                    const val = e.target.value;
+                    setProductForm(prev => {
+                        const newState = { ...prev, profit_percentage: val };
+                        if (val && prev.cost) {
+                            const venta = Math.round(parseFloat(prev.cost) * (1 + parseFloat(val) / 100));
+                            newState.original_price = venta.toString();
+                            newState.price_with_iva = Math.round(venta * 1.19).toString();
+                        }
+                        return newState;
+                    });
+                  }} placeholder="Ej: 20" className="block w-full rounded-lg border-blue-200 px-4 py-2.5 bg-white text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm pr-10 font-bold" />
+                  <span className="absolute inset-y-0 right-3 flex items-center text-blue-400 font-bold">%</span>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-blue-800 mb-2 uppercase tracking-tight">Valor Venta (COP)</label>
+                <input type="number" name="original_price" value={productForm.original_price} onChange={(e) => {
+                  const val = e.target.value;
+                  setProductForm(prev => {
+                    const newState = { ...prev, original_price: val };
+                    if (val) {
+                      newState.price_with_iva = Math.round(parseFloat(val) * 1.19).toString();
+                      // Bidirectional: Recalculate profit percentage
+                      if (prev.cost && parseFloat(prev.cost) > 0) {
+                        const costNum = parseFloat(prev.cost);
+                        const ventaNum = parseFloat(val);
+                        const gainPct = ((ventaNum / costNum) - 1) * 100;
+                        newState.profit_percentage = gainPct.toFixed(2);
+                      }
+                    } else {
+                      newState.price_with_iva = '';
+                      newState.profit_percentage = '';
+                    }
+                    return newState;
+                  });
+                }} placeholder="0" className="block w-full rounded-lg border-blue-200 px-4 py-2.5 bg-white text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-bold" />
+              </div>
             </div>
+
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Valor + IVA</label>
-              <input type="number" name="price_with_iva" value={productForm.price_with_iva} onChange={handleFormChange} placeholder="0" className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm" step="1" />
+              <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-tight">Valor Final + IVA (19%) - Lectura</label>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-3 flex items-center text-slate-400 font-bold">$</span>
+                <input type="number" name="price_with_iva" value={productForm.price_with_iva} readOnly className="block w-full rounded-lg border-slate-200 pl-8 pr-4 py-2.5 bg-slate-100 text-slate-500 shadow-inner sm:text-sm font-mono cursor-not-allowed" />
+              </div>
             </div>
           </div>
+
           <div className="flex items-center gap-3">
              <input id="is-offer" type="checkbox" checked={isOfferActive} onChange={e => setIsOfferActive(e.target.checked)} className="h-4 w-4 rounded border-slate-600 text-primary focus:ring-primary"/>
              <label htmlFor="is-offer" className="text-sm font-medium text-slate-700">Oferta</label>

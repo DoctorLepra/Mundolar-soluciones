@@ -2226,6 +2226,7 @@ const AdminClientsPage = () => {
                           <option value="Redes sociales">Redes sociales</option>
                           <option value="Gestion marketing">Gestión marketing</option>
                           <option value="Referido por cliente">Referido por cliente</option>
+                          <option value="Referido por marca">Referido por marca</option>
                           <option value="Mercado Libre">Mercado Libre</option>
                           <option value="Otro">Otro</option>
                         </select>
@@ -2233,12 +2234,13 @@ const AdminClientsPage = () => {
                     </div>
 
                     {/* Procedencia Condicional (Natural) */}
-                    {(formData.source_type === 'Redes sociales' || formData.source_type === 'Gestion marketing' || formData.source_type === 'Referido por cliente' || formData.source_type === 'Otro') && (
+                    {(formData.source_type === 'Redes sociales' || formData.source_type === 'Gestion marketing' || formData.source_type === 'Referido por cliente' || formData.source_type === 'Referido por marca' || formData.source_type === 'Otro') && (
                       <div className="md:col-span-2 animate-in fade-in slide-in-from-top-2 duration-300">
                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
                           {formData.source_type === 'Redes sociales' ? 'Seleccionar Red Social' : 
                            formData.source_type === 'Gestion marketing' ? 'Seleccionar Gestión' :
                            formData.source_type === 'Referido por cliente' ? '¿Quién lo refirió?' :
+                           formData.source_type === 'Referido por marca' ? 'Seleccionar Marca' :
                            'Especifique Procedencia'} <span className="text-red-500">*</span>
                         </label>
                         {formData.source_type === 'Redes sociales' ? (
@@ -2267,6 +2269,19 @@ const AdminClientsPage = () => {
                             <option value="">Seleccionar...</option>
                             <option value="Bases de datos">Bases de datos</option>
                             <option value="Correos masivos">Correos masivos</option>
+                          </select>
+                        ) : formData.source_type === 'Referido por marca' ? (
+                          <select 
+                            name="referred_by_brand_id" 
+                            value={formData.referred_by_brand_id} 
+                            onChange={handleInputChange} 
+                            required
+                            className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                          >
+                            <option value={0}>Seleccionar Marca...</option>
+                            {brands.map((brand) => (
+                              <option key={brand.id} value={brand.id}>{brand.name}</option>
+                            ))}
                           </select>
                         ) : (
                           <input
@@ -2399,18 +2414,20 @@ const AdminClientsPage = () => {
                             <option value="Redes sociales">Redes sociales</option>
                             <option value="Gestion marketing">Gestión marketing</option>
                             <option value="Referido por cliente">Referido por cliente</option>
+                            <option value="Referido por marca">Referido por marca</option>
                             <option value="Mercado Libre">Mercado Libre</option>
                             <option value="Otro">Otro</option>
                         </select>
                     </div>
 
                     {/* Procedencia Condicional (Empresa) */}
-                    {(formData.source_type === 'Redes sociales' || formData.source_type === 'Gestion marketing' || formData.source_type === 'Referido por cliente' || formData.source_type === 'Otro') && (
+                    {(formData.source_type === 'Redes sociales' || formData.source_type === 'Gestion marketing' || formData.source_type === 'Referido por cliente' || formData.source_type === 'Referido por marca' || formData.source_type === 'Otro') && (
                       <div className="md:col-span-2 animate-in fade-in slide-in-from-top-2 duration-300">
                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
                            {formData.source_type === 'Redes sociales' ? 'Seleccionar Red Social' : 
                             formData.source_type === 'Gestion marketing' ? 'Seleccionar Gestión' :
                             formData.source_type === 'Referido por cliente' ? '¿Quién lo refirió?' :
+                            formData.source_type === 'Referido por marca' ? 'Seleccionar Marca' :
                             'Especifique Procedencia'} <span className="text-red-500">*</span>
                          </label>
                          {formData.source_type === 'Redes sociales' ? (
@@ -2439,6 +2456,19 @@ const AdminClientsPage = () => {
                              <option value="">Seleccionar...</option>
                              <option value="Bases de datos">Bases de datos</option>
                              <option value="Correos masivos">Correos masivos</option>
+                           </select>
+                         ) : formData.source_type === 'Referido por marca' ? (
+                           <select 
+                             name="referred_by_brand_id" 
+                             value={formData.referred_by_brand_id} 
+                             onChange={handleInputChange} 
+                             required
+                             className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                           >
+                             <option value={0}>Seleccionar Marca...</option>
+                             {brands.map((brand) => (
+                               <option key={brand.id} value={brand.id}>{brand.name}</option>
+                             ))}
                            </select>
                          ) : (
                            <input

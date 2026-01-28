@@ -55,6 +55,23 @@ interface Interaction {
   created_by: string | null;
 }
 
+interface Task {
+  id: string;
+  codigo: number;
+  created_at: string;
+  title: string;
+  description: string | null;
+  due_date: string;
+  status: "Pendiente" | "Completada" | "Cancelada";
+  assigned_to: string | null;
+  client_id: string | null;
+  created_by: string | null;
+  client?: {
+    full_name: string | null;
+    company_name: string | null;
+  };
+}
+
 const CLIENT_SECTORS = [
   'Turìsmo', 'Agricultura', 'Comercial', 'Educaciòn', 'Salud', 'Industrial', 
   'Seguridad-Vigilancia', 'Hoteleria', 'Restaurante', 'Construcciòn', 
@@ -80,6 +97,7 @@ const AdminClientsPage = () => {
     total: 0,
     activeMonth: 0,
     new30d: 0,
+    pendingTasks: 0,
   });
 
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -103,6 +121,35 @@ const AdminClientsPage = () => {
   });
   const [newTag, setNewTag] = useState("");
   const [isSavingTags, setIsSavingTags] = useState(false);
+
+  // Dashboward Tabs
+  const [viewTab, setViewTab] = useState<"Clientes" | "Tareas">("Clientes");
+
+  // CRM Tasks State
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loadingTasks, setLoadingTasks] = useState(false);
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [isEditingTask, setIsEditingTask] = useState(false);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  
+  // Task Filters
+  const [taskSearchTerm, setTaskSearchTerm] = useState("");
+  const [taskStatusFilter, setTaskStatusFilter] = useState("all");
+  const [taskAdvisorFilter, setTaskAdvisorFilter] = useState("all");
+  const [taskDateFilter, setTaskDateFilter] = useState("all");
+  const [taskDueSoonFilter, setTaskDueSoonFilter] = useState(false);
+  const [isTaskFilterDropdownOpen, setIsTaskFilterDropdownOpen] = useState(false);
+  const taskDropdownRef = useRef<HTMLDivElement>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+
+  const [taskFormData, setTaskFormData] = useState({
+    title: "",
+    description: "",
+    due_date: new Date().toISOString().split("T")[0],
+    assigned_to: "",
+    client_id: "",
+    status: "Pendiente" as Task["status"],
+  });
 
   // Google Calendar / Follow-up State
   const [showFollowupForm, setShowFollowupForm] = useState(false);
@@ -144,14 +191,20 @@ const AdminClientsPage = () => {
       ) {
         setIsFilterDropdownOpen(false);
       }
+      if (
+        taskDropdownRef.current &&
+        !taskDropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsTaskFilterDropdownOpen(false);
+      }
     }
-    if (isFilterDropdownOpen) {
+    if (isFilterDropdownOpen || isTaskFilterDropdownOpen) {
       document.addEventListener("mousedown", handleClickOutside);
     }
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [isFilterDropdownOpen]);
+  }, [isFilterDropdownOpen, isTaskFilterDropdownOpen]);
 
   // Form State
   const [clientType, setClientType] = useState<"Natural" | "Empresa">(
@@ -185,10 +238,12 @@ const AdminClientsPage = () => {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
 
   const selectedClient = clients.find((c) => c.id === selectedClientId) || null;
+  const selectedTask = tasks.find((t) => t.id === selectedTaskId) || null;
 
   useEffect(() => {
     fetchClients();
     fetchBrands();
+    fetchTasks();
   }, []);
 
   const fetchBrands = async () => {
@@ -197,6 +252,113 @@ const AdminClientsPage = () => {
       .select("id, name")
       .order("name");
     if (data) setBrands(data);
+  };
+
+  const fetchTasks = async () => {
+    setLoadingTasks(true);
+    const { data, error } = await supabase
+      .from("client_tasks")
+      .select("*, client:clients(full_name, company_name)")
+      .order("due_date", { ascending: true });
+
+    if (error) {
+      console.error("Error fetching tasks:", error);
+    } else if (data) {
+      setTasks(data);
+      // Update pending tasks metric
+      const pendingCount = data.filter(t => t.status === 'Pendiente').length;
+      setMetrics(prev => ({ ...prev, pendingTasks: pendingCount }));
+    }
+    setLoadingTasks(false);
+  };
+
+  const handleCreateTask = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setIsSubmitting(true);
+
+    try {
+      const taskData = {
+        title: taskFormData.title,
+        description: taskFormData.description,
+        due_date: new Date(taskFormData.due_date).toISOString(),
+        assigned_to: taskFormData.assigned_to,
+        client_id: taskFormData.client_id || null,
+        status: taskFormData.status,
+      };
+
+      if (isEditingTask && editingTaskId) {
+        const { error } = await supabase
+          .from("client_tasks")
+          .update(taskData)
+          .eq("id", editingTaskId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("client_tasks")
+          .insert([taskData]);
+        if (error) throw error;
+      }
+
+      setIsTaskModalOpen(false);
+      setIsEditingTask(false);
+      setEditingTaskId(null);
+      setTaskFormData({
+        title: "",
+        description: "",
+        due_date: new Date().toISOString().split("T")[0],
+        assigned_to: "",
+        client_id: "",
+        status: "Pendiente",
+      });
+      fetchTasks();
+    } catch (error: any) {
+      alert(`Error al guardar tarea: ${error.message}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleUpdateTaskStatus = async (taskId: string, newStatus: Task["status"]) => {
+    try {
+      const { error } = await supabase
+        .from("client_tasks")
+        .update({ status: newStatus })
+        .eq("id", taskId);
+      
+      if (error) throw error;
+      
+      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
+      
+      // Update metric locally
+      if (newStatus === 'Completada' || newStatus === 'Cancelada') {
+        setMetrics(prev => ({ ...prev, pendingTasks: Math.max(0, prev.pendingTasks - 1) }));
+      } else if (newStatus === 'Pendiente') {
+        setMetrics(prev => ({ ...prev, pendingTasks: prev.pendingTasks + 1 }));
+      }
+    } catch (error: any) {
+      alert(`Error al actualizar estado: ${error.message}`);
+    }
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    if (!confirm("¿Estás seguro de eliminar esta tarea?")) return;
+
+    try {
+      const task = tasks.find(t => t.id === taskId);
+      const { error } = await supabase
+        .from("client_tasks")
+        .delete()
+        .eq("id", taskId);
+      
+      if (error) throw error;
+      
+      setTasks(prev => prev.filter(t => t.id !== taskId));
+      if (task?.status === 'Pendiente') {
+        setMetrics(prev => ({ ...prev, pendingTasks: Math.max(0, prev.pendingTasks - 1) }));
+      }
+    } catch (error: any) {
+      alert(`Error al eliminar tarea: ${error.message}`);
+    }
   };
 
   const fetchClients = async () => {
@@ -211,9 +373,6 @@ const AdminClientsPage = () => {
     } else if (data) {
       setClients(data);
       calculateMetrics(data);
-      if (data.length > 0 && !selectedClientId) {
-        setSelectedClientId(data[0].id);
-      }
 
       // DATA CORRECTION: Fix clients that should be active but are marked as inactive
       const inactiveWithOrders = async () => {
@@ -464,7 +623,7 @@ const AdminClientsPage = () => {
       activeMonth = 0;
     }
 
-    setMetrics({ total, activeMonth, new30d });
+    setMetrics(prev => ({ ...prev, total, activeMonth, new30d }));
   };
 
   useEffect(() => {
@@ -925,27 +1084,90 @@ const AdminClientsPage = () => {
       <header className="bg-white border-b border-slate-200 px-6 py-5 shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex flex-col gap-1">
           <h2 className="text-2xl font-bold text-slate-900 tracking-tight font-display">
-            Gestión de Clientes
+            {viewTab === "Clientes" ? "Gestión de Clientes" : "Gestión de Tareas CRM"}
           </h2>
           <p className="text-slate-500 text-sm font-display">
-            Administra la base de datos de clientes, historiales y notas.
+            {viewTab === "Clientes" 
+              ? "Administra la base de datos de clientes, historiales y notas."
+              : "Asignación y seguimiento de tareas para asesores y equipo."}
           </p>
         </div>
-        <button
-          onClick={handleOpenNewModal}
-          className="flex items-center justify-center gap-2 bg-primary hover:bg-blue-600 text-white px-5 py-2.5 rounded-lg font-bold text-sm transition-colors shadow-sm shadow-primary/30 font-display"
-        >
-          <span className="material-symbols-outlined text-[20px]">
-            person_add
-          </span>
-          <span>Nuevo Cliente</span>
-        </button>
+        <div className="flex items-center gap-3">
+          {viewTab === "Tareas" && (
+            <button
+              onClick={() => {
+                setIsEditingTask(false);
+                setTaskFormData({
+                  title: "",
+                  description: "",
+                  due_date: new Date().toISOString().split("T")[0],
+                  assigned_to: "",
+                  client_id: "",
+                  status: "Pendiente",
+                });
+                setIsTaskModalOpen(true);
+              }}
+              className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-lg font-bold text-sm transition-colors shadow-sm shadow-emerald-500/30 font-display"
+            >
+              <span className="material-symbols-outlined text-[20px]">
+                add_task
+              </span>
+              <span>Nueva Tarea</span>
+            </button>
+          )}
+          {viewTab === "Clientes" && (
+            <button
+              onClick={handleOpenNewModal}
+              className="flex items-center justify-center gap-2 bg-primary hover:bg-blue-600 text-white px-5 py-2.5 rounded-lg font-bold text-sm transition-colors shadow-sm shadow-primary/30 font-display"
+            >
+              <span className="material-symbols-outlined text-[20px]">
+                person_add
+              </span>
+              <span>Nuevo Cliente</span>
+            </button>
+          )}
+        </div>
       </header>
+
+      {/* Main Tabs */}
+      <div className="bg-white border-b border-slate-200 px-6 shrink-0 flex items-center gap-8">
+        <button
+          onClick={() => setViewTab("Clientes")}
+          className={`py-4 text-sm font-bold transition-all relative font-display ${
+            viewTab === "Clientes"
+              ? "text-primary"
+              : "text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          Directorio de Clientes
+          {viewTab === "Clientes" && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-full" />
+          )}
+        </button>
+        <button
+          onClick={() => setViewTab("Tareas")}
+          className={`py-4 text-sm font-bold transition-all relative font-display ${
+            viewTab === "Tareas"
+              ? "text-primary"
+              : "text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          Gestión de Tareas
+          {metrics.pendingTasks > 0 && (
+            <span className="ml-2 bg-red-100 text-red-600 text-[10px] px-1.5 py-0.5 rounded-full">
+              {metrics.pendingTasks}
+            </span>
+          )}
+          {viewTab === "Tareas" && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-full" />
+          )}
+        </button>
+      </div>
 
       <div className="flex flex-1 overflow-hidden">
         <div className="flex-1 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto p-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className={`grid grid-cols-1 ${viewTab === 'Clientes' ? 'md:grid-cols-4' : 'md:grid-cols-4'} gap-4 mb-6`}>
               <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-start justify-between">
                 <div>
                   <p className="text-slate-500 text-sm font-medium mb-1 font-display">
@@ -991,440 +1213,710 @@ const AdminClientsPage = () => {
                   </span>
                 </span>
               </div>
-            </div>
-
-            <div className="flex flex-col gap-4 mb-6">
-              <div className="flex flex-col md:flex-row gap-3">
-                <div className="flex-1 relative">
-                  <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-                    search
-                  </span>
-                  <input
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-slate-900 placeholder-slate-400 shadow-[0_4px_12px_rgba(0,0,0,0.15)] font-display"
-                    placeholder="Buscar por nombre, empresa o email..."
-                    type="text"
-                  />
+              <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-start justify-between">
+                <div>
+                  <p className="text-slate-500 text-sm font-medium mb-1 font-display">
+                    Tareas Pendientes
+                  </p>
+                  <p className="text-3xl font-bold text-slate-900 font-display">
+                    {metrics.pendingTasks.toLocaleString()}
+                  </p>
                 </div>
-
-                <div className="relative" ref={dropdownRef}>
-                  <button
-                    onClick={() =>
-                      setIsFilterDropdownOpen(!isFilterDropdownOpen)
-                    }
-                    className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-lg text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors shadow-[0_2px_4px_rgba(0,0,0,0.05)] font-display"
-                  >
-                    <span className="material-symbols-outlined text-[20px]">
-                      filter_list
-                    </span>
-                    Filtros
-                    {(statusFilter !== "all" ||
-                      typeFilter !== "all" ||
-                      showOnlyNew) && (
-                      <span className="size-2 rounded-full bg-primary animate-pulse"></span>
-                    )}
-                  </button>
-
-                  {isFilterDropdownOpen && (
-                    <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-200 z-50 p-4 animate-in fade-in slide-in-from-top-2 duration-200">
-                      <div className="space-y-4">
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">
-                            Estado
-                          </label>
-                          <select
-                            value={statusFilter}
-                            onChange={(e) => setStatusFilter(e.target.value)}
-                            className="w-full text-sm border-slate-200 rounded-lg focus:ring-primary py-1.5"
-                          >
-                            <option value="all">Todos</option>
-                            <option value="Activo">Activos</option>
-                            <option value="Inactivo">Inactivos</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">
-                            Tipo de Cliente
-                          </label>
-                          <select
-                            value={typeFilter}
-                            onChange={(e) => setTypeFilter(e.target.value)}
-                            className="w-full text-sm border-slate-200 rounded-lg focus:ring-primary py-1.5"
-                          >
-                            <option value="all">Todos</option>
-                            <option value="Natural">Persona Natural</option>
-                            <option value="Empresa">Empresa</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">
-                            Procedencia
-                          </label>
-                          <select
-                            value={sourceFilter}
-                            onChange={(e) => setSourceFilter(e.target.value)}
-                            className="w-full text-sm border-slate-200 rounded-lg focus:ring-primary py-1.5"
-                          >
-                            <option value="all">Todas</option>
-                            <option value="Nuevo">Nuevo</option>
-                            <option value="Mercado Libre">Mercado Libre</option>
-                            <optgroup label="Referido por Marca">
-                              {brands.map((brand) => (
-                                <option
-                                  key={brand.id}
-                                  value={`brand_${brand.id}`}
-                                >
-                                  {brand.name}
-                                </option>
-                              ))}
-                            </optgroup>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">
-                            Etiqueta
-                          </label>
-                          <select
-                            value={tagFilter}
-                            onChange={(e) => setTagFilter(e.target.value)}
-                            className="w-full text-sm border-slate-200 rounded-lg focus:ring-primary py-1.5"
-                          >
-                            <option value="all">Todas</option>
-                            {allTags.map((tag) => (
-                              <option key={tag} value={tag}>
-                                {tag}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <label className="flex items-center gap-2 cursor-pointer pt-1">
-                          <input
-                            type="checkbox"
-                            checked={showOnlyNew}
-                            onChange={(e) => setShowOnlyNew(e.target.checked)}
-                            className="rounded border-slate-300 text-primary focus:ring-primary"
-                          />
-                          <span className="text-sm font-medium text-slate-600">
-                            Solo nuevos (30d)
-                          </span>
-                        </label>
-
-                        <div className="pt-2 border-t border-slate-100 flex justify-end">
-                          <button
-                            onClick={handleClearFilters}
-                            className="text-[11px] font-bold text-primary hover:text-blue-700 uppercase tracking-wider font-display flex items-center gap-1"
-                          >
-                            <span className="material-symbols-outlined text-[16px]">
-                              filter_alt_off
-                            </span>
-                            Limpiar Filtros
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <button
-                  onClick={() => setIsReportModalOpen(true)}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-bold hover:bg-blue-600 transition-all shadow-md font-display"
-                >
-                  <span className="material-symbols-outlined text-[20px]">
-                    analytics
+                <span className="flex items-center gap-1 text-orange-600 bg-orange-50 px-2 py-1 rounded-md text-xs font-bold font-display">
+                  <span className="material-symbols-outlined text-sm">
+                    task_alt
                   </span>
-                  Informe
-                </button>
-
-                <button
-                  onClick={handleExport}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-all shadow-[0_2px_4px_rgba(0,0,0,0.05)] font-display"
-                >
-                  <span className="material-symbols-outlined text-[20px]">
-                    file_upload
-                  </span>
-                  Exportar
-                </button>
+                </span>
               </div>
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200">
-                      <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">
-                        Cliente
-                      </th>
-                      <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden md:table-cell font-display">
-                        Empresa
-                      </th>
-                      <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden lg:table-cell font-display">
-                        Contacto
-                      </th>
-                      <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden xl:table-cell font-display">
-                        Procedencia
-                      </th>
-                      <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden xl:table-cell font-display">
-                        Asesor
-                      </th>
-                      <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden xl:table-cell font-display">
-                        Etiquetas
-                      </th>
-                      <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">
-                        Estado
-                      </th>
-                      <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right font-display"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200">
-                    {loading ? (
-                      <tr>
-                        <td colSpan={7} className="p-10 text-center">
-                          <div className="size-8 border-2 border-primary border-t-transparent animate-spin rounded-full mx-auto mb-2"></div>
-                          <p className="text-sm text-slate-500 font-display">
-                            Cargando clientes...
-                          </p>
-                        </td>
-                      </tr>
-                    ) : paginatedClients.length === 0 ? (
-                      <tr>
-                        <td colSpan={7} className="p-10 text-center">
-                          <p className="text-sm text-slate-500 font-display">
-                            No hay clientes que coincidan con la búsqueda.
-                          </p>
-                        </td>
-                      </tr>
-                    ) : (
-                      paginatedClients.map((client) => (
-                        <tr
-                          key={client.id}
-                          onClick={() => setSelectedClientId(client.id)}
-                          className={`group hover:bg-slate-50 transition-colors cursor-pointer ${selectedClientId === client.id ? "bg-primary/5 border-l-4 border-l-primary" : "border-l-4 border-l-transparent"}`}
-                        >
-                          <td className="p-4">
-                            <div className="flex items-center gap-3">
-                              <div className="size-10 rounded-full overflow-hidden relative border border-slate-100 shadow-sm bg-slate-100 flex items-center justify-center">
-                                {client.photo_url ? (
-                                  <Image
-                                    src={client.photo_url}
-                                    alt={
-                                      client.full_name ||
-                                      client.company_name ||
-                                      ""
-                                    }
-                                    fill
-                                    sizes="40px"
-                                    className="object-cover"
-                                  />
-                                ) : (
-                                  <span className="material-symbols-outlined text-slate-400">
-                                    {client.client_type === 'Empresa' ? 'corporate_fare' : 'person'}
-                                  </span>
-                                )}
-                              </div>
-                              <div>
-                                <p className="font-bold text-slate-900 text-sm font-display">
-                                  {client.client_type === 'Empresa' ? (client.contact_person || 'Sin contacto') : client.full_name}
-                                </p>
-                                <p className="text-xs text-slate-500 font-display">
-                                  {client.client_type === "Natural"
-                                    ? "Persona Natural"
-                                    : "Empresa"}
-                                </p>
-                              </div>
+
+            {viewTab === "Clientes" ? (
+              <>
+                <div className="flex flex-col gap-4 mb-6">
+                  <div className="flex flex-col md:flex-row gap-3">
+                    <div className="flex-1 relative">
+                      <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                        search
+                      </span>
+                      <input
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-slate-900 placeholder-slate-400 shadow-[0_4px_12px_rgba(0,0,0,0.15)] font-display"
+                        placeholder="Buscar por nombre, empresa o email..."
+                        type="text"
+                      />
+                    </div>
+
+                    <div className="relative" ref={dropdownRef}>
+                      <button
+                        onClick={() =>
+                          setIsFilterDropdownOpen(!isFilterDropdownOpen)
+                        }
+                        className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-lg text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors shadow-[0_2px_4px_rgba(0,0,0,0.05)] font-display"
+                      >
+                        <span className="material-symbols-outlined text-[20px]">
+                          filter_list
+                        </span>
+                        Filtros
+                        {(statusFilter !== "all" ||
+                          typeFilter !== "all" ||
+                          showOnlyNew) && (
+                          <span className="size-2 rounded-full bg-primary animate-pulse"></span>
+                        )}
+                      </button>
+
+                      {isFilterDropdownOpen && (
+                        <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-200 z-50 p-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                          <div className="space-y-4">
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">
+                                Estado
+                              </label>
+                              <select
+                                value={statusFilter}
+                                onChange={(e) => setStatusFilter(e.target.value)}
+                                className="w-full text-sm border-slate-200 rounded-lg focus:ring-primary py-1.5"
+                              >
+                                <option value="all">Todos</option>
+                                <option value="Activo">Activos</option>
+                                <option value="Inactivo">Inactivos</option>
+                              </select>
                             </div>
-                          </td>
-                          <td className="p-4 hidden md:table-cell">
-                            <div className="flex items-center gap-2">
-                              <span className="material-symbols-outlined text-slate-400 text-[18px]">
-                                {client.client_type === "Natural"
-                                  ? "person"
-                                  : "domain"}
-                              </span>
-                              <span className="text-sm text-slate-700 font-display">
-                                {client.client_type === 'Empresa' ? client.full_name : "N/A"}
-                              </span>
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">
+                                Tipo de Cliente
+                              </label>
+                              <select
+                                value={typeFilter}
+                                onChange={(e) => setTypeFilter(e.target.value)}
+                                className="w-full text-sm border-slate-200 rounded-lg focus:ring-primary py-1.5"
+                              >
+                                <option value="all">Todos</option>
+                                <option value="Natural">Persona Natural</option>
+                                <option value="Empresa">Empresa</option>
+                              </select>
                             </div>
-                          </td>
-                          <td className="p-4 hidden lg:table-cell">
-                            <div className="flex flex-col font-display">
-                              <span className="text-sm text-slate-700">
-                                {client.email}
-                              </span>
-                              <span className="text-xs text-slate-500">
-                                {client.phone}
-                              </span>
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">
+                                Procedencia
+                              </label>
+                              <select
+                                value={sourceFilter}
+                                onChange={(e) => setSourceFilter(e.target.value)}
+                                className="w-full text-sm border-slate-200 rounded-lg focus:ring-primary py-1.5"
+                              >
+                                <option value="all">Todas</option>
+                                <option value="Nuevo">Nuevo</option>
+                                <option value="Mercado Libre">Mercado Libre</option>
+                                <optgroup label="Referido por Marca">
+                                  {brands.map((brand) => (
+                                    <option
+                                      key={brand.id}
+                                      value={`brand_${brand.id}`}
+                                    >
+                                      {brand.name}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              </select>
                             </div>
-                          </td>
-                          <td className="p-4 hidden xl:table-cell">
-                            <div className="flex flex-col font-display">
-                              <span className="text-sm text-slate-700 font-medium">
-                                {client.source_type || client.source || 'Nuevo'}
-                              </span>
-                              {client.source_sub_type && (
-                                <span className="text-xs text-slate-500 italic">
-                                  {client.source_type === 'Redes sociales' ? 'Red: ' : 
-                                   client.source_type === 'Gestion marketing' ? 'Mkt: ' : 
-                                   client.source_type === 'Referido por cliente' ? 'Ref: ' : ''}
-                                  {client.source_sub_type}
-                                </span>
-                              )}
-                              {client.referred_by_brand_id && client.source_type === 'Referido por marca' && (
-                                <span className="text-xs text-slate-500">
-                                  Marca: {brands.find(b => b.id === client.referred_by_brand_id)?.name || "Marca"}
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="p-4 hidden xl:table-cell">
-                             <div className="flex items-center gap-2">
-                               <span className="material-symbols-outlined text-slate-400 text-[18px]">
-                                 person_pin
-                               </span>
-                               <span className="text-sm text-slate-700 font-display">
-                                 {client.assigned_to_name || "Sin asignar"}
-                               </span>
-                             </div>
-                          </td>
-                          <td className="p-4 hidden xl:table-cell">
-                            <div className="flex flex-wrap gap-1 max-w-[200px]">
-                              {client.tags && client.tags.length > 0 ? (
-                                client.tags.slice(0, 3).map((tag) => (
-                                  <span
-                                    key={tag}
-                                    className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-bold border border-slate-200"
-                                  >
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">
+                                Etiqueta
+                              </label>
+                              <select
+                                value={tagFilter}
+                                onChange={(e) => setTagFilter(e.target.value)}
+                                className="w-full text-sm border-slate-200 rounded-lg focus:ring-primary py-1.5"
+                              >
+                                <option value="all">Todas</option>
+                                {allTags.map((tag) => (
+                                  <option key={tag} value={tag}>
                                     {tag}
-                                  </span>
-                                ))
-                              ) : (
-                                <span className="text-xs text-slate-400">
-                                  -
-                                </span>
-                              )}
-                              {client.tags && client.tags.length > 3 && (
-                                <span className="px-1.5 py-0.5 text-[10px] text-slate-400 font-medium">
-                                  +{client.tags.length - 3}
-                                </span>
-                              )}
+                                  </option>
+                                ))}
+                              </select>
                             </div>
-                          </td>
-                          <td className="p-4 whitespace-nowrap">
-                            <span
-                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${client.status === "Activo" ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-700 border-slate-200"} font-display border`}
+                            <label className="flex items-center gap-2 cursor-pointer pt-1">
+                              <input
+                                type="checkbox"
+                                checked={showOnlyNew}
+                                onChange={(e) => setShowOnlyNew(e.target.checked)}
+                                className="rounded border-slate-300 text-primary focus:ring-primary"
+                              />
+                              <span className="text-sm font-medium text-slate-600">
+                                Solo nuevos (30d)
+                              </span>
+                            </label>
+
+                            <div className="pt-2 border-t border-slate-100 flex justify-end">
+                              <button
+                                onClick={handleClearFilters}
+                                className="text-[11px] font-bold text-primary hover:text-blue-700 uppercase tracking-wider font-display flex items-center gap-1"
+                              >
+                                <span className="material-symbols-outlined text-[16px]">
+                                  filter_alt_off
+                                </span>
+                                Limpiar Filtros
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => setIsReportModalOpen(true)}
+                      className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-bold hover:bg-blue-600 transition-all shadow-md font-display"
+                    >
+                      <span className="material-symbols-outlined text-[20px]">
+                        analytics
+                      </span>
+                      Informe
+                    </button>
+
+                    <button
+                      onClick={handleExport}
+                      className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-all shadow-[0_2px_4px_rgba(0,0,0,0.05)] font-display"
+                    >
+                      <span className="material-symbols-outlined text-[20px]">
+                        file_upload
+                      </span>
+                      Exportar
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200">
+                          <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">
+                            Cliente
+                          </th>
+                          <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden md:table-cell font-display">
+                            Empresa
+                          </th>
+                          <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden lg:table-cell font-display">
+                            Contacto
+                          </th>
+                          <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden xl:table-cell font-display">
+                            Procedencia
+                          </th>
+                          <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden xl:table-cell font-display">
+                            Asesor
+                          </th>
+                          <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden xl:table-cell font-display">
+                            Etiquetas
+                          </th>
+                          <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">
+                            Estado
+                          </th>
+                          <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right font-display"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200">
+                        {loading ? (
+                          <tr>
+                            <td colSpan={7} className="p-10 text-center">
+                              <div className="size-8 border-2 border-primary border-t-transparent animate-spin rounded-full mx-auto mb-2"></div>
+                              <p className="text-sm text-slate-500 font-display">
+                                Cargando clientes...
+                              </p>
+                            </td>
+                          </tr>
+                        ) : paginatedClients.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="p-10 text-center">
+                              <p className="text-sm text-slate-500 font-display">
+                                No hay clientes que coincidan con la búsqueda.
+                              </p>
+                            </td>
+                          </tr>
+                        ) : (
+                          paginatedClients.map((client) => (
+                            <tr
+                              key={client.id}
+                              onClick={() => setSelectedClientId(client.id)}
+                              className={`group hover:bg-slate-50 transition-colors cursor-pointer ${selectedClientId === client.id ? "bg-primary/5 border-l-4 border-l-primary" : "border-l-4 border-l-transparent"}`}
                             >
-                              <span
-                                className={`size-1.5 rounded-full ${client.status === "Activo" ? "bg-emerald-500" : "bg-slate-400"}`}
-                              ></span>
-                              {client.status}
-                            </span>
-                          </td>
-                          <td className="p-4 text-right">
-                            <button className="p-2 text-slate-400 hover:text-primary transition-colors">
-                              <span className="material-symbols-outlined">
+                              <td className="p-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="size-10 rounded-full overflow-hidden relative border border-slate-100 shadow-sm bg-slate-100 flex items-center justify-center">
+                                    {client.photo_url ? (
+                                      <Image
+                                        src={client.photo_url}
+                                        alt={
+                                          client.full_name ||
+                                          client.company_name ||
+                                          ""
+                                        }
+                                        fill
+                                        sizes="40px"
+                                        className="object-cover"
+                                      />
+                                    ) : (
+                                      <span className="material-symbols-outlined text-slate-400">
+                                        {client.client_type === 'Empresa' ? 'corporate_fare' : 'person'}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div>
+                                    <p className="font-bold text-slate-900 text-sm font-display">
+                                      {client.client_type === 'Empresa' ? (client.contact_person || 'Sin contacto') : client.full_name}
+                                    </p>
+                                    <p className="text-xs text-slate-500 font-display">
+                                      {client.client_type === "Natural"
+                                        ? "Persona Natural"
+                                        : "Empresa"}
+                                    </p>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="p-4 hidden md:table-cell">
+                                <div className="flex items-center gap-2">
+                                  <span className="material-symbols-outlined text-slate-400 text-[18px]">
+                                    {client.client_type === "Natural"
+                                      ? "person"
+                                      : "domain"}
+                                  </span>
+                                  <span className="text-sm text-slate-700 font-display">
+                                    {client.client_type === 'Empresa' ? client.full_name : "N/A"}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="p-4 hidden lg:table-cell">
+                                <div className="flex flex-col font-display">
+                                  <span className="text-sm text-slate-700">
+                                    {client.email}
+                                  </span>
+                                  <span className="text-xs text-slate-500">
+                                    {client.phone}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="p-4 hidden xl:table-cell">
+                                <div className="flex flex-col font-display">
+                                  <span className="text-sm text-slate-700 font-medium">
+                                    {client.source_type || client.source || 'Nuevo'}
+                                  </span>
+                                  {client.source_sub_type && (
+                                    <span className="text-xs text-slate-500 italic">
+                                      {client.source_type === 'Redes sociales' ? 'Red: ' : 
+                                       client.source_type === 'Gestion marketing' ? 'Mkt: ' : 
+                                       client.source_type === 'Referido por cliente' ? 'Ref: ' : ''}
+                                      {client.source_sub_type}
+                                    </span>
+                                  )}
+                                  {client.referred_by_brand_id && client.source_type === 'Referido por marca' && (
+                                    <span className="text-xs text-slate-500">
+                                      Marca: {brands.find(b => b.id === client.referred_by_brand_id)?.name || "Marca"}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="p-4 hidden xl:table-cell">
+                                 <div className="flex items-center gap-2">
+                                   <span className="material-symbols-outlined text-slate-400 text-[18px]">
+                                     person_pin
+                                   </span>
+                                   <span className="text-sm text-slate-700 font-display">
+                                     {client.assigned_to_name || "Sin asignar"}
+                                   </span>
+                                 </div>
+                              </td>
+                              <td className="p-4 hidden xl:table-cell">
+                                <div className="flex flex-wrap gap-1 max-w-[200px]">
+                                  {client.tags && client.tags.length > 0 ? (
+                                    client.tags.slice(0, 3).map((tag) => (
+                                      <span
+                                        key={tag}
+                                        className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-bold border border-slate-200"
+                                      >
+                                        {tag}
+                                      </span>
+                                    ))
+                                  ) : (
+                                    <span className="text-xs text-slate-400">
+                                      -
+                                    </span>
+                                  )}
+                                  {client.tags && client.tags.length > 3 && (
+                                    <span className="px-1.5 py-0.5 text-[10px] text-slate-400 font-medium">
+                                      +{client.tags.length - 3}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="p-4 whitespace-nowrap">
+                                <span
+                                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${client.status === "Activo" ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-700 border-slate-200"} font-display border`}
+                                >
+                                  <span
+                                    className={`size-1.5 rounded-full ${client.status === "Activo" ? "bg-emerald-500" : "bg-slate-400"}`}
+                                  ></span>
+                                  {client.status}
+                                </span>
+                              </td>
+                              <td className="p-4 text-right">
+                                <button className="p-2 text-slate-400 hover:text-primary transition-colors">
+                                  <span className="material-symbols-outlined">
+                                    chevron_right
+                                  </span>
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-slate-200 sm:px-6">
+                    <div className="flex-1 flex justify-between sm:hidden">
+                      <button
+                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                        className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        Anterior
+                      </button>
+                      <button
+                        onClick={() =>
+                          setCurrentPage((p) => Math.min(totalPages, p + 1))
+                        }
+                        disabled={currentPage === totalPages}
+                        className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        Siguiente
+                      </button>
+                    </div>
+                    <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-sm text-slate-700 font-display">
+                          Mostrando{" "}
+                          <span className="font-medium">
+                            {filteredClients.length > 0 ? startItem : 0}
+                          </span>{" "}
+                          a <span className="font-medium">{endItem}</span> de{" "}
+                          <span className="font-medium">
+                            {filteredClients.length}
+                          </span>{" "}
+                          resultados
+                        </p>
+                      </div>
+                      {totalPages > 1 && (
+                        <div>
+                          <nav
+                            className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px"
+                            aria-label="Pagination"
+                          >
+                            <button
+                              onClick={() =>
+                                setCurrentPage((p) => Math.max(1, p - 1))
+                              }
+                              disabled={currentPage === 1}
+                              className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-slate-300 bg-white text-sm font-medium text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+                            >
+                              <span className="material-symbols-outlined text-[20px]">
+                                chevron_left
+                              </span>
+                            </button>
+                            {Array.from(
+                              { length: totalPages },
+                              (_, i) => i + 1,
+                            ).map((page) => (
+                              <button
+                                key={page}
+                                onClick={() => setCurrentPage(page)}
+                                aria-current={
+                                  currentPage === page ? "page" : undefined
+                                }
+                                className={`${
+                                  currentPage === page
+                                    ? "z-10 bg-primary/10 border-primary text-primary"
+                                    : "bg-white border-slate-300 text-slate-500 hover:bg-slate-50"
+                                } relative inline-flex items-center px-4 py-2 border text-sm font-medium transition-colors font-display`}
+                              >
+                                {page}
+                              </button>
+                            ))}
+                            <button
+                              onClick={() =>
+                                setCurrentPage((p) => Math.min(totalPages, p + 1))
+                              }
+                              disabled={currentPage === totalPages}
+                              className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-slate-300 bg-white text-sm font-medium text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+                            >
+                              <span className="material-symbols-outlined text-[20px]">
                                 chevron_right
                               </span>
                             </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-              <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-slate-200 sm:px-6">
-                <div className="flex-1 flex justify-between sm:hidden">
-                  <button
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    Anterior
-                  </button>
-                  <button
-                    onClick={() =>
-                      setCurrentPage((p) => Math.min(totalPages, p + 1))
-                    }
-                    disabled={currentPage === totalPages}
-                    className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    Siguiente
-                  </button>
-                </div>
-                <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm text-slate-700 font-display">
-                      Mostrando{" "}
-                      <span className="font-medium">
-                        {filteredClients.length > 0 ? startItem : 0}
-                      </span>{" "}
-                      a <span className="font-medium">{endItem}</span> de{" "}
-                      <span className="font-medium">
-                        {filteredClients.length}
-                      </span>{" "}
-                      resultados
-                    </p>
-                  </div>
-                  {totalPages > 1 && (
-                    <div>
-                      <nav
-                        className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px"
-                        aria-label="Pagination"
-                      >
-                        <button
-                          onClick={() =>
-                            setCurrentPage((p) => Math.max(1, p - 1))
-                          }
-                          disabled={currentPage === 1}
-                          className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-slate-300 bg-white text-sm font-medium text-slate-500 hover:bg-slate-50 disabled:opacity-50"
-                        >
-                          <span className="material-symbols-outlined text-[20px]">
-                            chevron_left
-                          </span>
-                        </button>
-                        {Array.from(
-                          { length: totalPages },
-                          (_, i) => i + 1,
-                        ).map((page) => (
-                          <button
-                            key={page}
-                            onClick={() => setCurrentPage(page)}
-                            aria-current={
-                              currentPage === page ? "page" : undefined
-                            }
-                            className={`${
-                              currentPage === page
-                                ? "z-10 bg-primary/10 border-primary text-primary"
-                                : "bg-white border-slate-300 text-slate-500 hover:bg-slate-50"
-                            } relative inline-flex items-center px-4 py-2 border text-sm font-medium transition-colors font-display`}
-                          >
-                            {page}
-                          </button>
-                        ))}
-                        <button
-                          onClick={() =>
-                            setCurrentPage((p) => Math.min(totalPages, p + 1))
-                          }
-                          disabled={currentPage === totalPages}
-                          className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-slate-300 bg-white text-sm font-medium text-slate-500 hover:bg-slate-50 disabled:opacity-50"
-                        >
-                          <span className="material-symbols-outlined text-[20px]">
-                            chevron_right
-                          </span>
-                        </button>
-                      </nav>
+                          </nav>
+                        </div>
+                      )}
                     </div>
-                  )}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="space-y-6">
+                {/* Task Filters & Search */}
+                <div className="flex flex-col gap-4 mb-6">
+                  <div className="flex flex-col md:flex-row gap-3">
+                    <div className="flex-1 relative">
+                      <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                        search
+                      </span>
+                      <input
+                        value={taskSearchTerm}
+                        onChange={(e) => setTaskSearchTerm(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-slate-900 placeholder-slate-400 shadow-[0_4px_12px_rgba(0,0,0,0.15)] font-display"
+                        placeholder="Buscar por ID o Título de tarea..."
+                        type="text"
+                      />
+                    </div>
+                    
+                    <div className="relative" ref={taskDropdownRef}>
+                      <button
+                        onClick={() =>
+                          setIsTaskFilterDropdownOpen(!isTaskFilterDropdownOpen)
+                        }
+                        className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-lg text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors shadow-[0_2px_4px_rgba(0,0,0,0.05)] font-display"
+                      >
+                        <span className="material-symbols-outlined text-[20px]">
+                          filter_list
+                        </span>
+                        Filtros
+                        {(taskStatusFilter !== "all" ||
+                          taskAdvisorFilter !== "all" ||
+                          taskDueSoonFilter) && (
+                          <span className="size-2 rounded-full bg-primary animate-pulse"></span>
+                        )}
+                      </button>
+
+                      {isTaskFilterDropdownOpen && (
+                        <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-200 z-50 p-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                          <div className="space-y-4">
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">
+                                Estado
+                              </label>
+                              <select
+                                value={taskStatusFilter}
+                                onChange={(e) => setTaskStatusFilter(e.target.value)}
+                                className="w-full text-sm border-slate-200 rounded-lg focus:ring-primary py-1.5"
+                              >
+                                <option value="all">Todos los Estados</option>
+                                <option value="Pendiente">Pendientes</option>
+                                <option value="Completada">Completadas</option>
+                                <option value="Cancelada">Canceladas</option>
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">
+                                Asesor
+                              </label>
+                              <select
+                                value={taskAdvisorFilter}
+                                onChange={(e) => setTaskAdvisorFilter(e.target.value)}
+                                className="w-full text-sm border-slate-200 rounded-lg focus:ring-primary py-1.5"
+                              >
+                                <option value="all">Todos los Asesores</option>
+                                {Array.from(new Set(tasks.map(t => t.assigned_to).filter(Boolean))).map(advisor => (
+                                  <option key={advisor} value={advisor!}>{advisor}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div className="pt-2 border-t border-slate-100">
+                              <button
+                                onClick={() => setTaskDueSoonFilter(!taskDueSoonFilter)}
+                                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-bold transition-all border ${
+                                  taskDueSoonFilter 
+                                    ? "bg-red-50 text-red-600 border-red-200 shadow-sm" 
+                                    : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className="material-symbols-outlined text-sm">
+                                    event_busy
+                                  </span>
+                                  <span>Vence {"<"} 3 días</span>
+                                </div>
+                                {taskDueSoonFilter && (
+                                  <span className="material-symbols-outlined text-sm">check_circle</span>
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Task Table */}
+                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead className="bg-slate-50 border-b border-slate-200">
+                        <tr>
+                          <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">ID</th>
+                          <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">Tarea</th>
+                          <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">Asignado</th>
+                          <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">Cliente</th>
+                          <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">Vencimiento</th>
+                          <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">Estado</th>
+                          <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right font-display whitespace-nowrap">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {loadingTasks ? (
+                          <tr>
+                            <td colSpan={7} className="px-6 py-10 text-center">
+                              <div className="size-6 border-2 border-primary border-t-transparent animate-spin rounded-full mx-auto mb-2"></div>
+                              <p className="text-sm text-slate-500 font-display">Cargando tareas...</p>
+                            </td>
+                          </tr>
+                        ) : tasks.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="px-6 py-10 text-center">
+                              <p className="text-sm text-slate-500 font-display">No hay tareas registradas.</p>
+                            </td>
+                          </tr>
+                        ) : (
+                          tasks
+                            .filter(task => {
+                              const searchStr = taskSearchTerm.toLowerCase();
+                              const paddedCodigo = (task.codigo?.toString() || "").padStart(4, "0");
+                              const matchesSearch = task.title.toLowerCase().includes(searchStr) || 
+                                                  paddedCodigo.includes(searchStr) ||
+                                                  (task.codigo?.toString() || "").includes(searchStr);
+                              const matchesStatus = taskStatusFilter === 'all' || task.status === taskStatusFilter;
+                              const matchesAdvisor = taskAdvisorFilter === 'all' || task.assigned_to === taskAdvisorFilter;
+                              
+                              let matchesDueSoon = true;
+                              if (taskDueSoonFilter) {
+                                const dueDate = new Date(task.due_date);
+                                const diff = dueDate.getTime() - new Date().getTime();
+                                const days = diff / (1000 * 60 * 60 * 24);
+                                matchesDueSoon = days >= 0 && days <= 3;
+                              }
+
+                              return matchesSearch && matchesStatus && matchesAdvisor && matchesDueSoon;
+                            })
+                            .map((task) => (
+                            <tr 
+                              key={task.id} 
+                              onClick={() => setSelectedTaskId(task.id)}
+                              className={`hover:bg-slate-50 group transition-colors cursor-pointer ${selectedTaskId === task.id ? 'bg-blue-50/50' : ''}`}
+                            >
+                              <td className="px-6 py-4">
+                                <span className="inline-flex items-center justify-center px-2 py-1 rounded bg-slate-100 text-slate-600 text-[10px] font-bold font-mono border border-slate-200 shadow-sm">
+                                  #{task.codigo?.toString().padStart(4, "0")}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4">
+                                <p className="text-sm font-bold text-slate-900 mb-0.5 font-display">{task.title}</p>
+                                {task.description && (
+                                  <p className="text-xs text-slate-500 line-clamp-1 font-display">{task.description}</p>
+                                )}
+                              </td>
+                              <td className="px-6 py-4">
+                                <div className="flex items-center gap-2">
+                                  <div className="size-6 rounded-full bg-slate-100 flex items-center justify-center">
+                                    <span className="material-symbols-outlined text-[14px] text-slate-400">person</span>
+                                  </div>
+                                  <span className="text-xs text-slate-700 font-medium font-display">{task.assigned_to || 'Sin asignar'}</span>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4">
+                                {task.client ? (
+                                  <p className="text-xs text-slate-700 font-medium font-display">
+                                    {task.client.full_name || task.client.company_name}
+                                  </p>
+                                ) : (
+                                  <span className="text-xs text-slate-400 font-display">Sin cliente</span>
+                                )}
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className={`text-xs font-medium font-display ${
+                                  new Date(task.due_date) < new Date() && task.status === 'Pendiente'
+                                    ? "text-red-600 font-bold" 
+                                    : "text-slate-600"
+                                }`}>
+                                  {new Date(task.due_date).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4">
+                                <select
+                                  value={task.status}
+                                  onChange={(e) => handleUpdateTaskStatus(task.id, e.target.value as Task["status"])}
+                                  className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border cursor-pointer font-display ${
+                                    task.status === 'Pendiente' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                                    task.status === 'Completada' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                    'bg-slate-50 text-slate-700 border-slate-200'
+                                  }`}
+                                >
+                                  <option value="Pendiente">Pendiente</option>
+                                  <option value="Completada">Completada</option>
+                                  <option value="Cancelada">Cancelada</option>
+                                </select>
+                              </td>
+                              <td className="px-6 py-4 text-right">
+                                <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                                  <button 
+                                    onClick={() => {
+                                      setEditingTaskId(task.id);
+                                      setIsEditingTask(true);
+                                      setTaskFormData({
+                                        title: task.title,
+                                        description: task.description || "",
+                                        due_date: task.due_date.split('T')[0],
+                                        assigned_to: task.assigned_to || "",
+                                        client_id: task.client_id || "",
+                                        status: task.status,
+                                      });
+                                      setIsTaskModalOpen(true);
+                                    }}
+                                    className="p-1.5 text-slate-400 hover:text-blue-600 transition-colors"
+                                  >
+                                    <span className="material-symbols-outlined text-[18px]">edit</span>
+                                  </button>
+                                  <button 
+                                    onClick={() => handleDeleteTask(task.id)}
+                                    className="p-1.5 text-slate-400 hover:text-red-600 transition-colors"
+                                  >
+                                    <span className="material-symbols-outlined text-[18px]">delete</span>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
 
-        <aside className="w-[400px] border-l border-slate-200 bg-white flex-col hidden 2xl:flex overflow-y-auto">
-          {!selectedClient ? (
-            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+        <aside 
+          className={`bg-white border-l border-slate-200 transition-all duration-300 ease-in-out flex flex-col overflow-hidden ${
+            (viewTab === 'Clientes' && selectedClientId) || (viewTab === 'Tareas' && selectedTaskId) ? "w-full lg:w-[500px] opacity-100" : "w-0 opacity-0 border-none"
+          }`}
+        >
+          <div className="min-w-[500px] h-full flex flex-col">
+            {(() => {
+              if (viewTab === 'Clientes') {
+                if (!selectedClient) {
+                  return (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-white">
               <span className="material-symbols-outlined text-5xl text-slate-200 mb-4">
                 person_search
               </span>
@@ -1432,9 +1924,21 @@ const AdminClientsPage = () => {
                 Selecciona un cliente para ver su perfil detallado.
               </p>
             </div>
-          ) : (
-            <div className="p-6">
-              <div className="flex justify-between items-start mb-6">
+                  );
+                } else {
+                  return (
+            <div className="flex flex-col h-full bg-white relative">
+              {/* Botón de Cierre */}
+              <button 
+                onClick={() => setSelectedClientId(null)}
+                className="absolute top-6 right-6 size-10 flex items-center justify-center text-slate-400 hover:text-red-500 transition-all z-20"
+                title="Cerrar detalles"
+              >
+                <span className="material-symbols-outlined text-[28px]">close</span>
+              </button>
+
+              <div className="p-8 flex-1 overflow-y-auto">
+              <div className="flex justify-between items-start mb-6 pr-8">
                 <div className="text-xs font-bold uppercase tracking-wider text-slate-400 font-display">
                   Perfil del Cliente
                 </div>
@@ -1898,6 +2402,69 @@ const AdminClientsPage = () => {
                       )}
                     </div>
 
+                    {/* Tareas del Cliente */}
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                      <div className="flex justify-between items-center mb-3">
+                        <h4 className="text-xs font-bold text-slate-900 font-display uppercase tracking-widest">
+                          Tareas Pendientes
+                        </h4>
+                        <button 
+                          onClick={() => {
+                            setIsEditingTask(false);
+                            setTaskFormData({
+                              title: "",
+                              description: "",
+                              due_date: new Date().toISOString().split('T')[0],
+                              assigned_to: (selectedClient as any).assigned_to_name || "",
+                              client_id: (selectedClient as any).id,
+                              status: "Pendiente",
+                            });
+                            setIsTaskModalOpen(true);
+                          }}
+                          className="flex items-center gap-1 text-[10px] font-bold text-primary hover:text-blue-700 transition-colors"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">add</span>
+                          NUEVA
+                        </button>
+                      </div>
+
+                      <div className="space-y-2">
+                        {tasks.filter(t => t.client_id === (selectedClient as any).id && t.status === 'Pendiente').length === 0 ? (
+                          <p className="text-[10px] text-slate-400 italic font-display">No hay tareas pendientes para este cliente.</p>
+                        ) : (
+                          tasks
+                            .filter(t => t.client_id === (selectedClient as any).id && t.status === 'Pendiente')
+                            .slice(0, 3)
+                            .map(task => (
+                              <div key={task.id} className="p-2 bg-white rounded-lg border border-slate-100 flex justify-between items-center group">
+                                <div className="min-w-0">
+                                  <p className="text-[11px] font-bold text-slate-700 truncate font-display">#{task.codigo?.toString().padStart(4, "0")} {task.title}</p>
+                                  <p className="text-[9px] text-slate-400 font-display">Vence: {new Date(task.due_date).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })}</p>
+                                </div>
+                                <button
+                                  onClick={() => handleUpdateTaskStatus(task.id, 'Completada')}
+                                  className="size-6 rounded-md hover:bg-emerald-50 text-slate-300 hover:text-emerald-500 transition-colors flex items-center justify-center"
+                                  title="Marcar como completada"
+                                >
+                                  <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                                </button>
+                              </div>
+                            ))
+                        )}
+                        {tasks.filter(t => t.client_id === (selectedClient as any).id && t.status === 'Pendiente').length > 3 && (
+                          <button 
+                            onClick={() => {
+                              setViewTab("Tareas");
+                              setTaskSearchTerm((selectedClient as any).full_name || (selectedClient as any).company_name);
+                            }}
+                            className="w-full py-1 text-[10px] font-bold text-slate-400 hover:text-primary transition-colors text-center font-display"
+                          >
+                            Ver todas las tareas...
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
                     <div className="space-y-4">
                       <h4 className="text-sm font-bold text-slate-900 font-display uppercase tracking-widest text-[11px] text-slate-400">
                         Línea de Tiempo
@@ -1972,27 +2539,178 @@ const AdminClientsPage = () => {
                       )}
                     </div>
                   </div>
-                )}
-
-                {/* Fixed "Add Order" button at the bottom of the sidebar */}
-                <div className="mt-6">
-                  <button
-                    onClick={() =>
-                      router.push(
-                        `/admin/pedidos?create=true&clientId=${selectedClient.id}`,
-                      )
-                    }
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-bold hover:bg-blue-600 transition-colors shadow-md shadow-primary/20 font-display"
-                  >
-                    <span className="material-symbols-outlined text-[18px]">
-                      add_shopping_cart
-                    </span>
-                    Nuevo Pedido
-                  </button>
-                </div>
+              )}
+            </div>
+          </div>
+              
+              {/* Fixed "Add Order" button at the bottom of the sidebar */}
+              <div className="border-t border-slate-100 p-8 pt-6">
+                <button
+                  onClick={() =>
+                    router.push(
+                      `/admin/pedidos?create=true&clientId=${selectedClient.id}`,
+                    )
+                  }
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-primary text-white rounded-xl text-sm font-bold hover:bg-blue-600 transition-all shadow-lg shadow-primary/25 font-display"
+                >
+                  <span className="material-symbols-outlined text-[20px]">
+                    add_shopping_cart
+                  </span>
+                  Nuevo Pedido
+                </button>
               </div>
             </div>
-          )}
+            );
+          }
+        } else {
+          if (!selectedTask) {
+              return (
+                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-white">
+                  <span className="material-symbols-outlined text-5xl text-slate-200 mb-4">
+                    task
+                  </span>
+                  <p className="text-slate-500 font-display">
+                    Selecciona una tarea para ver sus detalles.
+                  </p>
+                </div>
+                  );
+                } else {
+                  return (
+                <div className="flex flex-col h-full bg-white relative">
+                  {/* Botón de Cierre */}
+                  <button 
+                    onClick={() => setSelectedTaskId(null)}
+                    className="absolute top-6 right-6 size-10 flex items-center justify-center text-slate-400 hover:text-red-500 transition-all z-20"
+                    title="Cerrar detalles"
+                  >
+                    <span className="material-symbols-outlined text-[28px]">close</span>
+                  </button>
+
+                  <div className="p-8 pb-4 flex-1 overflow-y-auto">
+                    <div className="flex justify-between items-start mb-6 pr-8">
+                      <div className="text-xs font-bold uppercase tracking-wider text-slate-400 font-display">
+                        Detalles de la Tarea
+                      </div>
+                      <div className="inline-flex items-center justify-center px-2 py-1 rounded bg-slate-100 text-slate-600 text-[10px] font-bold font-mono border border-slate-200 shadow-sm">
+                        #{selectedTask.codigo?.toString().padStart(4, "0")}
+                      </div>
+                    </div>
+
+                    <h3 className="text-xl font-bold text-slate-900 font-display mb-2">
+                      {selectedTask.title}
+                    </h3>
+                    
+                    <div className="flex flex-wrap gap-2 mb-6">
+                      <div className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border font-display ${
+                          selectedTask.status === 'Pendiente' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                          selectedTask.status === 'Completada' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                          'bg-slate-50 text-slate-700 border-slate-200'
+                        }`}
+                      >
+                        {selectedTask.status}
+                      </div>
+                    </div>
+
+                    <div className="space-y-6">
+                      <div>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                          <span className="material-symbols-outlined text-sm">description</span>
+                          Descripción
+                        </h4>
+                        <p className="text-sm text-slate-600 font-display leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-100 italic">
+                          {selectedTask.description || "Sin descripción proporcionada."}
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                          <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-2">
+                            <span className="material-symbols-outlined text-sm">event</span>
+                            Vencimiento
+                          </h4>
+                          <p className="text-sm font-bold text-slate-700 font-display">
+                            {new Date(selectedTask.due_date).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'UTC' })}
+                          </p>
+                        </div>
+                        <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                          <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-2">
+                            <span className="material-symbols-outlined text-sm">person</span>
+                            Asignado a
+                          </h4>
+                          <p className="text-sm font-bold text-slate-700 font-display">
+                            {selectedTask.assigned_to || "No asignado"}
+                          </p>
+                        </div>
+                      </div>
+
+                      {selectedTask.client && (
+                        <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-100/50 group hover:bg-blue-50 transition-all cursor-pointer"
+                          onClick={() => {
+                            if (selectedTask.client_id) {
+                              setSelectedClientId(selectedTask.client_id);
+                              setViewTab('Clientes');
+                            }
+                          }}
+                        >
+                          <h4 className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                            <span className="material-symbols-outlined text-sm">contact_page</span>
+                            Cliente Relacionado
+                          </h4>
+                          <div className="flex items-center gap-3">
+                            <div className="size-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform">
+                               <span className="material-symbols-outlined text-lg">person</span>
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-sm font-bold text-slate-900 font-display">
+                                {selectedTask.client.full_name || selectedTask.client.company_name}
+                              </p>
+                              <p className="text-[10px] text-blue-500 font-semibold font-display">Ver perfil detallado del cliente →</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="p-8 pt-4 border-t border-slate-100 bg-white mt-auto">
+                     <div className="flex gap-3">
+                        <button 
+                           onClick={() => {
+                              setEditingTaskId(selectedTask.id);
+                              setIsEditingTask(true);
+                              setTaskFormData({
+                                title: selectedTask.title,
+                                description: selectedTask.description || "",
+                                due_date: selectedTask.due_date.split('T')[0],
+                                assigned_to: selectedTask.assigned_to || "",
+                                client_id: selectedTask.client_id || "",
+                                status: selectedTask.status,
+                              });
+                              setIsTaskModalOpen(true);
+                           }}
+                           className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-50 hover:border-slate-300 transition-all font-display"
+                        >
+                          <span className="material-symbols-outlined text-[20px]">edit</span>
+                          Editar
+                        </button>
+                        <button 
+                           onClick={(e) => {
+                             e.stopPropagation();
+                             handleDeleteTask(selectedTask.id);
+                           }}
+                           className="flex items-center justify-center size-[48px] bg-red-50 text-red-500 border border-red-100 rounded-xl hover:bg-red-500 hover:text-white transition-all shadow-sm"
+                           title="Eliminar tarea"
+                        >
+                          <span className="material-symbols-outlined text-[20px]">delete</span>
+                        </button>
+                     </div>
+                  </div>
+              </div>
+              );
+            }
+          }
+        })()}
+          </div>
         </aside>
       </div>
 
@@ -2662,6 +3380,159 @@ const AdminClientsPage = () => {
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Modal de Tareas CRM */}
+      {isTaskModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+              <div className="flex items-center gap-3">
+                <div className="size-10 rounded-xl bg-orange-100 flex items-center justify-center text-orange-600">
+                  <span className="material-symbols-outlined text-[24px]">
+                    {isEditingTask ? 'edit_note' : 'add_task'}
+                  </span>
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 font-display">
+                    {isEditingTask ? "Editar Tarea" : "Nueva Tarea CRM"}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-display">
+                    {isEditingTask ? "Modifica los detalles de la tarea" : "Asigna una nueva tarea al equipo"}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsTaskModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+                disabled={isSubmitting}
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateTask} className="p-6 space-y-5">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
+                  Título de la Tarea <span className="text-red-500">*</span>
+                </label>
+                <input
+                  required
+                  type="text"
+                  value={taskFormData.title}
+                  onChange={(e) => setTaskFormData({ ...taskFormData, title: e.target.value })}
+                  placeholder="Ej: Seguimiento de propuesta comercial"
+                  className="w-full text-sm border-slate-200 rounded-xl focus:ring-primary focus:border-primary transition-all p-2.5"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
+                  Descripción
+                </label>
+                <textarea
+                  rows={3}
+                  value={taskFormData.description}
+                  onChange={(e) => setTaskFormData({ ...taskFormData, description: e.target.value })}
+                  placeholder="Añade detalles adicionales..."
+                  className="w-full text-sm border-slate-200 rounded-xl focus:ring-primary focus:border-primary transition-all p-2.5 resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
+                    Fecha de Vencimiento <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    required
+                    type="date"
+                    value={taskFormData.due_date}
+                    onChange={(e) => setTaskFormData({ ...taskFormData, due_date: e.target.value })}
+                    className="w-full text-sm border-slate-200 rounded-xl focus:ring-primary focus:border-primary transition-all p-2.5"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
+                    Asesor Asignado
+                  </label>
+                  <input
+                    type="text"
+                    value={taskFormData.assigned_to}
+                    onChange={(e) => setTaskFormData({ ...taskFormData, assigned_to: e.target.value })}
+                    placeholder="Nombre del asesor"
+                    className="w-full text-sm border-slate-200 rounded-xl focus:ring-primary focus:border-primary transition-all p-2.5"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
+                    Cliente Relacionado (Opcional)
+                  </label>
+                  <select
+                    value={taskFormData.client_id}
+                    onChange={(e) => setTaskFormData({ ...taskFormData, client_id: e.target.value })}
+                    className="w-full text-sm border-slate-200 rounded-xl focus:ring-primary focus:border-primary transition-all p-2.5"
+                  >
+                    <option value="">Ninguno</option>
+                    {clients.map(client => (
+                      <option key={client.id} value={client.id}>
+                        {client.full_name || client.company_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {isEditingTask && (
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
+                      Estado de la Tarea
+                    </label>
+                    <select
+                      value={taskFormData.status}
+                      onChange={(e) => setTaskFormData({ ...taskFormData, status: e.target.value as Task["status"] })}
+                      className="w-full text-sm border-slate-200 rounded-xl focus:ring-primary focus:border-primary transition-all p-2.5"
+                    >
+                      <option value="Pendiente">Pendiente</option>
+                      <option value="Completada">Completada</option>
+                      <option value="Cancelada">Cancelada</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-4 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsTaskModalOpen(false)}
+                  className="flex-1 px-4 py-2.5 text-slate-600 font-bold text-sm hover:bg-slate-100 rounded-xl transition-all"
+                  disabled={isSubmitting}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="flex-1 px-4 py-2.5 bg-primary text-white font-bold text-sm rounded-xl hover:bg-blue-600 transition-all shadow-md shadow-primary/20 flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <div className="size-4 border-2 border-white/30 border-t-white animate-spin rounded-full"></div>
+                      Guardando...
+                    </>
+                  ) : (
+                    <>
+                      <span className="material-symbols-outlined text-[18px]">
+                        save
+                      </span>
+                      {isEditingTask ? "Actualizar Tarea" : "Crear Tarea"}
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

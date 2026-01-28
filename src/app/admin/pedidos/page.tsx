@@ -828,18 +828,30 @@ function AdminOrdersPageContent() {
             </div>
           </div>
         </div>
-        
-        {/* SIDEBAR - Order Details */}
-        <aside className="w-[450px] border-l border-slate-200 bg-white flex-col hidden 2xl:flex overflow-y-auto">
+
+        <aside 
+          className={`bg-white border-l border-slate-200 transition-all duration-300 ease-in-out flex flex-col overflow-hidden ${
+            selectedOrder ? "w-full lg:w-[450px] opacity-100" : "w-0 opacity-0 border-none"
+          }`}
+        >
           {!selectedOrder ? (
-            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-white lg:min-w-[450px]">
               <span className="material-symbols-outlined text-5xl text-slate-200 mb-4">receipt_long</span>
               <p className="text-slate-500 font-display">Selecciona un pedido para ver sus detalles.</p>
             </div>
           ) : (
-            <div className="flex flex-col min-h-full">
+            <div className="flex flex-col min-h-full relative">
+              {/* Botón de Cierre */}
+              <button 
+                onClick={() => setSelectedOrderId(null)}
+                className="absolute top-6 right-6 size-10 flex items-center justify-center text-slate-400 hover:text-red-500 transition-all z-20"
+                title="Cerrar detalles"
+              >
+                <span className="material-symbols-outlined text-[28px]">close</span>
+              </button>
+
               {/* Sidebar Header */}
-              <div className="p-6 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10">
+              <div className="p-8 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10 pr-24">
                 <div className="flex flex-col">
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-400 font-display">Resumen del Pedido</span>
                   <h3 className="text-xl font-bold text-slate-900 font-display mt-0.5">{formatOrderId(selectedOrder.id)}</h3>
@@ -1025,7 +1037,6 @@ function AdminOrdersPageContent() {
                     className="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 p-3.5 rounded-xl font-bold text-sm transition-all shadow-sm font-display"
                   >
                     <span className="material-symbols-outlined text-[20px]">edit</span>
-                    <span>Editar</span>
                   </button>
                 </div>
               </div>

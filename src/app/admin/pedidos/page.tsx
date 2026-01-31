@@ -7,6 +7,11 @@ import { supabase } from '@/lib/supabase';
 import { formatCurrency, formatOrderId } from '@/lib/utils';
 import { colombiaData } from '@/lib/colombia-data';
 
+interface Warehouse {
+  id: string;
+  name: string;
+}
+
 interface Client {
   id: string;
   full_name: string | null;
@@ -29,12 +34,17 @@ interface Product {
   price: number;
   image_urls: string | null;
   stock_quantity: number;
+  warehouse_id: string | null;
+  auxiliary_warehouse_id: string | null;
+  main_warehouse_stock: number;
+  auxiliary_warehouse_stock: number;
 }
 
 interface OrderItem {
   product: Product;
   quantity: number;
   unit_price: number;
+  selected_warehouse_id?: string | null;
 }
 
 interface Order {
@@ -94,6 +104,11 @@ function AdminOrdersPageContent() {
     shipping_address: ''
   });
 
+  // Multibodega states
+  const [isWarehouseSwitchModalOpen, setIsWarehouseSwitchModalOpen] = useState(false);
+  const [pendingProduct, setPendingProduct] = useState<Product | null>(null);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+
   const searchParams = useSearchParams();
   const orderIdFromUrl = searchParams.get('id');
   const shouldCreate = searchParams.get('create') === 'true';
@@ -102,6 +117,7 @@ function AdminOrdersPageContent() {
   // Fetch orders and handle URL parameters
   useEffect(() => {
     fetchOrders();
+    fetchWarehouses();
     
     if (orderIdFromUrl) {
       setSelectedOrderId(parseInt(orderIdFromUrl));
@@ -215,6 +231,16 @@ function AdminOrdersPageContent() {
     }
   };
 
+  const fetchWarehouses = async () => {
+    try {
+      const { data, error } = await supabase.from('warehouses').select('id, name');
+      if (error) throw error;
+      setWarehouses(data || []);
+    } catch (error) {
+      console.error('Error fetching warehouses:', error);
+    }
+  };
+
   const fetchOrderItems = async (orderId: number) => {
     try {
       setLoadingItems(true);
@@ -223,7 +249,8 @@ function AdminOrdersPageContent() {
         .select(`
           quantity,
           price_at_purchase,
-          products (*)
+          products (*),
+          warehouse_id
         `)
         .eq('order_id', orderId);
 
@@ -269,10 +296,11 @@ function AdminOrdersPageContent() {
       shipping_address: selectedOrder.shipping_address?.address || ''
     });
 
-    const mappedProducts: OrderItem[] = selectedOrderItems.map(item => ({
+    const mappedProducts: OrderItem[] = (selectedOrderItems || []).map(item => ({
       product: item.products,
       quantity: item.quantity,
-      unit_price: item.price_at_purchase
+      unit_price: item.price_at_purchase,
+      selected_warehouse_id: item.warehouse_id
     }));
     
     setSelectedProducts(mappedProducts);
@@ -333,7 +361,10 @@ function AdminOrdersPageContent() {
   // Fetch products for search
   const fetchProducts = async (search: string = '') => {
     try {
-      let query = supabase.from('products').select('*').eq('status', 'Activo');
+      let query = supabase.from('products').select(`
+        *,
+        brands (name)
+      `).eq('status', 'Activo');
       
       if (search) {
         query = query.or(`name.ilike.%${search}%,sku.ilike.%${search}%`);
@@ -399,10 +430,33 @@ function AdminOrdersPageContent() {
 
   // Handle product selection
   const handleAddProduct = (product: Product) => {
-    const existing = selectedProducts.find(p => p.product.id === product.id);
+    // 1. Check primary warehouse stock
+    if (product.main_warehouse_stock > 0) {
+      addOrUpdateProduct(product, product.warehouse_id);
+    } 
+    // 2. Check auxiliary warehouse stock if primary is empty
+    else if (product.auxiliary_warehouse_stock > 0) {
+      setPendingProduct(product);
+      setIsWarehouseSwitchModalOpen(true);
+    } 
+    // 3. No stock in either warehouse
+    else {
+      alert(`No hay stock disponible para ${product.name} en ninguna de las bodegas asignadas.`);
+    }
+  };
+
+  const addOrUpdateProduct = (product: Product, warehouseId: string | null) => {
+    const existing = selectedProducts.find(p => p.product.id === product.id && p.selected_warehouse_id === warehouseId);
     if (existing) {
+      // Check stock in selected warehouse
+      const currentStock = warehouseId === product.warehouse_id ? product.main_warehouse_stock : product.auxiliary_warehouse_stock;
+      if (existing.quantity + 1 > (currentStock || 0)) {
+        alert(`No hay suficiente stock en la bodega de ${warehouseId === product.warehouse_id ? 'Principal' : 'Auxiliar'}. Stock disponible: ${currentStock}`);
+        return;
+      }
+
       setSelectedProducts(selectedProducts.map(p => 
-        p.product.id === product.id 
+        (p.product.id === product.id && p.selected_warehouse_id === warehouseId)
           ? { ...p, quantity: p.quantity + 1 }
           : p
       ));
@@ -410,25 +464,38 @@ function AdminOrdersPageContent() {
       setSelectedProducts([...selectedProducts, {
         product,
         quantity: 1,
-        unit_price: product.price
+        unit_price: product.price,
+        selected_warehouse_id: warehouseId
       }]);
     }
+    setIsWarehouseSwitchModalOpen(false);
+    setPendingProduct(null);
   };
 
   // Handle quantity change
-  const handleQuantityChange = (productId: string, quantity: number) => {
+  const handleQuantityChange = (productId: string, quantity: number, warehouseId?: string | null) => {
     if (quantity <= 0) {
-      setSelectedProducts(selectedProducts.filter(p => p.product.id !== productId));
+      setSelectedProducts(selectedProducts.filter(p => !(p.product.id === productId && p.selected_warehouse_id === warehouseId)));
     } else {
-      const product = selectedProducts.find(p => p.product.id === productId);
-      if (product && quantity > product.product.stock_quantity) {
-        alert(`Solo hay ${product.product.stock_quantity} unidades disponibles de ${product.product.name}`);
-        return;
+      const item = selectedProducts.find(p => p.product.id === productId && p.selected_warehouse_id === warehouseId);
+      if (item) {
+        const currentStock = item.selected_warehouse_id === item.product.warehouse_id 
+          ? item.product.main_warehouse_stock 
+          : item.product.auxiliary_warehouse_stock;
+          
+        if (quantity > (currentStock || 0)) {
+          alert(`Solo hay ${currentStock} unidades disponibles en la bodega seleccionada`);
+          return;
+        }
+        setSelectedProducts(selectedProducts.map(p =>
+          (p.product.id === productId && p.selected_warehouse_id === warehouseId) ? { ...p, quantity } : p
+        ));
       }
-      setSelectedProducts(selectedProducts.map(p =>
-        p.product.id === productId ? { ...p, quantity } : p
-      ));
     }
+  };
+
+  const handleRemoveProduct = (productId: string, warehouseId?: string | null) => {
+    setSelectedProducts(selectedProducts.filter(p => !(p.product.id === productId && p.selected_warehouse_id === warehouseId)));
   };
 
   // Calculate total
@@ -479,23 +546,47 @@ function AdminOrdersPageContent() {
         // 1. Get previous items to restore stock
         const { data: oldItems } = await supabase
           .from('order_items')
-          .select('product_id, quantity')
+          .select('product_id, quantity, warehouse_id')
           .eq('order_id', orderId);
 
         if (oldItems && oldItems.length > 0) {
           // Restore stock in parallel
           await Promise.all(oldItems.map(async (item) => {
-            const { data: product } = await supabase
-              .from('products')
-              .select('stock_quantity')
-              .eq('id', item.product_id)
-              .single();
-            
-            if (product) {
-              await supabase
+            try {
+              const { data: product, error: fetchError } = await supabase
                 .from('products')
-                .update({ stock_quantity: product.stock_quantity + item.quantity })
-                .eq('id', item.product_id);
+                .select('stock_quantity, main_warehouse_stock, auxiliary_warehouse_stock, warehouse_id, auxiliary_warehouse_id')
+                .eq('id', item.product_id)
+                .single();
+              
+              if (fetchError) {
+                console.error(`Error fetching product ${item.product_id} for restoration:`, fetchError);
+                return;
+              }
+
+              if (product) {
+                const isMain = item.warehouse_id === product.warehouse_id;
+                const isAux = item.warehouse_id === product.auxiliary_warehouse_id;
+                
+                const updateData: any = {
+                  stock_quantity: (product.stock_quantity || 0) + item.quantity
+                };
+                
+                if (isMain) {
+                  updateData.main_warehouse_stock = (product.main_warehouse_stock || 0) + item.quantity;
+                } else if (isAux) {
+                  updateData.auxiliary_warehouse_stock = (product.auxiliary_warehouse_stock || 0) + item.quantity;
+                }
+                
+                const { error: restoreError } = await supabase
+                  .from('products')
+                  .update(updateData)
+                  .eq('id', item.product_id);
+
+                if (restoreError) console.error(`Error restoring stock for product ${item.product_id}:`, restoreError);
+              }
+            } catch (err) {
+              console.error('Unexpected error in stock restoration:', err);
             }
           }));
         }
@@ -531,7 +622,8 @@ function AdminOrdersPageContent() {
         order_id: orderId,
         product_id: parseInt(item.product.id),
         quantity: item.quantity,
-        price_at_purchase: item.unit_price
+        price_at_purchase: item.unit_price,
+        warehouse_id: item.selected_warehouse_id
       }));
 
       const { error: itemsError } = await supabase
@@ -541,24 +633,53 @@ function AdminOrdersPageContent() {
       if (itemsError) throw itemsError;
 
       // Update product stock quantities (deduct new quantities) in parallel
-      await Promise.all(selectedProducts.map(async (item) => {
-        const { data: product } = await supabase
-          .from('products')
-          .select('stock_quantity')
-          .eq('id', parseInt(item.product.id))
-          .single();
+      const stockUpdateResults = await Promise.all(selectedProducts.map(async (item) => {
+        try {
+          const productId = parseInt(item.product.id.toString());
+          const { data: product, error: fetchError } = await supabase
+            .from('products')
+            .select('stock_quantity, main_warehouse_stock, auxiliary_warehouse_stock, warehouse_id, auxiliary_warehouse_id')
+            .eq('id', productId)
+            .single();
 
-        if (product) {
+          if (fetchError || !product) {
+            console.error(`Error fetching product ${productId} for deduction:`, fetchError);
+            return { success: false, productId, error: fetchError || 'No encontrado' };
+          }
+
+          const isMain = item.selected_warehouse_id === product.warehouse_id;
+          const isAux = item.selected_warehouse_id === product.auxiliary_warehouse_id;
+          
+          const updateData: any = {
+            stock_quantity: (product.stock_quantity || 0) - item.quantity
+          };
+          
+          if (isMain) {
+            updateData.main_warehouse_stock = (product.main_warehouse_stock || 0) - item.quantity;
+          } else if (isAux) {
+            updateData.auxiliary_warehouse_stock = (product.auxiliary_warehouse_stock || 0) - item.quantity;
+          }
+
           const { error: stockError } = await supabase
             .from('products')
-            .update({ 
-              stock_quantity: product.stock_quantity - item.quantity 
-            })
-            .eq('id', parseInt(item.product.id));
+            .update(updateData)
+            .eq('id', productId);
 
-          if (stockError) console.error('Error updating stock:', stockError);
+          if (stockError) {
+            console.error(`Error updating stock for product ${productId}:`, stockError);
+            return { success: false, productId, error: stockError };
+          }
+          return { success: true };
+        } catch (err) {
+          console.error('Unexpected error in stock deduction:', err);
+          return { success: false, error: err };
         }
       }));
+
+      const failedUpdates = stockUpdateResults.filter(r => !r.success);
+      if (failedUpdates.length > 0) {
+        console.warn(`${failedUpdates.length} actualizaciones de stock fallaron.`);
+      }
 
       // Reset and close
       setIsCreateModalOpen(false);
@@ -951,7 +1072,12 @@ function AdminOrdersPageContent() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-bold text-slate-900 truncate font-display">{item.products?.name || 'Producto desconocido'}</p>
-                            <p className="text-xs text-slate-500 font-display">{item.quantity} x ${formatCurrency(item.price_at_purchase)}</p>
+                            <p className="text-xs text-slate-500 font-display flex items-center gap-2">
+                              {item.quantity} x ${formatCurrency(item.price_at_purchase)}
+                              <span className="text-[10px] font-bold text-primary bg-primary/5 px-1.5 py-0.5 rounded uppercase">
+                                {warehouses.find(w => w.id === item.warehouse_id)?.name || 'Bodega'}
+                              </span>
+                            </p>
                           </div>
                           <div className="text-right">
                             <p className="text-sm font-bold text-slate-900 font-display">
@@ -1193,35 +1319,84 @@ function AdminOrdersPageContent() {
 
                 {selectedProducts.length > 0 && (
                   <div className="space-y-2">
-                    {selectedProducts.map((item) => (
-                      <div key={item.product.id} className="flex items-center gap-4 p-3 border border-slate-200 rounded-lg">
-                        <div className="flex-1">
-                          <p className="font-medium text-slate-900 font-display">{item.product.name}</p>
-                          <p className="text-xs text-slate-500 font-display">
-                            SKU: {item.product.sku} | Disponible: <span className="font-bold text-slate-700">{item.product.stock_quantity}</span> unidades
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => handleQuantityChange(item.product.id, item.quantity - 1)}
-                            className="size-8 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-slate-700"
-                          >
-                            <span className="material-symbols-outlined text-[18px]">remove</span>
-                          </button>
-                          <span className="w-12 text-center font-bold font-display">{item.quantity}</span>
-                          <button
-                            onClick={() => handleQuantityChange(item.product.id, item.quantity + 1)}
-                            className="size-8 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-slate-700"
-                          >
-                            <span className="material-symbols-outlined text-[18px]">add</span>
-                          </button>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-bold text-slate-900 font-display">${formatCurrency(item.unit_price * item.quantity)}</p>
-                          <p className="text-xs text-slate-500 font-display">${formatCurrency(item.unit_price)} c/u</p>
-                        </div>
-                      </div>
-                    ))}
+                    <table className="min-w-full divide-y divide-slate-200">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                            Producto
+                          </th>
+                          <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                            Cantidad
+                          </th>
+                          <th scope="col" className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">
+                            Total
+                          </th>
+                          <th scope="col" className="relative px-4 py-3">
+                            <span className="sr-only">Eliminar</span>
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-slate-200">
+                        {selectedProducts.map((item, idx) => (
+                          <tr key={`${item.product.id}-${item.selected_warehouse_id || idx}`}>
+                            <td className="px-4 py-4 whitespace-nowrap">
+                              <div className="flex items-center">
+                                <div className="h-10 w-10 flex-shrink-0">
+                                  <img
+                                    className="h-10 w-10 rounded-lg object-cover border border-slate-200"
+                                    src={item.product.image_urls ? (JSON.parse(item.product.image_urls)[0] || '/placeholder.png') : '/placeholder.png'}
+                                    alt={item.product.name}
+                                    width={40}
+                                    height={40}
+                                  />
+                                </div>
+                                <div className="ml-4">
+                                  <div className="text-sm font-bold text-slate-900">{item.product.name}</div>
+                                  <div className="text-[10px] font-mono text-slate-500 uppercase flex items-center gap-1">
+                                    <span>SKU: {item.product.sku}</span>
+                                    <span className="text-slate-300">|</span>
+                                    <span className="text-primary font-bold">
+                                      Bodega: {warehouses.find(w => w.id === item.selected_warehouse_id)?.name || 'N/A'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-4 whitespace-nowrap">
+                              <div className="flex items-center border border-slate-200 rounded-lg w-fit overflow-hidden bg-white">
+                                <button
+                                  onClick={() => handleQuantityChange(item.product.id, item.quantity - 1, item.selected_warehouse_id)}
+                                  className="px-3 py-1 bg-slate-50 hover:bg-slate-100 text-slate-600 transition-colors"
+                                >
+                                  <span className="material-symbols-outlined text-[18px] leading-none">remove</span>
+                                </button>
+                                <div className="px-4 py-1 text-sm font-bold text-slate-900 min-w-[40px] text-center border-x border-slate-200">
+                                  {item.quantity}
+                                </div>
+                                <button
+                                  onClick={() => handleQuantityChange(item.product.id, item.quantity + 1, item.selected_warehouse_id)}
+                                  className="px-3 py-1 bg-slate-50 hover:bg-slate-100 text-slate-600 transition-colors"
+                                >
+                                  <span className="material-symbols-outlined text-[18px] leading-none">add</span>
+                                </button>
+                              </div>
+                            </td>
+                            <td className="px-4 py-4 whitespace-nowrap text-right">
+                              <p className="font-bold text-slate-900 font-display">${formatCurrency(item.unit_price * item.quantity)}</p>
+                              <p className="text-xs text-slate-500 font-display">${formatCurrency(item.unit_price)} c/u</p>
+                            </td>
+                            <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-medium">
+                              <button
+                                onClick={() => handleRemoveProduct(item.product.id, item.selected_warehouse_id)}
+                                className="text-red-600 hover:text-red-900 p-2 rounded-full hover:bg-red-50"
+                              >
+                                <span className="material-symbols-outlined text-[20px]">delete</span>
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                     <div className="flex justify-end pt-4 border-t border-slate-200">
                       <div className="text-right">
                         <p className="text-sm text-slate-500 font-display">Total</p>
@@ -1365,6 +1540,56 @@ function AdminOrdersPageContent() {
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Modal de Cambio de Bodega */}
+      {isWarehouseSwitchModalOpen && pendingProduct && (
+        <div className="fixed inset-0 bg-slate-900/60 z-[110] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="size-10 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center">
+                  <span className="material-symbols-outlined">warehouse</span>
+                </div>
+                <h3 className="text-lg font-bold text-slate-900 font-display">Cambio de Bodega</h3>
+              </div>
+              <button 
+                onClick={() => setIsWarehouseSwitchModalOpen(false)}
+                className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                <p className="text-sm text-amber-800 leading-relaxed">
+                  El stock en la <strong>Bodega Principal</strong> para "<strong>{pendingProduct.name}</strong>" está agotado.
+                </p>
+                <p className="text-sm text-amber-800 mt-2 font-medium">
+                  Sin embargo, hay <strong>{pendingProduct.auxiliary_warehouse_stock} unidades</strong> disponibles en la <strong>Bodega Auxiliar</strong>.
+                </p>
+              </div>
+              
+              <div className="space-y-3 pt-2">
+                <p className="text-sm font-bold text-slate-900">¿Deseas usar el stock de la Bodega Auxiliar?</p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setIsWarehouseSwitchModalOpen(false)}
+                    className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-bold hover:bg-slate-50 transition-colors"
+                  >
+                    No, cancelar
+                  </button>
+                  <button
+                    onClick={() => addOrUpdateProduct(pendingProduct, pendingProduct.auxiliary_warehouse_id)}
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-white text-sm font-bold hover:bg-primary-dark transition-colors shadow-lg shadow-primary/20"
+                  >
+                    Sí, usar Auxiliar
+                  </button>
+                </div>
               </div>
             </div>
           </div>

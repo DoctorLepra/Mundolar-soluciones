@@ -47,6 +47,7 @@ export default function AdminSidebar() {
   const menuItems = [
     { label: 'Dashboard', path: '/admin', icon: 'dashboard' },
     { label: 'Productos', path: '/admin/productos', icon: 'inventory_2' },
+    { label: 'Bodegas', path: '/admin/bodegas', icon: 'warehouse' },
     { label: 'Categorías', path: '/admin/categorias', icon: 'category' },
     { label: 'Marcas', path: '/admin/marcas', icon: 'verified' },
     { label: 'Pedidos', path: '/admin/pedidos', icon: 'shopping_cart' },

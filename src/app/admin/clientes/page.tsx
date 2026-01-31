@@ -131,6 +131,8 @@ const AdminClientsPage = () => {
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [isEditingTask, setIsEditingTask] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [isClientSearchModalOpen, setIsClientSearchModalOpen] = useState(false);
+  const [clientModalSearchTerm, setClientModalSearchTerm] = useState("");
   
   // Task Filters
   const [taskSearchTerm, setTaskSearchTerm] = useState("");
@@ -3468,22 +3470,37 @@ const AdminClientsPage = () => {
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 col-span-2">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
                     Cliente Relacionado (Opcional)
                   </label>
-                  <select
-                    value={taskFormData.client_id}
-                    onChange={(e) => setTaskFormData({ ...taskFormData, client_id: e.target.value })}
-                    className="w-full text-sm border-slate-200 rounded-xl focus:ring-primary focus:border-primary transition-all p-2.5"
-                  >
-                    <option value="">Ninguno</option>
-                    {clients.map(client => (
-                      <option key={client.id} value={client.id}>
-                        {client.full_name || client.company_name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsClientSearchModalOpen(true)}
+                      className="flex-1 flex items-center justify-between px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:border-primary hover:text-primary transition-all text-left font-display"
+                    >
+                      <div className="flex items-center gap-2 overflow-hidden">
+                        <span className="material-symbols-outlined text-slate-400 text-[20px]">person</span>
+                        <span className="truncate">
+                          {taskFormData.client_id 
+                            ? (clients.find(c => c.id === taskFormData.client_id)?.full_name || clients.find(c => c.id === taskFormData.client_id)?.company_name || "Cliente seleccionado")
+                            : "Seleccionar cliente..."}
+                        </span>
+                      </div>
+                      <span className="material-symbols-outlined text-slate-400">search</span>
+                    </button>
+                    {taskFormData.client_id && (
+                      <button
+                        type="button"
+                        onClick={() => setTaskFormData({ ...taskFormData, client_id: "" })}
+                        className="size-10 flex items-center justify-center bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-500 rounded-xl transition-all shadow-sm"
+                        title="Quitar cliente"
+                      >
+                        <span className="material-symbols-outlined">close</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
                 {isEditingTask && (
                   <div className="space-y-1.5">
@@ -3533,6 +3550,113 @@ const AdminClientsPage = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* CLIENT SELECTION MODAL FOR CRM TASKS */}
+      {isClientSearchModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+              <div className="flex items-center gap-3">
+                <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                  <span className="material-symbols-outlined text-[24px]">person_search</span>
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 font-display">Seleccionar Cliente</h3>
+                  <p className="text-xs text-slate-500 font-display">Busca y selecciona un cliente para esta tarea</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsClientSearchModalOpen(false)}
+                className="p-2 rounded-full hover:bg-slate-100 text-slate-400 transition-colors"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            
+            <div className="p-6">
+              <div className="relative">
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+                <input
+                  type="text"
+                  placeholder="Buscar por nombre, empresa o documento..."
+                  value={clientModalSearchTerm}
+                  onChange={(e) => setClientModalSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-slate-900 font-display"
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 pb-6 custom-scrollbar">
+              <div className="grid gap-3">
+                {clients.filter(client => {
+                  const search = clientModalSearchTerm.toLowerCase();
+                  return (
+                    (client.full_name?.toLowerCase().includes(search)) ||
+                    (client.company_name?.toLowerCase().includes(search)) ||
+                    (client.document_number?.includes(search)) ||
+                    (client.email?.toLowerCase().includes(search))
+                  );
+                }).length === 0 ? (
+                  <div className="py-12 text-center">
+                    <span className="material-symbols-outlined text-slate-300 text-5xl mb-3">search_off</span>
+                    <p className="text-slate-500 font-display">No se encontraron clientes que coincidan</p>
+                  </div>
+                ) : (
+                  clients
+                    .filter(client => {
+                      const search = clientModalSearchTerm.toLowerCase();
+                      return (
+                        (client.full_name?.toLowerCase().includes(search)) ||
+                        (client.company_name?.toLowerCase().includes(search)) ||
+                        (client.document_number?.includes(search)) ||
+                        (client.email?.toLowerCase().includes(search))
+                      );
+                    })
+                    .map((client) => (
+                      <button
+                        key={client.id}
+                        type="button"
+                        onClick={() => {
+                          setTaskFormData({ ...taskFormData, client_id: client.id });
+                          setIsClientSearchModalOpen(false);
+                          setClientModalSearchTerm("");
+                        }}
+                        className={`w-full p-4 border rounded-xl text-left transition-all group ${
+                          taskFormData.client_id === client.id 
+                            ? 'border-primary bg-primary/5 ring-1 ring-primary' 
+                            : 'border-slate-100 hover:border-primary hover:bg-slate-50 shadow-sm'
+                        }`}
+                      >
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1 overflow-hidden">
+                            <p className="font-bold text-slate-900 font-display group-hover:text-primary transition-colors truncate">
+                              {client.full_name || client.company_name}
+                            </p>
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1">
+                              <span className="text-xs text-slate-500 font-display flex items-center gap-1">
+                                <span className="material-symbols-outlined text-sm">badge</span>
+                                {client.document_number}
+                              </span>
+                              {client.phone && (
+                                <span className="text-xs text-slate-500 font-display flex items-center gap-1">
+                                  <span className="material-symbols-outlined text-sm">call</span>
+                                  {client.phone}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          {taskFormData.client_id === client.id && (
+                            <span className="material-symbols-outlined text-primary">check_circle</span>
+                          )}
+                        </div>
+                      </button>
+                    ))
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}

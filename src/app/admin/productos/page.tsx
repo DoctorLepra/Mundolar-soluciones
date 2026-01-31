@@ -25,6 +25,10 @@ interface Product {
   cost: number | null;
   profit_percentage: number | null;
   brand_id: number;
+  warehouse_id: string | null;
+  auxiliary_warehouse_id: string | null;
+  main_warehouse_stock: number;
+  auxiliary_warehouse_stock: number;
   brands: { name: string } | null;
   offer_start_date: string | null;
   offer_end_date: string | null;
@@ -41,6 +45,11 @@ interface Brand {
   name: string;
 }
 
+interface Warehouse {
+  id: string;
+  name: string;
+}
+
 export default function AdminProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,6 +62,7 @@ export default function AdminProductsPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   
   // Image handling states - Supporting up to 5 images
   const [imagePreviewUrls, setImagePreviewUrls] = useState<{ id: string, url: string, file?: File, isExisting?: boolean }[]>([]);
@@ -73,6 +83,10 @@ export default function AdminProductsPage() {
     stock_quantity: '',
     cost: '',
     profit_percentage: '',
+    warehouse_id: '',
+    auxiliary_warehouse_id: '',
+    main_warehouse_stock: '',
+    auxiliary_warehouse_stock: '',
     offer_start_date: '',
     offer_end_date: '',
     status: 'Activo', // Default status
@@ -110,6 +124,13 @@ export default function AdminProductsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(8);
 
+  const roundIvaPrice = (price: number): number => {
+    const remainder = price % 1000;
+    if (remainder === 0) return price;
+    if (remainder <= 500) return Math.floor(price / 1000) * 1000 + 500;
+    return Math.ceil(price / 1000) * 1000;
+  };
+
   useEffect(() => {
     const updateItemsPerPage = () => {
       if (window.innerWidth >= 1024) {
@@ -145,10 +166,11 @@ export default function AdminProductsPage() {
     const fetchData = async () => {
       setLoading(true);
       setError(null);
-      const [productsPromise, categoriesPromise, brandsPromise, trmValue] = await Promise.all([
+      const [productsPromise, categoriesPromise, brandsPromise, warehousesPromise, trmValue] = await Promise.all([
         supabase.from('products').select('*, brands(name)').order('created_at', { ascending: false }),
         supabase.from('categories').select('id, name').eq('status', 'Activo'),
         supabase.from('brands').select('id, name'),
+        supabase.from('warehouses').select('id, name').eq('status', 'Activo'),
         fetchTRM()
       ]);
       if (productsPromise.error) setError(`Error al cargar productos: ${productsPromise.error.message}`); 
@@ -160,6 +182,7 @@ export default function AdminProductsPage() {
       }
       if (categoriesPromise.error) setError(prev => `${prev || ''}, ${categoriesPromise.error.message}`); else setCategories(categoriesPromise.data as Category[]);
       if (brandsPromise.error) setError(prev => `${prev || ''}, ${brandsPromise.error.message}`); else setBrands(brandsPromise.data as Brand[]);
+      if (warehousesPromise.error) setError(prev => `${prev || ''}, ${warehousesPromise.error.message}`); else setWarehouses(warehousesPromise.data as Warehouse[]);
       setLoading(false);
     };
     fetchData();
@@ -197,12 +220,24 @@ export default function AdminProductsPage() {
 
     console.log(`Sincronizando ${productsToSync.length} productos con TRM: ${currentTrm}`);
 
-    const updates = productsToSync.map(p => ({
-      id: p.id,
-      original_price: Math.round(p.price_usd! * currentTrm),
-      price: Math.round(p.price_usd! * currentTrm), // Assuming price is same as original if no offer, but we need to check offer logic
-      last_trm_sync: new Date().toISOString()
-    }));
+    const updates = productsToSync.map(p => {
+      const newCost = Math.round(p.price_usd! * currentTrm);
+      const profitPct = p.profit_percentage || 0;
+      const ventaSugerida = newCost * (1 + profitPct / 100);
+      const finalRounded = roundIvaPrice(Math.round(ventaSugerida * 1.19));
+      const baseAjustada = Math.round(finalRounded / 1.19);
+      const margenReal = ((baseAjustada / newCost) - 1) * 100;
+
+      return {
+        id: p.id,
+        cost: newCost,
+        original_price: baseAjustada,
+        price: baseAjustada,
+        price_with_iva: finalRounded,
+        profit_percentage: margenReal,
+        last_trm_sync: new Date().toISOString()
+      };
+    });
 
     // Perform updates in batch (Supabase doesn't support bulk update with different values easily in a single call without RPC, 
     // but we can do it one by one or via a loop for now or a custom RPC)
@@ -210,8 +245,11 @@ export default function AdminProductsPage() {
     try {
       await Promise.all(updates.map(u => 
         supabase.from('products').update({ 
+          cost: u.cost,
           original_price: u.original_price,
-          price: u.price, // Note: This might overwrite active offers if not careful. 
+          price: u.price, 
+          price_with_iva: u.price_with_iva,
+          profit_percentage: u.profit_percentage,
           last_trm_sync: u.last_trm_sync 
         }).eq('id', u.id)
       ));
@@ -273,6 +311,10 @@ export default function AdminProductsPage() {
       stock_quantity: '', 
       cost: '',
       profit_percentage: '',
+      warehouse_id: '',
+      auxiliary_warehouse_id: '',
+      main_warehouse_stock: '0',
+      auxiliary_warehouse_stock: '0',
       offer_start_date: '', 
       offer_end_date: '', 
       status: 'Activo' 
@@ -321,6 +363,10 @@ export default function AdminProductsPage() {
         stock_quantity: product.stock_quantity.toString(),
         cost: product.cost?.toString() || '',
         profit_percentage: product.profit_percentage?.toString() || '',
+        warehouse_id: product.warehouse_id || '',
+        auxiliary_warehouse_id: product.auxiliary_warehouse_id || '',
+        main_warehouse_stock: product.main_warehouse_stock?.toString() || '0',
+        auxiliary_warehouse_stock: product.auxiliary_warehouse_stock?.toString() || '0',
         offer_start_date: formatDateTimeLocal(product.offer_start_date),
         offer_end_date: formatDateTimeLocal(product.offer_end_date),
         status: product.status === 'Archivado' ? 'Inactivo' : (product.status || 'Activo'),
@@ -333,6 +379,41 @@ export default function AdminProductsPage() {
   };
 
   const handleCloseModal = () => setIsProductModalOpen(false);
+  
+  const harmonizePrice = (fieldName: string, value: string) => {
+    setProductForm(prev => {
+        const costNum = parseFloat(prev.cost || '0');
+        const profitPctNum = parseFloat(prev.profit_percentage || '0');
+        const originalPriceNum = parseFloat(prev.original_price || '0');
+        
+        // Final Price based on current values (rounded)
+        let finalRounded = 0;
+        if (fieldName === 'original_price') {
+            finalRounded = roundIvaPrice(Math.round(parseFloat(value) * 1.19));
+        } else if (fieldName === 'profit_percentage') {
+            const ventaSugerida = costNum * (1 + parseFloat(value) / 100);
+            finalRounded = roundIvaPrice(Math.round(ventaSugerida * 1.19));
+        } else if (fieldName === 'cost') {
+            const ventaSugerida = parseFloat(value) * (1 + profitPctNum / 100);
+            finalRounded = roundIvaPrice(Math.round(ventaSugerida * 1.19));
+        } else {
+            // Default snap based on existing original_price
+            finalRounded = roundIvaPrice(Math.round(originalPriceNum * 1.19));
+        }
+
+        const baseAjustada = Math.round(finalRounded / 1.19);
+        const newState = { ...prev, [fieldName]: value, price_with_iva: finalRounded.toString(), original_price: baseAjustada.toString() };
+        
+        // Recalculate profit percentage for consistency
+        const currentCost = fieldName === 'cost' ? parseFloat(value) : costNum;
+        if (currentCost > 0) {
+            const margenReal = ((baseAjustada / currentCost) - 1) * 100;
+            newState.profit_percentage = margenReal.toFixed(2);
+        }
+
+        return newState;
+    });
+  };
 
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -381,10 +462,11 @@ export default function AdminProductsPage() {
     setIsSubmitting(true);
     setFormError(null);
 
-    const { name, description, category_id, brand_id, sku, price, original_price, stock_quantity, offer_start_date, offer_end_date, status, price_usd, price_with_iva, specs, cost, profit_percentage } = productForm;
+    const { name, description, category_id, brand_id, sku, price, original_price, main_warehouse_stock, auxiliary_warehouse_stock, offer_start_date, offer_end_date, status, price_usd, price_with_iva, specs, cost, profit_percentage, warehouse_id, auxiliary_warehouse_id } = productForm;
+    const totalStock = (parseInt(main_warehouse_stock || '0') + parseInt(auxiliary_warehouse_stock || '0'));
 
-    if (!name || !description || !category_id || !brand_id || !sku || !original_price || !stock_quantity) {
-      setFormError('Todos los campos marcados con * son obligatorios.');
+    if (!name || !description || !category_id || !brand_id || !sku || !original_price || !warehouse_id) {
+      setFormError('Todos los campos marcados con * son obligatorios, incluyendo la Bodega Principal.');
       setIsSubmitting(false); return;
     }
     if(isOfferActive && (!price || !offer_start_date || !offer_end_date)) {
@@ -520,13 +602,17 @@ export default function AdminProductsPage() {
           price_usd: price_usd ? parseFloat(price_usd) : null,
           price_with_iva: price_with_iva ? parseFloat(price_with_iva) : null,
           specs: specs || null,
-          stock_quantity: parseInt(stock_quantity), 
+          stock_quantity: totalStock,
+          main_warehouse_stock: parseInt(main_warehouse_stock || '0'),
+          auxiliary_warehouse_stock: parseInt(auxiliary_warehouse_stock || '0'),
           cost: cost ? parseFloat(cost) : null,
           profit_percentage: profit_percentage ? parseFloat(profit_percentage) : null,
           image_urls: finalUrls, 
           status: dbStatus, 
           offer_start_date: finalOfferStartDate, 
           offer_end_date: finalOfferEndDate,
+          warehouse_id: warehouse_id || null,
+          auxiliary_warehouse_id: auxiliary_warehouse_id || null,
           last_trm_sync: price_usd ? new Date().toISOString() : null
       };
       
@@ -716,14 +802,19 @@ export default function AdminProductsPage() {
             rawCostCop = Math.round(rawCostUsd * currentTrm);
         }
 
-        // 2. Calculate Sale Price if Profit Percentage is provided
-        if (profitPct > 0 && rawCostCop > 0 && valVenta <= 0) {
-            valVenta = Math.round(rawCostCop * (1 + profitPct / 100));
-        }
-
-        // 3. Calculate Final Price with IVA if empty
-        if (valIvaPlus <= 0 && valVenta > 0) {
-            valIvaPlus = Math.round(valVenta * 1.19);
+        // 2 & 3. Calculate Sale Price with Rounding Adjustment
+        let profitPctCalculated = profitPct;
+        if (profitPct > 0 && rawCostCop > 0) {
+            const ventaSugerida = rawCostCop * (1 + profitPct / 100);
+            valIvaPlus = roundIvaPrice(Math.round(ventaSugerida * 1.19));
+            valVenta = Math.round(valIvaPlus / 1.19);
+            profitPctCalculated = ((valVenta / rawCostCop) - 1) * 100;
+        } else if (valVenta > 0) {
+            valIvaPlus = roundIvaPrice(Math.round(valVenta * 1.19));
+            valVenta = Math.round(valIvaPlus / 1.19);
+            if (rawCostCop > 0) {
+                profitPctCalculated = ((valVenta / rawCostCop) - 1) * 100;
+            }
         }
 
         const rowErrors: string[] = [];
@@ -751,7 +842,7 @@ export default function AdminProductsPage() {
             description: desc,
             specs: specs || null,
             cost: rawCostCop > 0 ? rawCostCop : null,
-            profit_percentage: profitPct > 0 ? profitPct : null,
+            profit_percentage: profitPctCalculated > 0 ? profitPctCalculated : null,
             price_usd: rawCostUsd > 0 ? rawCostUsd : null,
             original_price: valVenta > 0 ? valVenta : (rawCostCop > 0 ? rawCostCop : null),
             price: valVenta > 0 ? valVenta : (rawCostCop > 0 ? rawCostCop : null),
@@ -881,7 +972,9 @@ export default function AdminProductsPage() {
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Categoría</th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">SKU</th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Venta / +IVA</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Stock</th>
+                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Bodega Principal</th>
+                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Bodega Auxiliar</th>
+                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Stock Total</th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Estado</th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Acciones</th>
                 </tr>
@@ -928,7 +1021,36 @@ export default function AdminProductsPage() {
                           )}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center"><div className="flex flex-col items-center"><span className={`text-sm font-medium text-${stockInfo.color}-600`}>{p.stock_quantity}</span><span className={`text-[10px] text-${stockInfo.color}-500/70`}>{stockInfo.unit}</span></div></td>
+                      <td className="px-6 py-4 whitespace-nowrap text-center">
+                        <div className="flex flex-col items-center">
+                          <span className="text-xs font-bold text-primary bg-primary/5 px-2 py-1 rounded-md">
+                            {warehouses.find(w => w.id === p.warehouse_id)?.name || 'No asignada'}
+                          </span>
+                          <span className="text-[10px] text-slate-500 mt-1 font-mono">
+                            {p.main_warehouse_stock || 0} unid.
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-center">
+                        <div className="flex flex-col items-center">
+                          <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2 py-1 rounded-md">
+                            {warehouses.find(w => w.id === p.auxiliary_warehouse_id)?.name || 'Ninguna'}
+                          </span>
+                          <span className="text-[10px] text-slate-400 mt-1 font-mono">
+                            {p.auxiliary_warehouse_stock || 0} unid.
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-center">
+                        <div className="flex flex-col items-center">
+                          <span className={`text-sm font-bold text-${stockInfo.color}-600`}>
+                            {p.stock_quantity}
+                          </span>
+                          <span className={`text-[10px] text-${stockInfo.color}-500/70`}>
+                            {stockInfo.unit}
+                          </span>
+                        </div>
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-3">
                           <button
@@ -945,7 +1067,7 @@ export default function AdminProductsPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right"><div className="flex items-center justify-end gap-2"><button onClick={() => handleOpenEditModal(p)} className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"><span className="material-symbols-outlined text-[20px]">edit</span></button><button onClick={() => openDeleteModal(p)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"><span className="material-symbols-outlined text-[20px]">delete</span></button></div></td>
                     </tr>);
-                })) : (<tr><td colSpan={7} className="text-center p-8 text-slate-500">No se encontraron productos.</td></tr>)
+                })) : (<tr><td colSpan={9} className="text-center p-8 text-slate-500">No se encontraron productos.</td></tr>)
               }
             </tbody>
           </table>
@@ -988,9 +1110,8 @@ export default function AdminProductsPage() {
           {/* 4. Especificaciones Técnicas */}
           <div><label className="block text-sm font-medium text-slate-700 mb-2">Especificaciones Técnicas</label><textarea name="specs" value={productForm.specs} onChange={handleFormChange} rows={3} placeholder="Ingrese las especificaciones técnicas..." className="block w-full rounded-lg border-slate-600 px-4 py-2 bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm"></textarea></div>
 
-          {/* 5. Stock y Estado */}
+          {/* 5. Estado y Ubicación */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div><label className="block text-sm font-medium text-slate-700 mb-2">Stock <span className="text-red-500">*</span></label><input type="number" name="stock_quantity" value={productForm.stock_quantity} onChange={handleFormChange} required className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm" /></div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Estado</label>
               <div className="flex items-center gap-3 h-[38px]">
@@ -1005,6 +1126,80 @@ export default function AdminProductsPage() {
                   {productForm.status}
                 </span>
               </div>
+            </div>
+            <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Stock Total (Calculado)</label>
+                <div className="px-4 py-[10.5px] bg-slate-100 rounded-lg border border-slate-200 text-slate-500 font-bold text-sm">
+                    {(parseInt(productForm.main_warehouse_stock || '0') + parseInt(productForm.auxiliary_warehouse_stock || '0')).toString()} unidades
+                </div>
+            </div>
+          </div>
+
+          {/* 6. Bodegas y Stocks Individuales */}
+          <div className="space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
+            <h3 className="text-sm font-bold text-slate-900 border-b border-slate-200 pb-2 flex items-center gap-2">
+                <span className="material-symbols-outlined text-[20px]">inventory</span>
+                Distribución de Stock
+            </h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">Bodega Principal <span className="text-red-500">*</span></label>
+                        <select 
+                            name="warehouse_id" 
+                            value={productForm.warehouse_id} 
+                            onChange={handleFormChange} 
+                            required 
+                            className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm"
+                        >
+                            <option value="">Seleccionar...</option>
+                            {warehouses.map(w => <option key={w.id} value={w.id}>{w.name} ({w.id})</option>)}
+                        </select>
+                    </div>
+                    {productForm.warehouse_id && (
+                        <div className="animate-in slide-in-from-top-2 duration-300">
+                            <label className="block text-sm font-medium text-primary mb-2 italic">Stock en Bodega Principal *</label>
+                            <input 
+                                type="number" 
+                                name="main_warehouse_stock" 
+                                value={productForm.main_warehouse_stock} 
+                                onChange={handleFormChange} 
+                                placeholder="0"
+                                required
+                                className="block w-full rounded-lg border-primary/30 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm font-bold" 
+                            />
+                        </div>
+                    )}
+                </div>
+
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">Bodega Auxiliar</label>
+                        <select 
+                            name="auxiliary_warehouse_id" 
+                            value={productForm.auxiliary_warehouse_id} 
+                            onChange={handleFormChange} 
+                            className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm"
+                        >
+                            <option value="">Ninguna</option>
+                            {warehouses.map(w => <option key={w.id} value={w.id}>{w.name} ({w.id})</option>)}
+                        </select>
+                    </div>
+                    {productForm.auxiliary_warehouse_id && (
+                        <div className="animate-in slide-in-from-top-2 duration-300">
+                            <label className="block text-sm font-medium text-slate-700 mb-2 italic">Stock en Bodega Auxiliar</label>
+                            <input 
+                                type="number" 
+                                name="auxiliary_warehouse_stock" 
+                                value={productForm.auxiliary_warehouse_stock} 
+                                onChange={handleFormChange} 
+                                placeholder="0"
+                                className="block w-full rounded-lg border-slate-300 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm" 
+                            />
+                        </div>
+                    )}
+                </div>
             </div>
           </div>
 
@@ -1025,31 +1220,40 @@ export default function AdminProductsPage() {
                       if (val && prev.profit_percentage) {
                           const venta = Math.round(parseFloat(val) * (1 + parseFloat(prev.profit_percentage) / 100));
                           newState.original_price = venta.toString();
-                          newState.price_with_iva = Math.round(venta * 1.19).toString();
+                          newState.price_with_iva = roundIvaPrice(Math.round(venta * 1.19)).toString();
                       }
                       return newState;
                   });
-                }} required placeholder="0" className="block w-full rounded-lg border-blue-200 px-4 py-2.5 bg-white text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-bold" />
+                }} 
+                onBlur={(e) => harmonizePrice('cost', e.target.value)}
+                required placeholder="0" className="block w-full rounded-lg border-blue-200 px-4 py-2.5 bg-white text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-bold" />
               </div>
               <div>
                 <label className="block text-xs font-bold text-blue-800 mb-2 uppercase tracking-tight">Costo USD (Auto-conversión)</label>
                 <input type="number" name="price_usd" value={productForm.price_usd} onChange={(e) => {
                   const val = e.target.value;
-                  setProductForm(prev => {
-                    const newState = { ...prev, price_usd: val };
-                    if (val && trm) {
-                      const convertedCost = Math.round(parseFloat(val) * trm);
-                      newState.cost = convertedCost.toString();
-                      // Also cascade to sale price if profit exists
-                      if (prev.profit_percentage) {
-                        const venta = Math.round(convertedCost * (1 + parseFloat(prev.profit_percentage) / 100));
-                        newState.original_price = venta.toString();
-                        newState.price_with_iva = Math.round(venta * 1.19).toString();
+                    setProductForm(prev => {
+                      const newState = { ...prev, price_usd: val };
+                      if (val && trm) {
+                        const convertedCost = Math.round(parseFloat(val) * trm);
+                        newState.cost = convertedCost.toString();
+                        // Cascade to sale price (preview)
+                        if (prev.profit_percentage) {
+                          const venta = Math.round(convertedCost * (1 + parseFloat(prev.profit_percentage) / 100));
+                          newState.original_price = venta.toString();
+                          newState.price_with_iva = roundIvaPrice(Math.round(venta * 1.19)).toString();
+                        }
                       }
-                    }
-                    return newState;
-                  });
-                }} placeholder="0.00" className="block w-full rounded-lg border-emerald-200 px-4 py-2.5 bg-emerald-50/30 text-emerald-900 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 sm:text-sm font-bold" step="0.01" />
+                      return newState;
+                    });
+                }} 
+                onBlur={(e) => {
+                  if (e.target.value && trm) {
+                    const convertedCost = Math.round(parseFloat(e.target.value) * trm);
+                    harmonizePrice('cost', convertedCost.toString());
+                  }
+                }}
+                placeholder="0.00" className="block w-full rounded-lg border-emerald-200 px-4 py-2.5 bg-emerald-50/30 text-emerald-900 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 sm:text-sm font-bold" step="0.01" />
               </div>
             </div>
 
@@ -1064,11 +1268,13 @@ export default function AdminProductsPage() {
                         if (val && prev.cost) {
                             const venta = Math.round(parseFloat(prev.cost) * (1 + parseFloat(val) / 100));
                             newState.original_price = venta.toString();
-                            newState.price_with_iva = Math.round(venta * 1.19).toString();
+                            newState.price_with_iva = roundIvaPrice(Math.round(venta * 1.19)).toString();
                         }
                         return newState;
                     });
-                  }} placeholder="Ej: 20" className="block w-full rounded-lg border-blue-200 px-4 py-2.5 bg-white text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm pr-10 font-bold" />
+                  }} 
+                  onBlur={(e) => harmonizePrice('profit_percentage', e.target.value)}
+                  placeholder="Ej: 20" className="block w-full rounded-lg border-blue-200 px-4 py-2.5 bg-white text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm pr-10 font-bold" />
                   <span className="absolute inset-y-0 right-3 flex items-center text-blue-400 font-bold">%</span>
                 </div>
               </div>
@@ -1076,24 +1282,27 @@ export default function AdminProductsPage() {
                 <label className="block text-xs font-bold text-blue-800 mb-2 uppercase tracking-tight">Valor Venta (COP)</label>
                 <input type="number" name="original_price" value={productForm.original_price} onChange={(e) => {
                   const val = e.target.value;
-                  setProductForm(prev => {
-                    const newState = { ...prev, original_price: val };
-                    if (val) {
-                      newState.price_with_iva = Math.round(parseFloat(val) * 1.19).toString();
-                      // Bidirectional: Recalculate profit percentage
-                      if (prev.cost && parseFloat(prev.cost) > 0) {
-                        const costNum = parseFloat(prev.cost);
+                    setProductForm(prev => {
+                      const newState = { ...prev, original_price: val };
+                      if (val) {
                         const ventaNum = parseFloat(val);
-                        const gainPct = ((ventaNum / costNum) - 1) * 100;
-                        newState.profit_percentage = gainPct.toFixed(2);
+                        newState.price_with_iva = roundIvaPrice(Math.round(ventaNum * 1.19)).toString();
+                        
+                        // Bidirectional: Recalculate profit percentage
+                        if (prev.cost && parseFloat(prev.cost) > 0) {
+                          const costNum = parseFloat(prev.cost);
+                          const gainPct = ((ventaNum / costNum) - 1) * 100;
+                          newState.profit_percentage = gainPct.toFixed(2);
+                        }
+                      } else {
+                        newState.price_with_iva = '';
+                        newState.profit_percentage = '';
                       }
-                    } else {
-                      newState.price_with_iva = '';
-                      newState.profit_percentage = '';
-                    }
-                    return newState;
-                  });
-                }} placeholder="0" className="block w-full rounded-lg border-blue-200 px-4 py-2.5 bg-white text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-bold" />
+                      return newState;
+                    });
+                  }} 
+                  onBlur={(e) => harmonizePrice('original_price', e.target.value)}
+                  placeholder="0" className="block w-full rounded-lg border-blue-200 px-4 py-2.5 bg-white text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-bold" />
               </div>
             </div>
 
@@ -1170,7 +1379,7 @@ export default function AdminProductsPage() {
         </div>
       </div></div>)}
 
-      {isDeleteModalOpen && productToDelete && (<div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true"><div className="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col"><div className="p-6 flex items-start gap-4"><div className="size-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center shrink-0"><span className="material-symbols-outlined text-3xl">warning</span></div><div><h2 className="text-xl font-bold text-slate-900">Eliminar Producto</h2><p className="text-slate-600 mt-2">¿Estás seguro de que quieres eliminar "<strong>{productToDelete.name}</strong>"? Esta acción es irreversible.</p></div></div><div className="p-6 border-t border-slate-200 bg-slate-50 flex justify-end gap-3"><button onClick={closeDeleteModal} type="button" className="px-5 py-2.5 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm font-bold shadow-sm hover:bg-slate-50">Cancelar</button><button onClick={handleConfirmDelete} disabled={isDeleting} type="button" className="px-5 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-bold shadow-md disabled:bg-red-600/50 disabled:cursor-not-allowed transition-all">{isDeleting ? 'Eliminando...' : 'Sí, eliminar'}</button></div></div></div>)}
+{isDeleteModalOpen && productToDelete && (<div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true"><div className="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col"><div className="p-6 flex items-start gap-4"><div className="size-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center shrink-0"><span className="material-symbols-outlined text-3xl">warning</span></div><div><h2 className="text-xl font-bold text-slate-900">Eliminar Producto</h2><p className="text-slate-600 mt-2">¿Estás seguro de que quieres eliminar "<strong>{productToDelete?.name}</strong>"? Esta acción es irreversible.</p></div></div><div className="p-6 border-t border-slate-200 bg-slate-50 flex justify-end gap-3"><button onClick={closeDeleteModal} type="button" className="px-5 py-2.5 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm font-bold shadow-sm hover:bg-slate-50">Cancelar</button><button onClick={handleConfirmDelete} disabled={isDeleting} type="button" className="px-5 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-bold shadow-md disabled:bg-red-600/50 disabled:cursor-not-allowed transition-all">{isDeleting ? 'Eliminando...' : 'Sí, eliminar'}</button></div></div></div>)}
 
       {/* Modal de Progreso/Procesamiento */}
       {isProcessingImport && (

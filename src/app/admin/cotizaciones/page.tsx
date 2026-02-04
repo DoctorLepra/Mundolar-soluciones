@@ -509,33 +509,34 @@ function AdminQuotesPageContent() {
             })}
           </div>
 
-          {/* Filters */}
-          <div className="flex flex-col md:flex-row gap-4 mb-6 items-center">
-            <div className="flex-1 relative w-full">
-              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
-              <input 
-                type="text" 
-                placeholder="Buscar por número o cliente..."
-                className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary outline-none shadow-sm"
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-              />
-            </div>
-            
-            <div className="flex bg-white p-1 rounded-xl border border-slate-200 shadow-sm overflow-x-auto whitespace-nowrap max-w-full">
-              {['all', 'Pendiente', 'Aprobada', 'Renovada', 'Cancelada'].map((status) => (
-                <button
-                  key={status}
-                  onClick={() => setStatusFilter(status)}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                    statusFilter === status 
-                      ? 'bg-slate-900 text-white shadow-md' 
-                      : 'text-slate-500 hover:bg-slate-50'
-                  }`}
+          {/* Filters (Sync con Pedidos) */}
+          <div className="flex flex-col gap-4 mb-6">
+            <div className="flex flex-col md:flex-row gap-3">
+              <div className="flex-1 relative">
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+                <input 
+                  type="text" 
+                  placeholder="Buscar por número o cliente..."
+                  className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-slate-900 placeholder-slate-400 shadow-[0_4px_12px_rgba(0,0,0,0.15)] font-display"
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                />
+              </div>
+              
+              <div className="relative">
+                <select 
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="appearance-none px-4 py-2.5 bg-white border border-slate-200 rounded-lg text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors shadow-[0_2px_4px_rgba(0,0,0,0.05)] font-display pr-10 outline-none focus:ring-2 focus:ring-primary/20"
                 >
-                  {status === 'all' ? 'Todos' : status}
-                </button>
-              ))}
+                  <option value="all">Todos los Estados</option>
+                  <option value="Pendiente">Pendiente</option>
+                  <option value="Aprobada">Aprobada</option>
+                  <option value="Renovada">Renovada</option>
+                  <option value="Cancelada">Cancelada</option>
+                </select>
+                <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">expand_more</span>
+              </div>
             </div>
           </div>
 

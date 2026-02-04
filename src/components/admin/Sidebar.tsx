@@ -51,6 +51,7 @@ export default function AdminSidebar() {
     { label: 'Categorías', path: '/admin/categorias', icon: 'category' },
     { label: 'Marcas', path: '/admin/marcas', icon: 'verified' },
     { label: 'Pedidos', path: '/admin/pedidos', icon: 'shopping_cart' },
+    { label: 'Cotizaciones', path: '/admin/cotizaciones', icon: 'request_quote' },
     { label: 'Clientes', path: '/admin/clientes', icon: 'group' },
   ];
 

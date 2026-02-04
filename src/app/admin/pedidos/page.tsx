@@ -54,6 +54,8 @@ interface Order {
   total_amount: number;
   status: string;
   shipping_address: any;
+  subtotal?: number;
+  discount_percentage?: number;
   clients?: Client;
   order_items?: {
     quantity: number;
@@ -101,7 +103,8 @@ function AdminOrdersPageContent() {
     contact_email: '',
     shipping_department: '',
     shipping_municipality: '',
-    shipping_address: ''
+    shipping_address: '',
+    discount_percentage: '0'
   });
 
   // Multibodega states
@@ -124,12 +127,61 @@ function AdminOrdersPageContent() {
     }
 
     if (shouldCreate) {
-      setIsCreateModalOpen(true);
-      if (clientIdFromUrl) {
+      const fromQuote = searchParams.get('fromQuote');
+      if (fromQuote) {
+        handleLoadFromQuote(fromQuote);
+      } else if (clientIdFromUrl) {
         handlePreSelectClient(clientIdFromUrl);
       }
+      setIsCreateModalOpen(true);
     }
-  }, [orderIdFromUrl, shouldCreate, clientIdFromUrl]);
+  }, [orderIdFromUrl, shouldCreate, clientIdFromUrl, searchParams]);
+
+  const handleLoadFromQuote = async (quoteId: string) => {
+    try {
+      setLoadingItems(true);
+      const { data: quote, error: quoteError } = await supabase
+        .from('quotes')
+        .select('*, clients(*)')
+        .eq('id', quoteId)
+        .single();
+      
+      if (quoteError || !quote) throw quoteError;
+
+      const { data: items, error: itemsError } = await supabase
+        .from('quote_items')
+        .select('*, products(*)')
+        .eq('quote_id', quoteId);
+      
+      if (itemsError) throw itemsError;
+
+      setSelectedClient(quote.clients);
+      setClientSearchTerm(quote.clients.document_number || quote.clients.nit || '');
+      setOrderForm({
+        contact_phone: quote.clients.phone || '',
+        contact_email: quote.clients.email || '',
+        shipping_department: quote.clients.department || '',
+        shipping_municipality: quote.clients.municipality || '',
+        shipping_address: quote.clients.address || '',
+        discount_percentage: (quote.discount_percentage || 0).toString()
+      });
+
+      if (items) {
+        const mappedProducts: OrderItem[] = items.map(item => ({
+          product: item.products,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          selected_warehouse_id: item.products.warehouse_id
+        }));
+        setSelectedProducts(mappedProducts);
+      }
+    } catch (err) {
+      console.error('Error loading from quote:', err);
+      alert('Error al cargar datos de la cotización');
+    } finally {
+      setLoadingItems(false);
+    }
+  };
 
   const handlePreSelectClient = async (clientId: string) => {
     try {
@@ -147,7 +199,8 @@ function AdminOrdersPageContent() {
           contact_email: data.email || '',
           shipping_department: data.department || '',
           shipping_municipality: data.municipality || '',
-          shipping_address: data.address || ''
+          shipping_address: data.address || '',
+          discount_percentage: '0'
         });
       }
     } catch (err) {
@@ -293,7 +346,8 @@ function AdminOrdersPageContent() {
       contact_email: selectedOrder.shipping_address?.email || '',
       shipping_department: selectedOrder.shipping_address?.department || '',
       shipping_municipality: selectedOrder.shipping_address?.municipality || '',
-      shipping_address: selectedOrder.shipping_address?.address || ''
+      shipping_address: selectedOrder.shipping_address?.address || '',
+      discount_percentage: (selectedOrder.discount_percentage || 0).toString()
     });
 
     const mappedProducts: OrderItem[] = (selectedOrderItems || []).map(item => ({
@@ -338,7 +392,7 @@ function AdminOrdersPageContent() {
   const metrics = {
     total: orders.length,
     pending: orders.filter(o => o.status === 'Pendiente').length,
-    revenue: orders.reduce((sum, o) => sum + Number(o.total_amount), 0)
+    revenue: orders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0)
   };
 
   // Fetch clients for search
@@ -400,15 +454,12 @@ function AdminOrdersPageContent() {
           contact_email: data.email || '',
           shipping_department: data.department || '',
           shipping_municipality: data.municipality || '',
-          shipping_address: data.address || ''
+          shipping_address: data.address || '',
+          discount_percentage: '0'
         });
-      } else {
-        // Only clear if search term is empty or definitely no match
-        // But maybe keep current form to allow manual entry if needed?
-        // For now, let's keep it simple: if no match, don't auto-fill
       }
     } catch (error: any) {
-      // Ignore errors (like no match found)
+      // Ignore errors
     } finally {
       setSearchingClient(false);
     }
@@ -422,7 +473,8 @@ function AdminOrdersPageContent() {
       contact_email: client.email || '',
       shipping_department: client.department || '',
       shipping_municipality: client.municipality || '',
-      shipping_address: client.address || ''
+      shipping_address: client.address || '',
+      discount_percentage: '0'
     });
     setIsClientSearchModalOpen(false);
     setClientSearchTerm(client.document_number || '');
@@ -498,9 +550,15 @@ function AdminOrdersPageContent() {
     setSelectedProducts(selectedProducts.filter(p => !(p.product.id === productId && p.selected_warehouse_id === warehouseId)));
   };
 
-  // Calculate total
-  const calculateTotal = () => {
+  // Calculate subtotal and total
+  const calculateSubtotal = () => {
     return selectedProducts.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0);
+  };
+
+  const calculateTotal = () => {
+    const subtotal = calculateSubtotal();
+    const discount = (subtotal * (parseFloat(orderForm.discount_percentage) || 0)) / 100;
+    return subtotal - discount;
   };
 
   // Handle submit order (Create or Update)
@@ -517,6 +575,7 @@ function AdminOrdersPageContent() {
 
     try {
       setIsSubmitting(true);
+      const subtotal = calculateSubtotal();
       const total = calculateTotal();
       const shippingAddress = {
         phone: orderForm.contact_phone,
@@ -534,6 +593,8 @@ function AdminOrdersPageContent() {
           .from('orders')
           .update({
             client_id: selectedClient.id,
+            subtotal,
+            discount_percentage: parseFloat(orderForm.discount_percentage),
             total_amount: total,
             shipping_address: shippingAddress
           })
@@ -600,6 +661,8 @@ function AdminOrdersPageContent() {
           .from('orders')
           .insert([{
             client_id: selectedClient.id,
+            subtotal,
+            discount_percentage: parseFloat(orderForm.discount_percentage),
             total_amount: total,
             status: 'Pendiente',
             shipping_address: shippingAddress
@@ -692,7 +755,8 @@ function AdminOrdersPageContent() {
         contact_email: '',
         shipping_department: '',
         shipping_municipality: '',
-        shipping_address: ''
+        shipping_address: '',
+        discount_percentage: '0'
       });
       
       await Promise.all([
@@ -727,7 +791,8 @@ function AdminOrdersPageContent() {
               contact_email: '',
               shipping_department: '',
               shipping_municipality: '',
-              shipping_address: ''
+              shipping_address: '',
+              discount_percentage: '0'
             });
             setIsCreateModalOpen(true);
           }}
@@ -1397,10 +1462,28 @@ function AdminOrdersPageContent() {
                         ))}
                       </tbody>
                     </table>
-                    <div className="flex justify-end pt-4 border-t border-slate-200">
-                      <div className="text-right">
-                        <p className="text-sm text-slate-500 font-display">Total</p>
-                        <p className="text-2xl font-bold text-slate-900 font-display">${formatCurrency(calculateTotal())}</p>
+                    <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100 space-y-3 mt-4">
+                      <div className="flex justify-between items-center text-sm font-display">
+                        <span className="text-slate-500">Subtotal</span>
+                        <span className="font-bold text-slate-900">${formatCurrency(calculateSubtotal())}</span>
+                      </div>
+                      
+                      <div className="flex justify-between items-center text-sm font-display">
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-500">Descuento (%)</span>
+                          <input 
+                            type="number"
+                            className="w-16 px-2 py-1 bg-white border border-slate-200 rounded text-xs font-bold text-emerald-600 focus:ring-1 focus:ring-emerald-500 outline-none"
+                            value={orderForm.discount_percentage}
+                            onChange={(e) => setOrderForm({ ...orderForm, discount_percentage: e.target.value })}
+                          />
+                        </div>
+                        <span className="font-bold text-emerald-600">-${formatCurrency((calculateSubtotal() * (parseFloat(orderForm.discount_percentage) || 0)) / 100)}</span>
+                      </div>
+
+                      <div className="pt-3 border-t border-slate-200 flex justify-between items-center">
+                        <span className="text-base font-bold text-slate-900 font-display">Total Final</span>
+                        <span className="text-2xl font-black text-primary font-display">${formatCurrency(calculateTotal())}</span>
                       </div>
                     </div>
                   </div>

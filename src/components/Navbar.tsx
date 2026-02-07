@@ -7,8 +7,9 @@ import { usePathname } from 'next/navigation';
 const Navbar: React.FC = () => {
   const pathname = usePathname();
   const isAdmin = pathname?.startsWith('/admin');
+  const isAuth = pathname?.startsWith('/login') || pathname?.startsWith('/auth');
 
-  if (isAdmin) return null;
+  if (isAdmin || isAuth) return null;
 
   return (
     <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200">

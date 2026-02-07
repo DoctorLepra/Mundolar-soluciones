@@ -8,9 +8,11 @@ import { supabase } from '@/lib/supabase';
 export default function AdminSidebar() {
   const pathname = usePathname();
   const [pendingCount, setPendingCount] = useState(0);
+  const [userProfile, setUserProfile] = useState<{full_name: string} | null>(null);
 
   useEffect(() => {
     fetchPendingCount();
+    fetchUserProfile();
 
     // Subscribe to realtime changes in orders table
     const channel = supabase
@@ -28,6 +30,23 @@ export default function AdminSidebar() {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  const fetchUserProfile = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', user.id)
+          .single();
+        
+        if (data) setUserProfile(data);
+      }
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+    }
+  };
 
   const fetchPendingCount = async () => {
     try {
@@ -57,10 +76,19 @@ export default function AdminSidebar() {
 
   const contentItems = [
     { label: 'CMS Páginas', path: '/admin/cms', icon: 'article' },
-    { label: 'Archivos', path: '/admin/cms', icon: 'folder_open' },
   ];
 
   const isActive = (path: string) => pathname === path;
+
+  const handleLogout = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      window.location.href = '/login';
+    } catch (error) {
+      console.error('Error logging out:', error);
+    }
+  };
 
   return (
     <aside className="w-64 bg-white border-r border-slate-200 flex flex-col h-full flex-shrink-0 z-20 min-h-screen">
@@ -89,7 +117,7 @@ export default function AdminSidebar() {
                <span className="ml-auto bg-primary text-white text-[10px] font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center shadow-sm shadow-primary/30">
                  {pendingCount}
                </span>
-            )}
+             )}
           </Link>
         ))}
         
@@ -114,20 +142,34 @@ export default function AdminSidebar() {
         <div className="pt-4 pb-2 px-3">
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider font-display">Sistema</p>
         </div>
-        <button className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors group">
-          <span className="material-symbols-outlined text-[22px]">settings</span>
-          <span className="text-sm font-medium font-display">Configuración</span>
-        </button>
+        <Link 
+          href="/admin/usuarios"
+          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors group ${
+            isActive('/admin/usuarios')
+              ? 'bg-primary/10 text-primary'
+              : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          <span className={`material-symbols-outlined text-[22px] ${isActive('/admin/usuarios') ? 'icon-fill' : ''}`}>group_add</span>
+          <span className="text-sm font-medium font-display">Usuarios</span>
+        </Link>
       </nav>
       <div className="p-4 border-t border-slate-200">
-        <div className="flex items-center gap-3 w-full p-2 rounded-lg hover:bg-slate-100 transition-colors text-left cursor-pointer">
-          <div className="bg-center bg-no-repeat bg-cover rounded-full h-8 w-8 bg-slate-200" style={{backgroundImage: 'url("https://picsum.photos/32/32")'}}></div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-slate-900 truncate font-display">Roberto G.</p>
-            <p className="text-xs text-slate-500 truncate">Admin Principal</p>
+        <button 
+          onClick={handleLogout}
+          className="flex items-center gap-3 w-full p-2 rounded-lg hover:bg-rose-50 transition-colors text-left cursor-pointer group"
+        >
+          <div className="flex items-center justify-center rounded-full h-8 w-8 bg-slate-100 text-slate-400 group-hover:bg-primary/10 group-hover:text-primary transition-colors">
+            <span className="material-symbols-outlined text-[20px]">person</span>
           </div>
-          <span className="material-symbols-outlined text-slate-400 text-[18px]">logout</span>
-        </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-slate-900 truncate font-display">
+              {userProfile ? userProfile.full_name : 'Cargando...'}
+            </p>
+            <p className="text-xs text-slate-500 truncate">Cerrar Sesión</p>
+          </div>
+          <span className="material-symbols-outlined text-slate-400 group-hover:text-rose-600 text-[18px] transition-colors">logout</span>
+        </button>
       </div>
     </aside>
   );

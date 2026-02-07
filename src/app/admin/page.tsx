@@ -9,13 +9,26 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, BarChart, Bar, Legend
 } from 'recharts';
-import { AlertTriangle, TrendingUp, Package, MapPin, CheckCircle2, Clock } from 'lucide-react';
+import { AlertTriangle, TrendingUp, Package, MapPin, CheckCircle2, Clock, ClipboardList, FileText, Warehouse } from 'lucide-react';
 
+/*
+- [ ] Sistema de Autenticación y Gestión de Usuarios <!-- id: 50 -->
+  - [x] Implementar esquema SQL para `profiles` y RLS <!-- id: 51 -->
+  - [x] Crear página de Login Premium (`/login`) <!-- id: 52 -->
+  - [x] Implementar panel de Gestión de Usuarios (`/admin/usuarios`) <!-- id: 53 -->
+  - [x] Implementar flujo de Invitación vía email <!-- id: 54 -->
+  - [x] Implementar vista de Cambio de Contraseña Obligatorio <!-- id: 55 -->
+  - [x] Ocultar Navbar y Footer en vistas de Auth/Login <!-- id: 57 -->
+  - [ ] Verificar políticas de acceso por roles <!-- id: 56 -->
+*/
 export default function AdminDashboard() {
   const [metrics, setMetrics] = useState({
     totalSales: 0,
     activeOrders: 0,
-    newClients: 0
+    newClients: 0,
+    pendingTasks: 0,
+    pendingQuotes: 0,
+    totalWarehouses: 0
   });
   const [recentInventory, setRecentInventory] = useState<any[]>([]);
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
@@ -54,8 +67,25 @@ export default function AdminDashboard() {
       setMetrics({
         totalSales,
         activeOrders: activeOrdersCount,
-        newClients: newClients || 0
+        newClients: newClients || 0,
+        pendingTasks: 0,
+        pendingQuotes: 0,
+        totalWarehouses: 0
       });
+
+      // 1.1 Fetch Operational Metrics
+      const [{ count: pendingTasks }, { count: pendingQuotes }, { count: totalWarehouses }] = await Promise.all([
+        supabase.from('client_tasks').select('*', { count: 'exact', head: true }).eq('status', 'Pendiente'),
+        supabase.from('quotes').select('*', { count: 'exact', head: true }).eq('status', 'Pendiente'),
+        supabase.from('warehouses').select('*', { count: 'exact', head: true })
+      ]);
+
+      setMetrics(prev => ({
+        ...prev,
+        pendingTasks: pendingTasks || 0,
+        pendingQuotes: pendingQuotes || 0,
+        totalWarehouses: totalWarehouses || 0
+      }));
 
       // 2. Sales Trend (Last 7 days)
       const last7Days = Array.from({length: 7}, (_, i) => {
@@ -210,6 +240,42 @@ export default function AdminDashboard() {
             <h3 className="text-3xl font-black text-slate-900 font-display">{metrics.newClients}</h3>
             <p className="text-slate-400 text-xs mt-1 font-bold">CRECIMIENTO MENSUAL</p>
           </div>
+        </div>
+
+        {/* Operational Metrics Row */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Link href="/admin/clientes" className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all group">
+            <div className="flex justify-between items-center mb-4">
+              <div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                <ClipboardList size={24} />
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Tareas CRM</span>
+            </div>
+            <h3 className="text-3xl font-black text-slate-900 font-display">{metrics.pendingTasks}</h3>
+            <p className="text-slate-400 text-xs mt-1 font-bold">TAREAS POR REALIZAR</p>
+          </Link>
+
+          <Link href="/admin/cotizaciones" className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all group">
+            <div className="flex justify-between items-center mb-4">
+              <div className="p-3 bg-pink-50 rounded-2xl text-pink-600 group-hover:bg-pink-600 group-hover:text-white transition-colors">
+                <FileText size={24} />
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Cotizaciones</span>
+            </div>
+            <h3 className="text-3xl font-black text-slate-900 font-display">{metrics.pendingQuotes}</h3>
+            <p className="text-slate-400 text-xs mt-1 font-bold">POR APROBAR</p>
+          </Link>
+
+          <Link href="/admin/bodegas" className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all group">
+            <div className="flex justify-between items-center mb-4">
+              <div className="p-3 bg-orange-50 rounded-2xl text-orange-600 group-hover:bg-orange-600 group-hover:text-white transition-colors">
+                <Warehouse size={24} />
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Bodegas</span>
+            </div>
+            <h3 className="text-3xl font-black text-slate-900 font-display">{metrics.totalWarehouses}</h3>
+            <p className="text-slate-400 text-xs mt-1 font-bold">BODEGAS ACTIVAS</p>
+          </Link>
         </div>
 
         {/* Main Analytics Row */}

@@ -6,7 +6,10 @@ import { usePathname } from 'next/navigation';
 
 const Footer: React.FC = () => {
   const pathname = usePathname();
-  if (pathname?.startsWith('/admin')) return null;
+  const isAdmin = pathname?.startsWith('/admin');
+  const isAuth = pathname?.startsWith('/login') || pathname?.startsWith('/auth');
+
+  if (isAdmin || isAuth) return null;
 
   return (
     <footer className="bg-slate-900 text-slate-300 pt-16 pb-8 border-t border-slate-800">

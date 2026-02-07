@@ -736,6 +736,32 @@ export default function AdminProductsPage() {
     XLSX.utils.book_append_sheet(wb, ws, "Productos"); 
     XLSX.writeFile(wb, "mundolar-productos.xlsx");
   };
+ 
+  const handleDownloadTemplate = () => {
+    const templateData = [
+      {
+        BODEGA_P: "01",
+        BODEGA_A: "02",
+        SKU: "RAD-001",
+        IDMARCA: 1,
+        IDCATEGORIA: 1,
+        NOMBRE: "Radio Motorola DEP450",
+        DESCRIPCIÓN: "Radio portátil digital/analógico",
+        ESPECTEC: "16 canales, UHF/VHF",
+        COSTOUSD: 250,
+        COSTO: 1000000,
+        PORVENTA: 20,
+        VALORVENTA: 1200000,
+        "VALOR+IVA": 1428000,
+        STOCK_P: 10,
+        STOCK_A: 5
+      }
+    ];
+    const ws = XLSX.utils.json_to_sheet(templateData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Plantilla_Cargue");
+    XLSX.writeFile(wb, "plantilla-mundolar-productos.xlsx");
+  };
 
   const handleBulkImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -795,7 +821,13 @@ export default function AdminProductsPage() {
         const profitPct = parseFloat(row.PORVENTA) || 0;
         let valVenta = parseFloat(row.VALORVENTA) || 0;
         let valIvaPlus = parseFloat(row["VALOR+IVA"]) || 0;
-        const stock = parseInt(row.STOCK) || 0;
+        
+        // New Columns
+        const warehouseId = row.BODEGA_P?.toString() || '';
+        const auxWarehouseId = row.BODEGA_A?.toString() || '';
+        const mainStock = parseInt(row.STOCK_P) || 0;
+        const auxStock = parseInt(row.STOCK_A) || 0;
+        const totalStock = mainStock + auxStock;
 
         // 1. Calculate Cost if USD is provided but COP is empty
         if (rawCostUsd > 0 && rawCostCop <= 0 && currentTrm) {
@@ -824,7 +856,8 @@ export default function AdminProductsPage() {
         if (catId <= 0) rowErrors.push('Agregar Categoría');
         if (!desc) rowErrors.push('Agregar Descripción');
         if (rawCostCop <= 0 && valVenta <= 0) rowErrors.push('Agregar Precio/Costo');
-        if (stock <= 0) rowErrors.push('Agregar Stock');
+        if (totalStock <= 0) rowErrors.push('Sin stock definido');
+        if (!warehouseId) rowErrors.push('Falta Bodega P');
         
         // Mandatory Image Observation
         rowErrors.push('Agregar imagen');
@@ -832,9 +865,13 @@ export default function AdminProductsPage() {
         // Validate Brand and Category exist
         const brand = brands.find(b => b.id === brandId);
         const category = categories.find(c => c.id === catId);
+        const warehouse = warehouses.find(w => w.id === warehouseId);
+        const auxWarehouse = auxWarehouseId ? warehouses.find(w => w.id === auxWarehouseId) : null;
 
         if (!brand && brandId) rowErrors.push(`IDMARCA "${brandId}" no existe`);
         if (!category && catId) rowErrors.push(`IDCATEGORIA "${catId}" no existe`);
+        if (!warehouse && warehouseId) rowErrors.push(`Bodega P "${warehouseId}" no existe`);
+        if (!auxWarehouse && auxWarehouseId) rowErrors.push(`Bodega A "${auxWarehouseId}" no existe`);
 
         const productData = {
             sku,
@@ -847,7 +884,11 @@ export default function AdminProductsPage() {
             original_price: valVenta > 0 ? valVenta : (rawCostCop > 0 ? rawCostCop : null),
             price: valVenta > 0 ? valVenta : (rawCostCop > 0 ? rawCostCop : null),
             price_with_iva: valIvaPlus > 0 ? valIvaPlus : null,
-            stock_quantity: stock,
+            stock_quantity: totalStock,
+            main_warehouse_stock: mainStock,
+            auxiliary_warehouse_stock: auxStock,
+            warehouse_id: warehouseId || null,
+            auxiliary_warehouse_id: auxWarehouseId || null,
             brand_id: brand ? brand.id : null,
             category_id: category ? category.id : null,
             status: 'Archivado', // Always Inactivo from bulk import due to missing images
@@ -855,7 +896,8 @@ export default function AdminProductsPage() {
             _incomplete: true, // Always incomplete because of mandatory images
             _errorFields: rowErrors,
             _brandName: brand?.name || 'ID ' + brandId || 'N/A',
-            _categoryName: category?.name || 'ID ' + catId || 'N/A'
+            _categoryName: category?.name || 'ID ' + catId || 'N/A',
+            _warehouseName: warehouse?.name || 'Bodega ' + warehouseId || 'N/A'
         };
 
         if (rowErrors.length > 0) {
@@ -875,7 +917,7 @@ export default function AdminProductsPage() {
         const { error } = await supabase
             .from('products')
             .upsert(
-              data.map(({_incomplete, _errorFields, _brandName, _categoryName, ...rest}) => rest),
+              data.map(({_incomplete, _errorFields, _brandName, _categoryName, _warehouseName, ...rest}) => rest),
               { onConflict: 'sku' }
             );
         if (error) throw error;
@@ -914,6 +956,10 @@ export default function AdminProductsPage() {
                 </span>
               </div>
             )}
+            <button onClick={handleDownloadTemplate} className="flex items-center gap-2 bg-white border border-slate-200 text-slate-700 px-4 py-2.5 rounded-lg font-medium hover:bg-slate-50 transition-all text-sm">
+              <span className="material-symbols-outlined text-[20px]">download</span>
+              Plantilla
+            </button>
             <button onClick={handleExport} className="flex items-center gap-2 bg-white border border-slate-200 text-slate-700 px-4 py-2.5 rounded-lg font-medium hover:bg-slate-50 transition-all text-sm">
               <span className="material-symbols-outlined text-[20px]">file_upload</span>
               Exportar
@@ -1441,11 +1487,10 @@ export default function AdminProductsPage() {
                   <tr>
                     <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">SKU</th>
                     <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Nombre</th>
-                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Marca</th>
-                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Categoría</th>
+                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Bodega Principal / Aux</th>
                     <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Precio USD / COP</th>
                     <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Precio + IVA</th>
-                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Stock</th>
+                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Stock P / A / T</th>
                     <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Observaciones</th>
                   </tr>
                 </thead>
@@ -1459,10 +1504,10 @@ export default function AdminProductsPage() {
                         <div className="text-sm font-medium text-slate-900 line-clamp-1">{p.name || 'N/A'}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="px-2 py-0.5 bg-slate-100 border border-slate-200 rounded text-[10px] font-bold text-slate-600 uppercase">{p._brandName}</span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="px-2 py-0.5 bg-slate-100 border border-slate-200 rounded text-[10px] font-bold text-slate-600 uppercase">{p._categoryName}</span>
+                        <div className="flex flex-col gap-1">
+                          <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-100 rounded text-[10px] font-bold text-indigo-600 uppercase">P: {p._warehouseName}</span>
+                          {p.auxiliary_warehouse_id && <span className="px-2 py-0.5 bg-slate-100 border border-slate-200 rounded text-[10px] font-bold text-slate-500 uppercase">A: {p.auxiliary_warehouse_id}</span>}
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-bold text-slate-900">${formatCurrency(p.original_price)} COP</div>
@@ -1471,8 +1516,11 @@ export default function AdminProductsPage() {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-bold text-primary">${formatCurrency(p.price_with_iva)}</div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-700">
-                        {p.stock_quantity} und
+                      <td className="px-6 py-4 whitespace-nowrap text-center">
+                        <div className="flex flex-col items-center">
+                          <span className="text-sm font-bold text-slate-900">{p.main_warehouse_stock} / {p.auxiliary_warehouse_stock}</span>
+                          <span className="text-[10px] font-bold text-primary uppercase tracking-tighter">Total: {p.stock_quantity}</span>
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex flex-wrap gap-1">

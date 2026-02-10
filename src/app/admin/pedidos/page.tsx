@@ -76,6 +76,7 @@ interface Order {
   };
 }
 
+// Main Content Component
 function AdminOrdersPageContent() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -751,7 +752,7 @@ function AdminOrdersPageContent() {
           title: 'Nuevo Pedido Registrado',
           message: `El vendedor ${currentUserProfile.full_name} ha creado un nuevo pedido.`,
           type: 'order',
-          related_id: orderId
+          related_id: orderId.toString()
         });
       }
 
@@ -1781,14 +1782,15 @@ function AdminOrdersPageContent() {
   );
 }
 
+// Exported Page with Suspense
 export default function AdminOrdersPage() {
   return (
-    <Suspense fallback={
-      <div className="flex-1 flex items-center justify-center bg-slate-50">
-        <div className="size-10 border-4 border-primary border-t-transparent animate-spin rounded-full"></div>
+    <React.Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
       </div>
     }>
       <AdminOrdersPageContent />
-    </Suspense>
+    </React.Suspense>
   );
 }

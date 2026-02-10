@@ -1,0 +1,105 @@
+﻿
+> mundolar-next@0.1.0 build
+> next build
+
+Ôû▓ Next.js 16.1.1 (Turbopack)
+- Environments: .env.local
+
+node.exe : ÔÜá The "middleware" 
+file convention is deprecated. 
+Please use "proxy" instead. Learn 
+more: https://nextjs.org/docs/messa
+ges/middleware-to-proxy
+En línea: 1 Carácter: 1
++ & "C:\Program 
+Files\nodejs/node.exe" "C:\Program 
+Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~
+    + CategoryInfo          : NotS 
+   pecified: (ÔÜá The "middle...l  
+  eware-to-proxy:String) [], Rem   
+ oteException
+    + FullyQualifiedErrorId : Nati 
+   veCommandError
+ 
+  Creating an optimized production build ...
+Ô£ô Compiled successfully in 9.9s
+  Running TypeScript ...
+  Collecting page data using 7 workers ...
+  Generating static pages using 7 workers (0/23) ...
+Ô¿» useSearchParams() should be 
+wrapped in a suspense boundary at 
+page "/admin/clientes". Read more: 
+https://nextjs.org/docs/messages/mi
+ssing-suspense-with-csr-bailout
+    at Q (C:\Users\LENOVO\Documents
+\Mundolar\mundolar-soluciones---tel
+ecomunicaciones-profesionales\mundo
+lar-next\.next\server\chunks\ssr\no
+de_modules_next_920e7746._.js:2:211
+1)
+    at o (C:\Users\LENOVO\Documents
+\Mundolar\mundolar-soluciones---tel
+ecomunicaciones-profesionales\mundo
+lar-next\.next\server\chunks\ssr\no
+de_modules_next_920e7746._.js:4:528
+4)
+    at C:\Users\LENOVO\Documents\Mu
+ndolar\mundolar-soluciones---teleco
+municaciones-profesionales\mundolar
+-next\.next\server\chunks\ssr\src_a
+pp_admin_clientes_page_tsx_f53cc32a
+._.js:1:1078
+    at an (C:\Users\LENOVO\Document
+s\Mundolar\mundolar-soluciones---te
+lecomunicaciones-profesionales\mund
+olar-next\node_modules\next\dist\co
+mpiled\next-server\app-page-turbo.r
+untime.prod.js:2:84360)
+    at ai (C:\Users\LENOVO\Document
+s\Mundolar\mundolar-soluciones---te
+lecomunicaciones-profesionales\mund
+olar-next\node_modules\next\dist\co
+mpiled\next-server\app-page-turbo.r
+untime.prod.js:2:86179)
+    at al (C:\Users\LENOVO\Document
+s\Mundolar\mundolar-soluciones---te
+lecomunicaciones-profesionales\mund
+olar-next\node_modules\next\dist\co
+mpiled\next-server\app-page-turbo.r
+untime.prod.js:2:107953)
+    at as (C:\Users\LENOVO\Document
+s\Mundolar\mundolar-soluciones---te
+lecomunicaciones-profesionales\mund
+olar-next\node_modules\next\dist\co
+mpiled\next-server\app-page-turbo.r
+untime.prod.js:2:105368)
+    at aa (C:\Users\LENOVO\Document
+s\Mundolar\mundolar-soluciones---te
+lecomunicaciones-profesionales\mund
+olar-next\node_modules\next\dist\co
+mpiled\next-server\app-page-turbo.r
+untime.prod.js:2:84712)
+    at ai (C:\Users\LENOVO\Document
+s\Mundolar\mundolar-soluciones---te
+lecomunicaciones-profesionales\mund
+olar-next\node_modules\next\dist\co
+mpiled\next-server\app-page-turbo.r
+untime.prod.js:2:86228)
+    at ai (C:\Users\LENOVO\Document
+s\Mundolar\mundolar-soluciones---te
+lecomunicaciones-profesionales\mund
+olar-next\node_modules\next\dist\co
+mpiled\next-server\app-page-turbo.r
+untime.prod.js:2:104708)
+Error occurred prerendering page 
+"/admin/clientes". Read more: https
+://nextjs.org/docs/messages/prerend
+er-error
+Export encountered an error on 
+/admin/clientes/page: 
+/admin/clientes, exiting the build.
+Ô¿» Next.js build worker exited 
+with code: 1 and signal: null

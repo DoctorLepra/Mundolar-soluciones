@@ -1264,6 +1264,7 @@ const AdminClientsPage = () => {
                   description: "",
                   due_date: new Date().toISOString().split("T")[0],
                   assigned_to: "",
+                  assigned_to_id: "",
                   client_id: "",
                   status: "Pendiente",
                 });
@@ -4407,4 +4408,3 @@ const AdminClientsPage = () => {
   );
 };
 
-export default AdminClientsPage;

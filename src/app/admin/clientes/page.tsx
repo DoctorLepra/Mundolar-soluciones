@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { createNotification, notifyAdmins } from "@/lib/notifications";
 import { formatCurrency } from "@/lib/utils";
 import { colombiaData, departments } from "@/lib/colombia-data";
 import * as XLSX from "xlsx";
@@ -64,6 +65,7 @@ interface Task {
   due_date: string;
   status: "Pendiente" | "Completada" | "Cancelada";
   assigned_to: string | null;
+  assigned_to_id: string | null; // Added for linking to profiles
   client_id: string | null;
   created_by: string | null;
   client?: {
@@ -72,11 +74,31 @@ interface Task {
   };
 }
 
+interface UserProfile {
+  id: string;
+  full_name: string;
+  role: string;
+  email: string;
+}
+
 const CLIENT_SECTORS = [
-  'Turìsmo', 'Agricultura', 'Comercial', 'Educaciòn', 'Salud', 'Industrial', 
-  'Seguridad-Vigilancia', 'Hoteleria', 'Restaurante', 'Construcciòn', 
-  'Conjunto Residenciales', 'Servicios', 'Transporte', 'Gobierno', 
-  'Petroleras', 'Minerìa', 'Manufactura'
+  "Turìsmo",
+  "Agricultura",
+  "Comercial",
+  "Educaciòn",
+  "Salud",
+  "Industrial",
+  "Seguridad-Vigilancia",
+  "Hoteleria",
+  "Restaurante",
+  "Construcciòn",
+  "Conjunto Residenciales",
+  "Servicios",
+  "Transporte",
+  "Gobierno",
+  "Petroleras",
+  "Minerìa",
+  "Manufactura",
 ];
 
 const AdminClientsPage = () => {
@@ -125,6 +147,20 @@ const AdminClientsPage = () => {
   // Dashboward Tabs
   const [viewTab, setViewTab] = useState<"Clientes" | "Tareas">("Clientes");
 
+  const searchParams = useSearchParams();
+  const taskIdFromUrl = searchParams.get("taskId");
+  const clientIdFromUrl = searchParams.get("clientId");
+
+  useEffect(() => {
+    if (taskIdFromUrl) {
+      setViewTab("Tareas");
+      setSelectedTaskId(taskIdFromUrl);
+    } else if (clientIdFromUrl) {
+      setViewTab("Clientes");
+      setSelectedClientId(clientIdFromUrl);
+    }
+  }, [taskIdFromUrl, clientIdFromUrl]);
+
   // CRM Tasks State
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(false);
@@ -133,22 +169,29 @@ const AdminClientsPage = () => {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [isClientSearchModalOpen, setIsClientSearchModalOpen] = useState(false);
   const [clientModalSearchTerm, setClientModalSearchTerm] = useState("");
-  
+
   // Task Filters
   const [taskSearchTerm, setTaskSearchTerm] = useState("");
   const [taskStatusFilter, setTaskStatusFilter] = useState("all");
   const [taskAdvisorFilter, setTaskAdvisorFilter] = useState("all");
   const [taskDateFilter, setTaskDateFilter] = useState("all");
   const [taskDueSoonFilter, setTaskDueSoonFilter] = useState(false);
-  const [isTaskFilterDropdownOpen, setIsTaskFilterDropdownOpen] = useState(false);
+  const [isTaskFilterDropdownOpen, setIsTaskFilterDropdownOpen] =
+    useState(false);
   const taskDropdownRef = useRef<HTMLDivElement>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+
+  // User Profile & Roles State
+  const [currentUserProfile, setCurrentUserProfile] =
+    useState<UserProfile | null>(null);
+  const [allProfiles, setAllProfiles] = useState<UserProfile[]>([]);
 
   const [taskFormData, setTaskFormData] = useState({
     title: "",
     description: "",
     due_date: new Date().toISOString().split("T")[0],
     assigned_to: "",
+    assigned_to_id: "",
     client_id: "",
     status: "Pendiente" as Task["status"],
   });
@@ -243,10 +286,60 @@ const AdminClientsPage = () => {
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) || null;
 
   useEffect(() => {
+    fetchUserProfile();
     fetchClients();
     fetchBrands();
     fetchTasks();
+
+    // CRM Tasks Realtime Subscription
+    const tasksChannel = supabase
+      .channel('tasks-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', table: 'client_tasks', schema: 'public' },
+        () => {
+          fetchTasks();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(tasksChannel);
+    };
   }, []);
+
+  const fetchUserProfile = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      
+      if (profile) {
+        setCurrentUserProfile(profile);
+        if (profile.role === 'Admin') {
+          fetchAllProfiles();
+        } else {
+          // If vendor, auto-assign tasks to themselves
+          setTaskFormData(prev => ({ 
+            ...prev, 
+            assigned_to: profile.full_name,
+            assigned_to_id: profile.id
+          }));
+        }
+      }
+    }
+  };
+
+  const fetchAllProfiles = async () => {
+    const { data } = await supabase
+      .from('profiles')
+      .select('id, full_name, role, email')
+      .order('full_name');
+    if (data) setAllProfiles(data);
+  };
 
   const fetchBrands = async () => {
     const { data } = await supabase
@@ -258,10 +351,17 @@ const AdminClientsPage = () => {
 
   const fetchTasks = async () => {
     setLoadingTasks(true);
-    const { data, error } = await supabase
+    let query = supabase
       .from("client_tasks")
       .select("*, client:clients(full_name, company_name)")
       .order("due_date", { ascending: true });
+
+    // Role-based filtering: Vendors only see their own tasks
+    if (currentUserProfile && currentUserProfile.role === 'Vendedor') {
+      query = query.eq('assigned_to_id', currentUserProfile.id);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error("Error fetching tasks:", error);
@@ -284,21 +384,53 @@ const AdminClientsPage = () => {
         description: taskFormData.description,
         due_date: new Date(taskFormData.due_date).toISOString(),
         assigned_to: taskFormData.assigned_to,
+        assigned_to_id: taskFormData.assigned_to_id || null,
         client_id: taskFormData.client_id || null,
         status: taskFormData.status,
+        created_by_id: currentUserProfile?.id || null,
       };
 
+      let taskId = editingTaskId;
       if (isEditingTask && editingTaskId) {
+        // Al editar, no sobrescribimos el creador original
+        const { created_by_id, ...updateData } = taskData;
         const { error } = await supabase
           .from("client_tasks")
-          .update(taskData)
+          .update(updateData)
           .eq("id", editingTaskId);
         if (error) throw error;
       } else {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from("client_tasks")
-          .insert([taskData]);
+          .insert([taskData])
+          .select()
+          .single();
         if (error) throw error;
+        taskId = data.id;
+      }
+
+      // Notification Logic
+      if (currentUserProfile) {
+        if (currentUserProfile.role === 'Admin') {
+          // If Admin assigns to a Vendor
+          if (taskData.assigned_to_id && taskData.assigned_to_id !== currentUserProfile.id) {
+            await createNotification({
+              user_id: taskData.assigned_to_id,
+              title: 'Nueva Tarea Asignada',
+              message: `El administrador ${currentUserProfile.full_name} te ha asignado la tarea: ${taskData.title}`,
+              type: 'task',
+              related_id: taskId || undefined
+            });
+          }
+        } else if (currentUserProfile.role === 'Vendedor') {
+          // If Vendor auto-assigns or creates task
+          await notifyAdmins({
+            title: 'Tarea Creada/Auto-asignada',
+            message: `El vendedor ${currentUserProfile.full_name} ha creado/asignado la tarea: ${taskData.title}`,
+            type: 'task',
+            related_id: taskId || undefined
+          });
+        }
       }
 
       setIsTaskModalOpen(false);
@@ -308,7 +440,8 @@ const AdminClientsPage = () => {
         title: "",
         description: "",
         due_date: new Date().toISOString().split("T")[0],
-        assigned_to: "",
+        assigned_to: currentUserProfile?.role === 'Vendedor' ? currentUserProfile.full_name : "",
+        assigned_to_id: currentUserProfile?.role === 'Vendedor' ? currentUserProfile.id : "",
         client_id: "",
         status: "Pendiente",
       });
@@ -320,22 +453,33 @@ const AdminClientsPage = () => {
     }
   };
 
-  const handleUpdateTaskStatus = async (taskId: string, newStatus: Task["status"]) => {
+  const handleUpdateTaskStatus = async (
+    taskId: string,
+    newStatus: Task["status"],
+  ) => {
     try {
       const { error } = await supabase
         .from("client_tasks")
         .update({ status: newStatus })
         .eq("id", taskId);
-      
+
       if (error) throw error;
-      
-      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
-      
+
+      setTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t)),
+      );
+
       // Update metric locally
-      if (newStatus === 'Completada' || newStatus === 'Cancelada') {
-        setMetrics(prev => ({ ...prev, pendingTasks: Math.max(0, prev.pendingTasks - 1) }));
-      } else if (newStatus === 'Pendiente') {
-        setMetrics(prev => ({ ...prev, pendingTasks: prev.pendingTasks + 1 }));
+      if (newStatus === "Completada" || newStatus === "Cancelada") {
+        setMetrics((prev) => ({
+          ...prev,
+          pendingTasks: Math.max(0, prev.pendingTasks - 1),
+        }));
+      } else if (newStatus === "Pendiente") {
+        setMetrics((prev) => ({
+          ...prev,
+          pendingTasks: prev.pendingTasks + 1,
+        }));
       }
     } catch (error: any) {
       alert(`Error al actualizar estado: ${error.message}`);
@@ -346,17 +490,20 @@ const AdminClientsPage = () => {
     if (!confirm("¿Estás seguro de eliminar esta tarea?")) return;
 
     try {
-      const task = tasks.find(t => t.id === taskId);
+      const task = tasks.find((t) => t.id === taskId);
       const { error } = await supabase
         .from("client_tasks")
         .delete()
         .eq("id", taskId);
-      
+
       if (error) throw error;
-      
-      setTasks(prev => prev.filter(t => t.id !== taskId));
-      if (task?.status === 'Pendiente') {
-        setMetrics(prev => ({ ...prev, pendingTasks: Math.max(0, prev.pendingTasks - 1) }));
+
+      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+      if (task?.status === "Pendiente") {
+        setMetrics((prev) => ({
+          ...prev,
+          pendingTasks: Math.max(0, prev.pendingTasks - 1),
+        }));
       }
     } catch (error: any) {
       alert(`Error al eliminar tarea: ${error.message}`);
@@ -625,7 +772,7 @@ const AdminClientsPage = () => {
       activeMonth = 0;
     }
 
-    setMetrics(prev => ({ ...prev, total, activeMonth, new30d }));
+    setMetrics((prev) => ({ ...prev, total, activeMonth, new30d }));
   };
 
   useEffect(() => {
@@ -711,18 +858,22 @@ const AdminClientsPage = () => {
         : "";
 
       let detailedSource = c.source || "Nuevo";
-      if (c.client_type === 'Empresa' && c.source_type) {
+      if (c.client_type === "Empresa" && c.source_type) {
         detailedSource = c.source_type;
         if (c.source_sub_type) detailedSource += `: ${c.source_sub_type}`;
-        if (c.source_type === 'Referido por cliente' && referralBrand) detailedSource += ` (${referralBrand})`;
+        if (c.source_type === "Referido por cliente" && referralBrand)
+          detailedSource += ` (${referralBrand})`;
       } else if (c.source === "Referido por marca" && referralBrand) {
         detailedSource = `Referido: ${referralBrand}`;
       }
 
       return {
         ID: c.id,
-        "Nombre/Contacto": c.client_type === 'Empresa' ? (c.contact_person || 'Sin contacto') : c.full_name,
-        Empresa: c.client_type === 'Empresa' ? c.full_name : "N/A",
+        "Nombre/Contacto":
+          c.client_type === "Empresa"
+            ? c.contact_person || "Sin contacto"
+            : c.full_name,
+        Empresa: c.client_type === "Empresa" ? c.full_name : "N/A",
         Tipo: c.client_type,
         Documento: c.document_number,
         "Info Doc/NIT": c.document_info || c.nit || "N/A",
@@ -926,20 +1077,27 @@ const AdminClientsPage = () => {
         notes: formData.notes,
         client_type: clientType,
         document_number: formData.document_number,
-        document_type: clientType === 'Natural' ? formData.document_type : 'NIT',
-        status: isEditMode ? selectedClient?.status : 'Inactivo',
-        nit: clientType === 'Empresa' ? formData.document_number : null,
-        contact_person: clientType === 'Empresa' ? formData.contact_person : null,
-        position: clientType === 'Empresa' ? formData.position : null,
-        whatsapp: clientType === 'Empresa' ? formData.whatsapp : null,
+        document_type:
+          clientType === "Natural" ? formData.document_type : "NIT",
+        status: isEditMode ? selectedClient?.status : "Inactivo",
+        nit: clientType === "Empresa" ? formData.document_number : null,
+        contact_person:
+          clientType === "Empresa" ? formData.contact_person : null,
+        position: clientType === "Empresa" ? formData.position : null,
+        whatsapp: clientType === "Empresa" ? formData.whatsapp : null,
         industry_sector: formData.industry_sector,
         industry: formData.industry_sector,
         source: formData.source_type, // Maintain source as primary category
         source_type: formData.source_type,
         source_sub_type: formData.source_sub_type,
-        referred_by_brand_id: (formData.source_type === 'Referido por marca' || formData.source_type === 'Referido por cliente') ? formData.referred_by_brand_id : null,
-        assigned_to_name: clientType === 'Empresa' ? formData.assigned_to_name : null,
-        photo_url: clientType === 'Natural' ? photo_url : null,
+        referred_by_brand_id:
+          formData.source_type === "Referido por marca" ||
+          formData.source_type === "Referido por cliente"
+            ? formData.referred_by_brand_id
+            : null,
+        assigned_to_name:
+          clientType === "Empresa" ? formData.assigned_to_name : null,
+        photo_url: clientType === "Natural" ? photo_url : null,
       };
 
       let error;
@@ -979,28 +1137,28 @@ const AdminClientsPage = () => {
     setIsEditMode(true);
     setClientType(client.client_type);
     setFormData({
-      full_name: client.full_name || '',
-      company_name: '', // Not used anymore
-      document_type: client.document_type || 'C.C',
-      document_number: client.document_number || '',
-      document_info: '', // Not used anymore
-      nit: client.nit || '',
-      contact_person: client.contact_person || '',
-      position: client.position || '',
-      whatsapp: client.whatsapp || '',
-      phone: client.phone || '',
-      email: client.email || '',
-      department: client.department || '',
-      municipality: client.municipality || '',
-      address: client.address || '',
-      notes: client.notes || '',
-      industry: client.industry || '', // Keep for compatibility
-      industry_sector: client.industry_sector || '',
-      source: client.source || 'Nuevo', // Keep for compatibility
-      source_type: client.source_type || 'Nuevo',
-      source_sub_type: client.source_sub_type || '',
-      referred_by_brand_id: client.referred_by_brand_id as number || 0,
-      assigned_to_name: client.assigned_to_name || ''
+      full_name: client.full_name || "",
+      company_name: "", // Not used anymore
+      document_type: client.document_type || "C.C",
+      document_number: client.document_number || "",
+      document_info: "", // Not used anymore
+      nit: client.nit || "",
+      contact_person: client.contact_person || "",
+      position: client.position || "",
+      whatsapp: client.whatsapp || "",
+      phone: client.phone || "",
+      email: client.email || "",
+      department: client.department || "",
+      municipality: client.municipality || "",
+      address: client.address || "",
+      notes: client.notes || "",
+      industry: client.industry || "", // Keep for compatibility
+      industry_sector: client.industry_sector || "",
+      source: client.source || "Nuevo", // Keep for compatibility
+      source_type: client.source_type || "Nuevo",
+      source_sub_type: client.source_sub_type || "",
+      referred_by_brand_id: (client.referred_by_brand_id as number) || 0,
+      assigned_to_name: client.assigned_to_name || "",
     });
     setImagePreview(client.photo_url);
     setIsModalOpen(true);
@@ -1015,28 +1173,28 @@ const AdminClientsPage = () => {
 
   const resetForm = () => {
     setFormData({
-      full_name: '',
-      company_name: '',
-      document_type: 'C.C',
-      document_number: '',
-      document_info: '',
-      nit: '',
-      contact_person: '',
-      position: '',
-      whatsapp: '',
-      phone: '',
-      email: '',
-      department: '',
-      municipality: '',
-      address: '',
-      notes: '',
-      industry: '',
-      industry_sector: '',
-      source: 'Nuevo',
-      source_type: 'Nuevo',
-      source_sub_type: '',
+      full_name: "",
+      company_name: "",
+      document_type: "C.C",
+      document_number: "",
+      document_info: "",
+      nit: "",
+      contact_person: "",
+      position: "",
+      whatsapp: "",
+      phone: "",
+      email: "",
+      department: "",
+      municipality: "",
+      address: "",
+      notes: "",
+      industry: "",
+      industry_sector: "",
+      source: "Nuevo",
+      source_type: "Nuevo",
+      source_sub_type: "",
       referred_by_brand_id: 0,
-      assigned_to_name: ''
+      assigned_to_name: "",
     });
     setImageFile(null);
     setImagePreview(null);
@@ -1086,10 +1244,12 @@ const AdminClientsPage = () => {
       <header className="bg-white border-b border-slate-200 px-6 py-5 shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex flex-col gap-1">
           <h2 className="text-2xl font-bold text-slate-900 tracking-tight font-display">
-            {viewTab === "Clientes" ? "Gestión de Clientes" : "Gestión de Tareas CRM"}
+            {viewTab === "Clientes"
+              ? "Gestión de Clientes"
+              : "Gestión de Tareas CRM"}
           </h2>
           <p className="text-slate-500 text-sm font-display">
-            {viewTab === "Clientes" 
+            {viewTab === "Clientes"
               ? "Administra la base de datos de clientes, historiales y notas."
               : "Asignación y seguimiento de tareas para asesores y equipo."}
           </p>
@@ -1169,7 +1329,9 @@ const AdminClientsPage = () => {
       <div className="flex flex-1 overflow-hidden">
         <div className="flex-1 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto p-6">
-            <div className={`grid grid-cols-1 ${viewTab === 'Clientes' ? 'md:grid-cols-4' : 'md:grid-cols-4'} gap-4 mb-6`}>
+            <div
+              className={`grid grid-cols-1 ${viewTab === "Clientes" ? "md:grid-cols-4" : "md:grid-cols-4"} gap-4 mb-6`}
+            >
               <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-start justify-between">
                 <div>
                   <p className="text-slate-500 text-sm font-medium mb-1 font-display">
@@ -1232,7 +1394,6 @@ const AdminClientsPage = () => {
               </div>
             </div>
 
-
             {viewTab === "Clientes" ? (
               <>
                 <div className="flex flex-col gap-4 mb-6">
@@ -1277,7 +1438,9 @@ const AdminClientsPage = () => {
                               </label>
                               <select
                                 value={statusFilter}
-                                onChange={(e) => setStatusFilter(e.target.value)}
+                                onChange={(e) =>
+                                  setStatusFilter(e.target.value)
+                                }
                                 className="w-full text-sm border-slate-200 rounded-lg focus:ring-primary py-1.5"
                               >
                                 <option value="all">Todos</option>
@@ -1305,12 +1468,16 @@ const AdminClientsPage = () => {
                               </label>
                               <select
                                 value={sourceFilter}
-                                onChange={(e) => setSourceFilter(e.target.value)}
+                                onChange={(e) =>
+                                  setSourceFilter(e.target.value)
+                                }
                                 className="w-full text-sm border-slate-200 rounded-lg focus:ring-primary py-1.5"
                               >
                                 <option value="all">Todas</option>
                                 <option value="Nuevo">Nuevo</option>
-                                <option value="Mercado Libre">Mercado Libre</option>
+                                <option value="Mercado Libre">
+                                  Mercado Libre
+                                </option>
                                 <optgroup label="Referido por Marca">
                                   {brands.map((brand) => (
                                     <option
@@ -1344,7 +1511,9 @@ const AdminClientsPage = () => {
                               <input
                                 type="checkbox"
                                 checked={showOnlyNew}
-                                onChange={(e) => setShowOnlyNew(e.target.checked)}
+                                onChange={(e) =>
+                                  setShowOnlyNew(e.target.checked)
+                                }
                                 className="rounded border-slate-300 text-primary focus:ring-primary"
                               />
                               <span className="text-sm font-medium text-slate-600">
@@ -1461,13 +1630,18 @@ const AdminClientsPage = () => {
                                       />
                                     ) : (
                                       <span className="material-symbols-outlined text-slate-400">
-                                        {client.client_type === 'Empresa' ? 'corporate_fare' : 'person'}
+                                        {client.client_type === "Empresa"
+                                          ? "corporate_fare"
+                                          : "person"}
                                       </span>
                                     )}
                                   </div>
                                   <div>
                                     <p className="font-bold text-slate-900 text-sm font-display">
-                                      {client.client_type === 'Empresa' ? (client.contact_person || 'Sin contacto') : client.full_name}
+                                      {client.client_type === "Empresa"
+                                        ? client.contact_person ||
+                                          "Sin contacto"
+                                        : client.full_name}
                                     </p>
                                     <p className="text-xs text-slate-500 font-display">
                                       {client.client_type === "Natural"
@@ -1485,7 +1659,9 @@ const AdminClientsPage = () => {
                                       : "domain"}
                                   </span>
                                   <span className="text-sm text-slate-700 font-display">
-                                    {client.client_type === 'Empresa' ? client.full_name : "N/A"}
+                                    {client.client_type === "Empresa"
+                                      ? client.full_name
+                                      : "N/A"}
                                   </span>
                                 </div>
                               </td>
@@ -1502,32 +1678,47 @@ const AdminClientsPage = () => {
                               <td className="p-4 hidden xl:table-cell">
                                 <div className="flex flex-col font-display">
                                   <span className="text-sm text-slate-700 font-medium">
-                                    {client.source_type || client.source || 'Nuevo'}
+                                    {client.source_type ||
+                                      client.source ||
+                                      "Nuevo"}
                                   </span>
                                   {client.source_sub_type && (
                                     <span className="text-xs text-slate-500 italic">
-                                      {client.source_type === 'Redes sociales' ? 'Red: ' : 
-                                       client.source_type === 'Gestion marketing' ? 'Mkt: ' : 
-                                       client.source_type === 'Referido por cliente' ? 'Ref: ' : ''}
+                                      {client.source_type === "Redes sociales"
+                                        ? "Red: "
+                                        : client.source_type ===
+                                            "Gestion marketing"
+                                          ? "Mkt: "
+                                          : client.source_type ===
+                                              "Referido por cliente"
+                                            ? "Ref: "
+                                            : ""}
                                       {client.source_sub_type}
                                     </span>
                                   )}
-                                  {client.referred_by_brand_id && client.source_type === 'Referido por marca' && (
-                                    <span className="text-xs text-slate-500">
-                                      Marca: {brands.find(b => b.id === client.referred_by_brand_id)?.name || "Marca"}
-                                    </span>
-                                  )}
+                                  {client.referred_by_brand_id &&
+                                    client.source_type ===
+                                      "Referido por marca" && (
+                                      <span className="text-xs text-slate-500">
+                                        Marca:{" "}
+                                        {brands.find(
+                                          (b) =>
+                                            b.id ===
+                                            client.referred_by_brand_id,
+                                        )?.name || "Marca"}
+                                      </span>
+                                    )}
                                 </div>
                               </td>
                               <td className="p-4 hidden xl:table-cell">
-                                 <div className="flex items-center gap-2">
-                                   <span className="material-symbols-outlined text-slate-400 text-[18px]">
-                                     person_pin
-                                   </span>
-                                   <span className="text-sm text-slate-700 font-display">
-                                     {client.assigned_to_name || "Sin asignar"}
-                                   </span>
-                                 </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="material-symbols-outlined text-slate-400 text-[18px]">
+                                    person_pin
+                                  </span>
+                                  <span className="text-sm text-slate-700 font-display">
+                                    {client.assigned_to_name || "Sin asignar"}
+                                  </span>
+                                </div>
                               </td>
                               <td className="p-4 hidden xl:table-cell">
                                 <div className="flex flex-wrap gap-1 max-w-[200px]">
@@ -1578,7 +1769,9 @@ const AdminClientsPage = () => {
                   <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-slate-200 sm:px-6">
                     <div className="flex-1 flex justify-between sm:hidden">
                       <button
-                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        onClick={() =>
+                          setCurrentPage((p) => Math.max(1, p - 1))
+                        }
                         disabled={currentPage === 1}
                         className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
                       >
@@ -1646,7 +1839,9 @@ const AdminClientsPage = () => {
                             ))}
                             <button
                               onClick={() =>
-                                setCurrentPage((p) => Math.min(totalPages, p + 1))
+                                setCurrentPage((p) =>
+                                  Math.min(totalPages, p + 1),
+                                )
                               }
                               disabled={currentPage === totalPages}
                               className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-slate-300 bg-white text-sm font-medium text-slate-500 hover:bg-slate-50 disabled:opacity-50"
@@ -1679,24 +1874,49 @@ const AdminClientsPage = () => {
                         type="text"
                       />
                     </div>
-                    
+
                     <div className="relative" ref={taskDropdownRef}>
-                      <button
-                        onClick={() =>
-                          setIsTaskFilterDropdownOpen(!isTaskFilterDropdownOpen)
-                        }
-                        className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-lg text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors shadow-[0_2px_4px_rgba(0,0,0,0.05)] font-display"
-                      >
-                        <span className="material-symbols-outlined text-[20px]">
-                          filter_list
-                        </span>
-                        Filtros
-                        {(taskStatusFilter !== "all" ||
-                          taskAdvisorFilter !== "all" ||
-                          taskDueSoonFilter) && (
-                          <span className="size-2 rounded-full bg-primary animate-pulse"></span>
-                        )}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() =>
+                            setIsTaskFilterDropdownOpen(!isTaskFilterDropdownOpen)
+                          }
+                          className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-lg text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors shadow-[0_2px_4px_rgba(0,0,0,0.05)] font-display"
+                        >
+                          <span className="material-symbols-outlined text-[20px]">
+                            filter_list
+                          </span>
+                          Filtros
+                          {(taskStatusFilter !== "all" ||
+                            taskAdvisorFilter !== "all" ||
+                            taskDueSoonFilter) && (
+                            <span className="size-2 rounded-full bg-primary animate-pulse"></span>
+                          )}
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setEditingTaskId(null);
+                            setIsEditingTask(false);
+                            setTaskFormData({
+                              title: "",
+                              description: "",
+                              due_date: new Date().toISOString().split("T")[0],
+                              assigned_to: currentUserProfile?.role === 'Vendedor' ? currentUserProfile.full_name : "",
+                              assigned_to_id: currentUserProfile?.role === 'Vendedor' ? currentUserProfile.id : "",
+                              client_id: "",
+                              status: "Pendiente",
+                            });
+                            setIsTaskModalOpen(true);
+                          }}
+                          className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-bold hover:bg-blue-600 transition-all shadow-md font-display"
+                        >
+                          <span className="material-symbols-outlined text-[20px]">
+                            add_task
+                          </span>
+                          NUEVA TAREA
+                        </button>
+                      </div>
 
                       {isTaskFilterDropdownOpen && (
                         <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-200 z-50 p-4 animate-in fade-in slide-in-from-top-2 duration-200">
@@ -1707,7 +1927,9 @@ const AdminClientsPage = () => {
                               </label>
                               <select
                                 value={taskStatusFilter}
-                                onChange={(e) => setTaskStatusFilter(e.target.value)}
+                                onChange={(e) =>
+                                  setTaskStatusFilter(e.target.value)
+                                }
                                 className="w-full text-sm border-slate-200 rounded-lg focus:ring-primary py-1.5"
                               >
                                 <option value="all">Todos los Estados</option>
@@ -1723,22 +1945,34 @@ const AdminClientsPage = () => {
                               </label>
                               <select
                                 value={taskAdvisorFilter}
-                                onChange={(e) => setTaskAdvisorFilter(e.target.value)}
+                                onChange={(e) =>
+                                  setTaskAdvisorFilter(e.target.value)
+                                }
                                 className="w-full text-sm border-slate-200 rounded-lg focus:ring-primary py-1.5"
                               >
                                 <option value="all">Todos los Asesores</option>
-                                {Array.from(new Set(tasks.map(t => t.assigned_to).filter(Boolean))).map(advisor => (
-                                  <option key={advisor} value={advisor!}>{advisor}</option>
+                                {Array.from(
+                                  new Set(
+                                    tasks
+                                      .map((t) => t.assigned_to)
+                                      .filter(Boolean),
+                                  ),
+                                ).map((advisor) => (
+                                  <option key={advisor} value={advisor!}>
+                                    {advisor}
+                                  </option>
                                 ))}
                               </select>
                             </div>
 
                             <div className="pt-2 border-t border-slate-100">
                               <button
-                                onClick={() => setTaskDueSoonFilter(!taskDueSoonFilter)}
+                                onClick={() =>
+                                  setTaskDueSoonFilter(!taskDueSoonFilter)
+                                }
                                 className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-bold transition-all border ${
-                                  taskDueSoonFilter 
-                                    ? "bg-red-50 text-red-600 border-red-200 shadow-sm" 
+                                  taskDueSoonFilter
+                                    ? "bg-red-50 text-red-600 border-red-200 shadow-sm"
                                     : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
                                 }`}
                               >
@@ -1749,7 +1983,9 @@ const AdminClientsPage = () => {
                                   <span>Vence {"<"} 3 días</span>
                                 </div>
                                 {taskDueSoonFilter && (
-                                  <span className="material-symbols-outlined text-sm">check_circle</span>
+                                  <span className="material-symbols-outlined text-sm">
+                                    check_circle
+                                  </span>
                                 )}
                               </button>
                             </div>
@@ -1766,13 +2002,27 @@ const AdminClientsPage = () => {
                     <table className="w-full text-left border-collapse">
                       <thead className="bg-slate-50 border-b border-slate-200">
                         <tr>
-                          <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">ID</th>
-                          <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">Tarea</th>
-                          <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">Asignado</th>
-                          <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">Cliente</th>
-                          <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">Vencimiento</th>
-                          <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">Estado</th>
-                          <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right font-display whitespace-nowrap">Acciones</th>
+                          <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">
+                            ID
+                          </th>
+                          <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">
+                            Tarea
+                          </th>
+                          <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">
+                            Asignado
+                          </th>
+                          <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">
+                            Cliente
+                          </th>
+                          <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">
+                            Vencimiento
+                          </th>
+                          <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">
+                            Estado
+                          </th>
+                          <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right font-display whitespace-nowrap">
+                            Acciones
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -1780,124 +2030,179 @@ const AdminClientsPage = () => {
                           <tr>
                             <td colSpan={7} className="px-6 py-10 text-center">
                               <div className="size-6 border-2 border-primary border-t-transparent animate-spin rounded-full mx-auto mb-2"></div>
-                              <p className="text-sm text-slate-500 font-display">Cargando tareas...</p>
+                              <p className="text-sm text-slate-500 font-display">
+                                Cargando tareas...
+                              </p>
                             </td>
                           </tr>
                         ) : tasks.length === 0 ? (
                           <tr>
                             <td colSpan={7} className="px-6 py-10 text-center">
-                              <p className="text-sm text-slate-500 font-display">No hay tareas registradas.</p>
+                              <p className="text-sm text-slate-500 font-display">
+                                No hay tareas registradas.
+                              </p>
                             </td>
                           </tr>
                         ) : (
                           tasks
-                            .filter(task => {
+                            .filter((task) => {
                               const searchStr = taskSearchTerm.toLowerCase();
-                              const paddedCodigo = (task.codigo?.toString() || "").padStart(4, "0");
-                              const matchesSearch = task.title.toLowerCase().includes(searchStr) || 
-                                                  paddedCodigo.includes(searchStr) ||
-                                                  (task.codigo?.toString() || "").includes(searchStr);
-                              const matchesStatus = taskStatusFilter === 'all' || task.status === taskStatusFilter;
-                              const matchesAdvisor = taskAdvisorFilter === 'all' || task.assigned_to === taskAdvisorFilter;
-                              
+                              const paddedCodigo = (
+                                task.codigo?.toString() || ""
+                              ).padStart(4, "0");
+                              const matchesSearch =
+                                task.title.toLowerCase().includes(searchStr) ||
+                                paddedCodigo.includes(searchStr) ||
+                                (task.codigo?.toString() || "").includes(
+                                  searchStr,
+                                );
+                              const matchesStatus =
+                                taskStatusFilter === "all" ||
+                                task.status === taskStatusFilter;
+                              const matchesAdvisor =
+                                taskAdvisorFilter === "all" ||
+                                task.assigned_to === taskAdvisorFilter;
+
                               let matchesDueSoon = true;
                               if (taskDueSoonFilter) {
                                 const dueDate = new Date(task.due_date);
-                                const diff = dueDate.getTime() - new Date().getTime();
+                                const diff =
+                                  dueDate.getTime() - new Date().getTime();
                                 const days = diff / (1000 * 60 * 60 * 24);
                                 matchesDueSoon = days >= 0 && days <= 3;
                               }
 
-                              return matchesSearch && matchesStatus && matchesAdvisor && matchesDueSoon;
+                              return (
+                                matchesSearch &&
+                                matchesStatus &&
+                                matchesAdvisor &&
+                                matchesDueSoon
+                              );
                             })
                             .map((task) => (
-                            <tr 
-                              key={task.id} 
-                              onClick={() => setSelectedTaskId(task.id)}
-                              className={`hover:bg-slate-50 group transition-colors cursor-pointer ${selectedTaskId === task.id ? 'bg-blue-50/50' : ''}`}
-                            >
-                              <td className="px-6 py-4">
-                                <span className="inline-flex items-center justify-center px-2 py-1 rounded bg-slate-100 text-slate-600 text-[10px] font-bold font-mono border border-slate-200 shadow-sm">
-                                  #{task.codigo?.toString().padStart(4, "0")}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4">
-                                <p className="text-sm font-bold text-slate-900 mb-0.5 font-display">{task.title}</p>
-                                {task.description && (
-                                  <p className="text-xs text-slate-500 line-clamp-1 font-display">{task.description}</p>
-                                )}
-                              </td>
-                              <td className="px-6 py-4">
-                                <div className="flex items-center gap-2">
-                                  <div className="size-6 rounded-full bg-slate-100 flex items-center justify-center">
-                                    <span className="material-symbols-outlined text-[14px] text-slate-400">person</span>
-                                  </div>
-                                  <span className="text-xs text-slate-700 font-medium font-display">{task.assigned_to || 'Sin asignar'}</span>
-                                </div>
-                              </td>
-                              <td className="px-6 py-4">
-                                {task.client ? (
-                                  <p className="text-xs text-slate-700 font-medium font-display">
-                                    {task.client.full_name || task.client.company_name}
+                              <tr
+                                key={task.id}
+                                onClick={() => setSelectedTaskId(task.id)}
+                                className={`hover:bg-slate-50 group transition-colors cursor-pointer ${selectedTaskId === task.id ? "bg-blue-50/50" : ""}`}
+                              >
+                                <td className="px-6 py-4">
+                                  <span className="inline-flex items-center justify-center px-2 py-1 rounded bg-slate-100 text-slate-600 text-[10px] font-bold font-mono border border-slate-200 shadow-sm">
+                                    #{task.codigo?.toString().padStart(4, "0")}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <p className="text-sm font-bold text-slate-900 mb-0.5 font-display">
+                                    {task.title}
                                   </p>
-                                ) : (
-                                  <span className="text-xs text-slate-400 font-display">Sin cliente</span>
-                                )}
-                              </td>
-                              <td className="px-6 py-4">
-                                <span className={`text-xs font-medium font-display ${
-                                  new Date(task.due_date) < new Date() && task.status === 'Pendiente'
-                                    ? "text-red-600 font-bold" 
-                                    : "text-slate-600"
-                                }`}>
-                                  {new Date(task.due_date).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4">
-                                <select
-                                  value={task.status}
-                                  onChange={(e) => handleUpdateTaskStatus(task.id, e.target.value as Task["status"])}
-                                  className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border cursor-pointer font-display ${
-                                    task.status === 'Pendiente' ? 'bg-orange-50 text-orange-700 border-orange-200' :
-                                    task.status === 'Completada' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                    'bg-slate-50 text-slate-700 border-slate-200'
-                                  }`}
-                                >
-                                  <option value="Pendiente">Pendiente</option>
-                                  <option value="Completada">Completada</option>
-                                  <option value="Cancelada">Cancelada</option>
-                                </select>
-                              </td>
-                              <td className="px-6 py-4 text-right">
-                                <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                                  <button 
-                                    onClick={() => {
-                                      setEditingTaskId(task.id);
-                                      setIsEditingTask(true);
-                                      setTaskFormData({
-                                        title: task.title,
-                                        description: task.description || "",
-                                        due_date: task.due_date.split('T')[0],
-                                        assigned_to: task.assigned_to || "",
-                                        client_id: task.client_id || "",
-                                        status: task.status,
-                                      });
-                                      setIsTaskModalOpen(true);
-                                    }}
-                                    className="p-1.5 text-slate-400 hover:text-blue-600 transition-colors"
+                                  {task.description && (
+                                    <p className="text-xs text-slate-500 line-clamp-1 font-display">
+                                      {task.description}
+                                    </p>
+                                  )}
+                                </td>
+                                <td className="px-6 py-4">
+                                  <div className="flex items-center gap-2">
+                                    <div className="size-6 rounded-full bg-slate-100 flex items-center justify-center">
+                                      <span className="material-symbols-outlined text-[14px] text-slate-400">
+                                        person
+                                      </span>
+                                    </div>
+                                    <span className="text-xs text-slate-700 font-medium font-display">
+                                      {task.assigned_to || "Sin asignar"}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  {task.client ? (
+                                    <p className="text-xs text-slate-700 font-medium font-display">
+                                      {task.client.full_name ||
+                                        task.client.company_name}
+                                    </p>
+                                  ) : (
+                                    <span className="text-xs text-slate-400 font-display">
+                                      Sin cliente
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-6 py-4">
+                                  <span
+                                    className={`text-xs font-medium font-display ${
+                                      new Date(task.due_date) < new Date() &&
+                                      task.status === "Pendiente"
+                                        ? "text-red-600 font-bold"
+                                        : "text-slate-600"
+                                    }`}
                                   >
-                                    <span className="material-symbols-outlined text-[18px]">edit</span>
-                                  </button>
-                                  <button 
-                                    onClick={() => handleDeleteTask(task.id)}
-                                    className="p-1.5 text-slate-400 hover:text-red-600 transition-colors"
+                                    {new Date(task.due_date).toLocaleDateString(
+                                      "es-CO",
+                                      {
+                                        day: "2-digit",
+                                        month: "short",
+                                        year: "numeric",
+                                        timeZone: "UTC",
+                                      },
+                                    )}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <select
+                                    value={task.status}
+                                    onChange={(e) =>
+                                      handleUpdateTaskStatus(
+                                        task.id,
+                                        e.target.value as Task["status"],
+                                      )
+                                    }
+                                    className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border cursor-pointer font-display ${
+                                      task.status === "Pendiente"
+                                        ? "bg-orange-50 text-orange-700 border-orange-200"
+                                        : task.status === "Completada"
+                                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                          : "bg-slate-50 text-slate-700 border-slate-200"
+                                    }`}
                                   >
-                                    <span className="material-symbols-outlined text-[18px]">delete</span>
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))
+                                    <option value="Pendiente">Pendiente</option>
+                                    <option value="Completada">
+                                      Completada
+                                    </option>
+                                    <option value="Cancelada">Cancelada</option>
+                                  </select>
+                                </td>
+                                <td className="px-6 py-4 text-right">
+                                  <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                                    <button
+                                      onClick={() => {
+                                        setEditingTaskId(task.id);
+                                        setIsEditingTask(true);
+                                        setTaskFormData({
+                                          title: task.title,
+                                          description: task.description || "",
+                                          due_date: task.due_date.split("T")[0],
+                                          assigned_to: task.assigned_to || "",
+                                          assigned_to_id: task.assigned_to_id || "",
+                                          client_id: task.client_id || "",
+                                          status: task.status,
+                                        });
+                                        setIsTaskModalOpen(true);
+                                      }}
+                                      className="p-1.5 text-slate-400 hover:text-blue-600 transition-colors"
+                                    >
+                                      <span className="material-symbols-outlined text-[18px]">
+                                        edit
+                                      </span>
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteTask(task.id)}
+                                      className="p-1.5 text-slate-400 hover:text-red-600 transition-colors"
+                                    >
+                                      <span className="material-symbols-outlined text-[18px]">
+                                        delete
+                                      </span>
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))
                         )}
                       </tbody>
                     </table>
@@ -1908,810 +2213,945 @@ const AdminClientsPage = () => {
           </div>
         </div>
 
-        <aside 
+        <aside
           className={`bg-white border-l border-slate-200 transition-all duration-300 ease-in-out flex flex-col overflow-hidden ${
-            (viewTab === 'Clientes' && selectedClientId) || (viewTab === 'Tareas' && selectedTaskId) ? "w-full lg:w-[500px] opacity-100" : "w-0 opacity-0 border-none"
+            (viewTab === "Clientes" && selectedClientId) ||
+            (viewTab === "Tareas" && selectedTaskId)
+              ? "w-full lg:w-[500px] opacity-100"
+              : "w-0 opacity-0 border-none"
           }`}
         >
           <div className="min-w-[500px] h-full flex flex-col">
             {(() => {
-              if (viewTab === 'Clientes') {
+              if (viewTab === "Clientes") {
                 if (!selectedClient) {
                   return (
-            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-white">
-              <span className="material-symbols-outlined text-5xl text-slate-200 mb-4">
-                person_search
-              </span>
-              <p className="text-slate-500 font-display">
-                Selecciona un cliente para ver su perfil detallado.
-              </p>
-            </div>
+                    <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-white">
+                      <span className="material-symbols-outlined text-5xl text-slate-200 mb-4">
+                        person_search
+                      </span>
+                      <p className="text-slate-500 font-display">
+                        Selecciona un cliente para ver su perfil detallado.
+                      </p>
+                    </div>
                   );
                 } else {
                   return (
-            <div className="flex flex-col h-full bg-white relative">
-              {/* Botón de Cierre */}
-              <button 
-                onClick={() => setSelectedClientId(null)}
-                className="absolute top-6 right-6 size-10 flex items-center justify-center text-slate-400 hover:text-red-500 transition-all z-20"
-                title="Cerrar detalles"
-              >
-                <span className="material-symbols-outlined text-[28px]">close</span>
-              </button>
+                    <div className="flex flex-col h-full bg-white relative">
+                      {/* Botón de Cierre */}
+                      <button
+                        onClick={() => setSelectedClientId(null)}
+                        className="absolute top-6 right-6 size-10 flex items-center justify-center text-slate-400 hover:text-red-500 transition-all z-20"
+                        title="Cerrar detalles"
+                      >
+                        <span className="material-symbols-outlined text-[28px]">
+                          close
+                        </span>
+                      </button>
 
-              <div className="p-8 flex-1 overflow-y-auto">
-              <div className="flex justify-between items-start mb-6 pr-8">
-                <div className="text-xs font-bold uppercase tracking-wider text-slate-400 font-display">
-                  Perfil del Cliente
-                </div>
-                <div
-                  className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${selectedClient.status === "Activo" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}
-                >
-                  {selectedClient.status}
-                </div>
-              </div>
-              <div className="flex flex-col items-center text-center mb-6">
-                <h3 className="text-xl font-bold text-slate-900 font-display">
-                  {selectedClient.client_type === 'Empresa' ? (selectedClient.contact_person || 'Sin contacto') : selectedClient.full_name}
-                </h3>
-                <p className="text-slate-500 text-sm mb-3 font-display">
-                  {selectedClient.client_type === "Empresa"
-                    ? "Corporativo"
-                    : "Persona Natural"}
-                </p>
-                
-                <div className="flex flex-wrap items-center justify-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 px-3 h-8 rounded-full text-xs font-bold bg-blue-50 text-blue-700 font-display border border-blue-100">
-                    {selectedClient.document_type}:{" "}
-                    {selectedClient.document_number}
-                  </span>
-
-                  {(selectedClient.industry_sector || selectedClient.industry) && (
-                    <span className="inline-flex items-center gap-1.5 px-3 h-8 rounded-full bg-slate-100 text-slate-600 text-xs font-bold font-display border border-slate-200">
-                      <span className="material-symbols-outlined text-[16px]">
-                        factory
-                      </span>
-                      {selectedClient.industry_sector || selectedClient.industry}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="flex gap-2 mb-6 border-b border-slate-200 pb-1">
-                <button
-                  onClick={() => setActiveTab("General")}
-                  className={`flex-1 pb-2 text-sm font-bold border-b-2 transition-all font-display ${activeTab === "General" ? "border-primary text-primary" : "border-transparent text-slate-400 hover:text-slate-600"}`}
-                >
-                  General
-                </button>
-                <button
-                  onClick={() => setActiveTab("Historial")}
-                  className={`flex-1 pb-2 text-sm font-bold border-b-2 transition-all font-display ${activeTab === "Historial" ? "border-primary text-primary" : "border-transparent text-slate-400 hover:text-slate-600"}`}
-                >
-                  Historial
-                </button>
-                <button
-                  onClick={() => setActiveTab("CRM")}
-                  className={`flex-1 pb-2 text-sm font-bold border-b-2 transition-all font-display ${activeTab === "CRM" ? "border-primary text-primary" : "border-transparent text-slate-400 hover:text-slate-600"}`}
-                >
-                  CRM
-                </button>
-              </div>
-
-              <div className="pb-8">
-                {activeTab === "General" ? (
-                  <div className="space-y-6">
-                    <div className="space-y-3">
-                      <h4 className="text-sm font-bold text-slate-900 font-display uppercase tracking-widest text-[11px] text-slate-400">
-                        Información de Contacto
-                      </h4>
-                      <div className="flex items-center gap-3 text-sm text-slate-600 font-display">
-                        <div className="size-8 rounded-lg bg-slate-50 flex items-center justify-center shrink-0 border border-slate-100">
-                          <span className="material-symbols-outlined text-[18px] text-slate-400">
-                            mail
-                          </span>
-                        </div>
-                        <a
-                          href={`mailto:${selectedClient.email}`}
-                          className="text-primary hover:underline transition-all"
-                        >
-                          {selectedClient.email || "No registrado"}
-                        </a>
-                      </div>
-                      <div className="flex items-center gap-3 text-sm text-slate-600 font-display">
-                        <div className="size-8 rounded-lg bg-slate-50 flex items-center justify-center shrink-0 border border-slate-100">
-                          <span className="material-symbols-outlined text-[18px] text-slate-400">
-                            phone
-                          </span>
-                        </div>
-                        {selectedClient.phone ? (
-                          <a
-                            href={`https://wa.me/${selectedClient.phone.replace(/\D/g, "")}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-primary hover:underline transition-all"
-                          >
-                            {selectedClient.phone}
-                          </a>
-                        ) : (
-                          <span>No registrado</span>
-                        )}
-                      </div>
-                      <div className="flex items-start gap-3 text-sm text-slate-600 font-display">
-                        <div className="size-8 rounded-lg bg-slate-50 flex items-center justify-center shrink-0 border border-slate-100">
-                          <span className="material-symbols-outlined text-[18px] text-slate-400">
-                            location_on
-                          </span>
-                        </div>
-                        <div className="flex flex-col">
-                          <span>
-                            {selectedClient.address || "Sin dirección"}
-                          </span>
-                          <span className="text-xs text-slate-400">
-                            {selectedClient.municipality},{" "}
-                            {selectedClient.department}
-                          </span>
-                        </div>
-                      </div>
-
-                      {selectedClient.client_type === 'Empresa' && (
-                        <div className="flex items-center gap-3 text-sm text-slate-600 font-display">
-                          <div className="size-8 rounded-lg bg-slate-50 flex items-center justify-center shrink-0 border border-slate-100">
-                            <span className="material-symbols-outlined text-[18px] text-slate-400">
-                              domain
-                            </span>
+                      <div className="p-8 flex-1 overflow-y-auto">
+                        <div className="flex justify-between items-start mb-6 pr-8">
+                          <div className="text-xs font-bold uppercase tracking-wider text-slate-400 font-display">
+                            Perfil del Cliente
                           </div>
-                          <span className="text-sm text-slate-700 font-bold">{selectedClient.full_name}</span>
-                        </div>
-                      )}
-
-                      <div className="flex items-center gap-3 text-sm text-slate-600 font-display">
-                        <div className="size-8 rounded-lg bg-slate-50 flex items-center justify-center shrink-0 border border-slate-100">
-                          <span className="material-symbols-outlined text-[18px] text-slate-400">
-                            support_agent
-                          </span>
-                        </div>
-                        <span className="text-sm text-slate-700 font-medium">{selectedClient.assigned_to_name || "Sin asignar"}</span>
-                      </div>
-
-                      <div className="flex items-center gap-3 text-sm text-slate-600 font-display">
-                        <div className="size-8 rounded-lg bg-slate-50 flex items-center justify-center shrink-0 border border-slate-100">
-                          <span className="material-symbols-outlined text-[18px] text-slate-400">
-                            share
-                          </span>
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="text-sm text-slate-700 font-medium">
-                            {selectedClient.source_type || selectedClient.source || 'Nuevo'}
-                          </span>
-                          {selectedClient.source_sub_type && (
-                            <span className="text-[10px] text-slate-500 italic">
-                              {selectedClient.source_type === 'Redes sociales' ? 'Red: ' : 
-                               selectedClient.source_type === 'Gestion marketing' ? 'Mkt: ' : 
-                               selectedClient.source_type === 'Referido por cliente' ? 'Ref: ' : ''}
-                              {selectedClient.source_sub_type}
-                            </span>
-                          )}
-                          {selectedClient.referred_by_brand_id && selectedClient.source_type === 'Referido por marca' && (
-                             <span className="text-[10px] text-primary italic font-medium">
-                               Marca: {brands.find(b => b.id === selectedClient.referred_by_brand_id)?.name || "Marca"}
-                             </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-
-                    <div className="space-y-3">
-                      <h4 className="text-sm font-bold text-slate-900 font-display uppercase tracking-widest text-[11px] text-slate-400">
-                        Etiquetas (Segmentación)
-                      </h4>
-                      <div className="flex flex-wrap gap-2 mb-3">
-                        {selectedClient.tags &&
-                        selectedClient.tags.length > 0 ? (
-                          selectedClient.tags.map((tag) => (
-                            <span
-                              key={tag}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 text-primary text-xs font-bold font-display group"
-                            >
-                              {tag}
-                              <button
-                                onClick={() => handleRemoveTag(tag)}
-                                className="opacity-0 group-hover:opacity-100 hover:text-red-500 transition-all"
-                              >
-                                <span className="material-symbols-outlined text-[14px]">
-                                  close
-                                </span>
-                              </button>
-                            </span>
-                          ))
-                        ) : (
-                          <span className="text-xs text-slate-400 font-display italic">
-                            Sin etiquetas asignadas
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          placeholder="Añadir etiqueta..."
-                          value={newTag}
-                          onChange={(e) => setNewTag(e.target.value)}
-                          onKeyDown={(e) => e.key === "Enter" && handleAddTag()}
-                          className="flex-1 text-xs border-slate-200 rounded-lg focus:ring-primary py-1.5"
-                        />
-                        <button
-                          onClick={handleAddTag}
-                          disabled={isSavingTags || !newTag.trim()}
-                          className="bg-slate-100 hover:bg-slate-200 text-slate-600 p-1.5 rounded-lg transition-colors disabled:opacity-50"
-                        >
-                          <span className="material-symbols-outlined text-[20px]">
-                            add
-                          </span>
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="pt-4 grid grid-cols-2 gap-3">
-                      <button
-                        onClick={() => handleEditClick(selectedClient)}
-                        className="flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors font-display"
-                      >
-                        <span className="material-symbols-outlined text-[18px]">
-                          edit
-                        </span>
-                        Editar
-                      </button>
-                      <button
-                        onClick={() => setIsDeleteModalOpen(true)}
-                        disabled={isSubmitting}
-                        className="flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 text-red-600 rounded-lg text-sm font-bold hover:bg-red-100 transition-colors font-display disabled:opacity-50"
-                      >
-                        <span className="material-symbols-outlined text-[18px]">
-                          delete
-                        </span>
-                        {isSubmitting ? "..." : "Eliminar"}
-                      </button>
-                    </div>
-                  </div>
-                ) : activeTab === "Historial" ? (
-                  <div className="space-y-4">
-                    <h4 className="text-sm font-bold text-slate-900 font-display uppercase tracking-widest text-[11px] text-slate-400 mb-4">
-                      Pedidos Recientes
-                    </h4>
-
-                    {loadingOrders ? (
-                      <div className="p-8 text-center">
-                        <div className="size-6 border-2 border-primary border-t-transparent animate-spin rounded-full mx-auto"></div>
-                      </div>
-                    ) : clientOrders.length === 0 ? (
-                      <div className="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                        <span className="material-symbols-outlined text-slate-300 text-3xl mb-2">
-                          shopping_bag
-                        </span>
-                        <p className="text-xs text-slate-500 font-display">
-                          Este cliente aún no tiene pedidos.
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {clientOrders.map((order) => (
                           <div
-                            key={order.id}
-                            className="p-4 bg-white border border-slate-200 rounded-xl hover:shadow-md transition-all group"
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${selectedClient.status === "Activo" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}
                           >
-                            <div className="flex justify-between items-start mb-2">
-                              <div>
-                                <p className="text-sm font-bold text-slate-900 font-display">
-                                  #{order.id.toString().padStart(5, "0")}
-                                </p>
-                                <p className="text-[10px] text-slate-500 font-display">
-                                  {new Date(
-                                    order.created_at,
-                                  ).toLocaleDateString()}
-                                </p>
-                              </div>
-                              <span
-                                className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                  order.status === "Completado"
-                                    ? "bg-emerald-100 text-emerald-700"
-                                    : order.status === "Pendiente"
-                                      ? "bg-amber-100 text-amber-700"
-                                      : "bg-blue-100 text-blue-700"
-                                }`}
-                              >
-                                {order.status}
-                              </span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                              <p className="text-sm font-bold text-primary font-mono">
-                                ${formatCurrency(order.total_amount)}
-                              </p>
-                              <button
-                                onClick={() =>
-                                  router.push(`/admin/pedidos?id=${order.id}`)
-                                }
-                                className="text-[10px] font-bold text-slate-400 group-hover:text-primary transition-colors flex items-center gap-1"
-                              >
-                                DETALLES{" "}
-                                <span className="material-symbols-outlined text-sm">
-                                  arrow_forward
-                                </span>
-                              </button>
-                            </div>
+                            {selectedClient.status}
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-6">
-                    {selectedClient.notes && (
-                      <div className="space-y-3 p-4 bg-amber-50 rounded-xl border border-amber-100">
-                        <h4 className="text-[10px] font-bold text-amber-800 uppercase tracking-widest flex items-center gap-1.5">
-                          <span className="material-symbols-outlined text-[16px]">description</span>
-                          Requerimientos
-                        </h4>
-                        <p className="text-xs text-amber-900 font-display leading-relaxed italic">
-                          &quot;{selectedClient.notes}&quot;
-                        </p>
-                      </div>
-                    )}
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                      <h4 className="text-xs font-bold text-slate-900 font-display uppercase tracking-widest mb-3">
-                        Registrar Interacción
-                      </h4>
-                      <form
-                        onSubmit={handleAddInteraction}
-                        className="space-y-3"
-                      >
-                        <div className="flex gap-2">
-                          {(
-                            [
-                              "Nota",
-                              "Llamada",
-                              "Reunión",
-                              "Correo",
-                              "Soporte",
-                            ] as const
-                          ).map((type) => (
-                            <button
-                              key={type}
-                              type="button"
-                              onClick={() =>
-                                setNewInteraction((prev) => ({ ...prev, type }))
-                              }
-                              className={`flex-1 py-1 px-2 rounded-lg text-[10px] font-bold border transition-all ${newInteraction.type === type ? "bg-primary border-primary text-white shadow-sm" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"}`}
-                            >
-                              {type}
-                            </button>
-                          ))}
                         </div>
-                        <textarea
-                          value={newInteraction.content}
-                          onChange={(e) =>
-                            setNewInteraction((prev) => ({
-                              ...prev,
-                              content: e.target.value,
-                            }))
-                          }
-                          rows={3}
-                          placeholder="Escribe los detalles aquí..."
-                          className="w-full text-xs border-slate-200 rounded-lg focus:ring-primary p-3"
-                          required
-                        />
-                        <button
-                          type="submit"
-                          disabled={
-                            isAddingInteraction ||
-                            !newInteraction.content.trim()
-                          }
-                          className="w-full bg-primary text-white py-2 rounded-lg text-xs font-bold hover:bg-blue-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                        >
-                          <span className="material-symbols-outlined text-[18px]">
-                            save
-                          </span>
-                          {isAddingInteraction
-                            ? "Guardando..."
-                            : "Guardar en Historial"}
-                        </button>
-                      </form>
-                    </div>
+                        <div className="flex flex-col items-center text-center mb-6">
+                          <h3 className="text-xl font-bold text-slate-900 font-display">
+                            {selectedClient.client_type === "Empresa"
+                              ? selectedClient.contact_person || "Sin contacto"
+                              : selectedClient.full_name}
+                          </h3>
+                          <p className="text-slate-500 text-sm mb-3 font-display">
+                            {selectedClient.client_type === "Empresa"
+                              ? "Corporativo"
+                              : "Persona Natural"}
+                          </p>
 
-                    <div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
-                      {!showFollowupForm ? (
-                        <button
-                          onClick={() => setShowFollowupForm(true)}
-                          className="w-full flex items-center justify-center gap-2 py-2 text-primary font-bold text-xs hover:bg-blue-100/50 rounded-lg transition-all"
-                        >
-                          <span className="material-symbols-outlined text-[18px]">
-                            calendar_add_on
-                          </span>
-                          Programar Seguimiento (GC)
-                        </button>
-                      ) : (
-                        <div className="space-y-3">
-                          <div className="flex justify-between items-center">
-                            <h4 className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">
-                              Programar Seguimiento
-                            </h4>
-                            <button
-                              onClick={() => setShowFollowupForm(false)}
-                              className="text-blue-400 hover:text-blue-600"
-                            >
-                              <span className="material-symbols-outlined text-[16px]">
-                                close
-                              </span>
-                            </button>
-                          </div>
-                          <input
-                            type="text"
-                            placeholder="Asunto (ej: Revisar cotización)"
-                            value={followupData.title}
-                            onChange={(e) =>
-                              setFollowupData((prev) => ({
-                                ...prev,
-                                title: e.target.value,
-                              }))
-                            }
-                            className="w-full text-[11px] border-blue-100 rounded-lg focus:ring-primary py-1.5"
-                          />
-                          <div className="grid grid-cols-2 gap-2">
-                            <input
-                              type="date"
-                              value={followupData.date}
-                              onChange={(e) =>
-                                setFollowupData((prev) => ({
-                                  ...prev,
-                                  date: e.target.value,
-                                }))
-                              }
-                              className="w-full text-[11px] border-blue-100 rounded-lg focus:ring-primary py-1.5"
-                            />
-                            <input
-                              type="time"
-                              value={followupData.time}
-                              onChange={(e) =>
-                                setFollowupData((prev) => ({
-                                  ...prev,
-                                  time: e.target.value,
-                                }))
-                              }
-                              className="w-full text-[11px] border-blue-100 rounded-lg focus:ring-primary py-1.5"
-                            />
-                          </div>
-                          <textarea
-                            placeholder="Descripción adicional..."
-                            value={followupData.description}
-                            onChange={(e) =>
-                              setFollowupData((prev) => ({
-                                ...prev,
-                                description: e.target.value,
-                              }))
-                            }
-                            rows={2}
-                            className="w-full text-[11px] border-blue-100 rounded-lg focus:ring-primary py-1.5"
-                          />
-                          <button
-                            onClick={handleCreateGoogleCalendarEvent}
-                            className="w-full bg-blue-600 text-white py-2 rounded-lg text-[10px] font-bold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
-                          >
-                            <span className="material-symbols-outlined text-[18px]">
-                              event
+                          <div className="flex flex-wrap items-center justify-center gap-2">
+                            <span className="inline-flex items-center gap-1.5 px-3 h-8 rounded-full text-xs font-bold bg-blue-50 text-blue-700 font-display border border-blue-100">
+                              {selectedClient.document_type}:{" "}
+                              {selectedClient.document_number}
                             </span>
-                            Sincronizar con Google Calendar
+
+                            {(selectedClient.industry_sector ||
+                              selectedClient.industry) && (
+                              <span className="inline-flex items-center gap-1.5 px-3 h-8 rounded-full bg-slate-100 text-slate-600 text-xs font-bold font-display border border-slate-200">
+                                <span className="material-symbols-outlined text-[16px]">
+                                  factory
+                                </span>
+                                {selectedClient.industry_sector ||
+                                  selectedClient.industry}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex gap-2 mb-6 border-b border-slate-200 pb-1">
+                          <button
+                            onClick={() => setActiveTab("General")}
+                            className={`flex-1 pb-2 text-sm font-bold border-b-2 transition-all font-display ${activeTab === "General" ? "border-primary text-primary" : "border-transparent text-slate-400 hover:text-slate-600"}`}
+                          >
+                            General
+                          </button>
+                          <button
+                            onClick={() => setActiveTab("Historial")}
+                            className={`flex-1 pb-2 text-sm font-bold border-b-2 transition-all font-display ${activeTab === "Historial" ? "border-primary text-primary" : "border-transparent text-slate-400 hover:text-slate-600"}`}
+                          >
+                            Historial
+                          </button>
+                          <button
+                            onClick={() => setActiveTab("CRM")}
+                            className={`flex-1 pb-2 text-sm font-bold border-b-2 transition-all font-display ${activeTab === "CRM" ? "border-primary text-primary" : "border-transparent text-slate-400 hover:text-slate-600"}`}
+                          >
+                            CRM
                           </button>
                         </div>
-                      )}
-                    </div>
 
-                    {/* Tareas del Cliente */}
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                      <div className="flex justify-between items-center mb-3">
-                        <h4 className="text-xs font-bold text-slate-900 font-display uppercase tracking-widest">
-                          Tareas Pendientes
-                        </h4>
-                        <button 
-                          onClick={() => {
-                            setIsEditingTask(false);
-                            setTaskFormData({
-                              title: "",
-                              description: "",
-                              due_date: new Date().toISOString().split('T')[0],
-                              assigned_to: (selectedClient as any).assigned_to_name || "",
-                              client_id: (selectedClient as any).id,
-                              status: "Pendiente",
-                            });
-                            setIsTaskModalOpen(true);
-                          }}
-                          className="flex items-center gap-1 text-[10px] font-bold text-primary hover:text-blue-700 transition-colors"
-                        >
-                          <span className="material-symbols-outlined text-[14px]">add</span>
-                          NUEVA
-                        </button>
-                      </div>
-
-                      <div className="space-y-2">
-                        {tasks.filter(t => t.client_id === (selectedClient as any).id && t.status === 'Pendiente').length === 0 ? (
-                          <p className="text-[10px] text-slate-400 italic font-display">No hay tareas pendientes para este cliente.</p>
-                        ) : (
-                          tasks
-                            .filter(t => t.client_id === (selectedClient as any).id && t.status === 'Pendiente')
-                            .slice(0, 3)
-                            .map(task => (
-                              <div key={task.id} className="p-2 bg-white rounded-lg border border-slate-100 flex justify-between items-center group">
-                                <div className="min-w-0">
-                                  <p className="text-[11px] font-bold text-slate-700 truncate font-display">#{task.codigo?.toString().padStart(4, "0")} {task.title}</p>
-                                  <p className="text-[9px] text-slate-400 font-display">Vence: {new Date(task.due_date).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })}</p>
+                        <div className="pb-8">
+                          {activeTab === "General" ? (
+                            <div className="space-y-6">
+                              <div className="space-y-3">
+                                <h4 className="text-sm font-bold text-slate-900 font-display uppercase tracking-widest text-[11px] text-slate-400">
+                                  Información de Contacto
+                                </h4>
+                                <div className="flex items-center gap-3 text-sm text-slate-600 font-display">
+                                  <div className="size-8 rounded-lg bg-slate-50 flex items-center justify-center shrink-0 border border-slate-100">
+                                    <span className="material-symbols-outlined text-[18px] text-slate-400">
+                                      mail
+                                    </span>
+                                  </div>
+                                  <a
+                                    href={`mailto:${selectedClient.email}`}
+                                    className="text-primary hover:underline transition-all"
+                                  >
+                                    {selectedClient.email || "No registrado"}
+                                  </a>
                                 </div>
+                                <div className="flex items-center gap-3 text-sm text-slate-600 font-display">
+                                  <div className="size-8 rounded-lg bg-slate-50 flex items-center justify-center shrink-0 border border-slate-100">
+                                    <span className="material-symbols-outlined text-[18px] text-slate-400">
+                                      phone
+                                    </span>
+                                  </div>
+                                  {selectedClient.phone ? (
+                                    <a
+                                      href={`https://wa.me/${selectedClient.phone.replace(/\D/g, "")}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-primary hover:underline transition-all"
+                                    >
+                                      {selectedClient.phone}
+                                    </a>
+                                  ) : (
+                                    <span>No registrado</span>
+                                  )}
+                                </div>
+                                <div className="flex items-start gap-3 text-sm text-slate-600 font-display">
+                                  <div className="size-8 rounded-lg bg-slate-50 flex items-center justify-center shrink-0 border border-slate-100">
+                                    <span className="material-symbols-outlined text-[18px] text-slate-400">
+                                      location_on
+                                    </span>
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span>
+                                      {selectedClient.address ||
+                                        "Sin dirección"}
+                                    </span>
+                                    <span className="text-xs text-slate-400">
+                                      {selectedClient.municipality},{" "}
+                                      {selectedClient.department}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {selectedClient.client_type === "Empresa" && (
+                                  <div className="flex items-center gap-3 text-sm text-slate-600 font-display">
+                                    <div className="size-8 rounded-lg bg-slate-50 flex items-center justify-center shrink-0 border border-slate-100">
+                                      <span className="material-symbols-outlined text-[18px] text-slate-400">
+                                        domain
+                                      </span>
+                                    </div>
+                                    <span className="text-sm text-slate-700 font-bold">
+                                      {selectedClient.full_name}
+                                    </span>
+                                  </div>
+                                )}
+
+                                <div className="flex items-center gap-3 text-sm text-slate-600 font-display">
+                                  <div className="size-8 rounded-lg bg-slate-50 flex items-center justify-center shrink-0 border border-slate-100">
+                                    <span className="material-symbols-outlined text-[18px] text-slate-400">
+                                      support_agent
+                                    </span>
+                                  </div>
+                                  <span className="text-sm text-slate-700 font-medium">
+                                    {selectedClient.assigned_to_name ||
+                                      "Sin asignar"}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-3 text-sm text-slate-600 font-display">
+                                  <div className="size-8 rounded-lg bg-slate-50 flex items-center justify-center shrink-0 border border-slate-100">
+                                    <span className="material-symbols-outlined text-[18px] text-slate-400">
+                                      share
+                                    </span>
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="text-sm text-slate-700 font-medium">
+                                      {selectedClient.source_type ||
+                                        selectedClient.source ||
+                                        "Nuevo"}
+                                    </span>
+                                    {selectedClient.source_sub_type && (
+                                      <span className="text-[10px] text-slate-500 italic">
+                                        {selectedClient.source_type ===
+                                        "Redes sociales"
+                                          ? "Red: "
+                                          : selectedClient.source_type ===
+                                              "Gestion marketing"
+                                            ? "Mkt: "
+                                            : selectedClient.source_type ===
+                                                "Referido por cliente"
+                                              ? "Ref: "
+                                              : ""}
+                                        {selectedClient.source_sub_type}
+                                      </span>
+                                    )}
+                                    {selectedClient.referred_by_brand_id &&
+                                      selectedClient.source_type ===
+                                        "Referido por marca" && (
+                                        <span className="text-[10px] text-primary italic font-medium">
+                                          Marca:{" "}
+                                          {brands.find(
+                                            (b) =>
+                                              b.id ===
+                                              selectedClient.referred_by_brand_id,
+                                          )?.name || "Marca"}
+                                        </span>
+                                      )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="space-y-3">
+                                <h4 className="text-sm font-bold text-slate-900 font-display uppercase tracking-widest text-[11px] text-slate-400">
+                                  Etiquetas (Segmentación)
+                                </h4>
+                                <div className="flex flex-wrap gap-2 mb-3">
+                                  {selectedClient.tags &&
+                                  selectedClient.tags.length > 0 ? (
+                                    selectedClient.tags.map((tag) => (
+                                      <span
+                                        key={tag}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 text-primary text-xs font-bold font-display group"
+                                      >
+                                        {tag}
+                                        <button
+                                          onClick={() => handleRemoveTag(tag)}
+                                          className="opacity-0 group-hover:opacity-100 hover:text-red-500 transition-all"
+                                        >
+                                          <span className="material-symbols-outlined text-[14px]">
+                                            close
+                                          </span>
+                                        </button>
+                                      </span>
+                                    ))
+                                  ) : (
+                                    <span className="text-xs text-slate-400 font-display italic">
+                                      Sin etiquetas asignadas
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex gap-2">
+                                  <input
+                                    type="text"
+                                    placeholder="Añadir etiqueta..."
+                                    value={newTag}
+                                    onChange={(e) => setNewTag(e.target.value)}
+                                    onKeyDown={(e) =>
+                                      e.key === "Enter" && handleAddTag()
+                                    }
+                                    className="flex-1 text-xs border-slate-200 rounded-lg focus:ring-primary py-1.5"
+                                  />
+                                  <button
+                                    onClick={handleAddTag}
+                                    disabled={isSavingTags || !newTag.trim()}
+                                    className="bg-slate-100 hover:bg-slate-200 text-slate-600 p-1.5 rounded-lg transition-colors disabled:opacity-50"
+                                  >
+                                    <span className="material-symbols-outlined text-[20px]">
+                                      add
+                                    </span>
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="pt-4 grid grid-cols-2 gap-3">
                                 <button
-                                  onClick={() => handleUpdateTaskStatus(task.id, 'Completada')}
-                                  className="size-6 rounded-md hover:bg-emerald-50 text-slate-300 hover:text-emerald-500 transition-colors flex items-center justify-center"
-                                  title="Marcar como completada"
+                                  onClick={() =>
+                                    handleEditClick(selectedClient)
+                                  }
+                                  className="flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors font-display"
                                 >
-                                  <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                                  <span className="material-symbols-outlined text-[18px]">
+                                    edit
+                                  </span>
+                                  Editar
+                                </button>
+                                <button
+                                  onClick={() => setIsDeleteModalOpen(true)}
+                                  disabled={isSubmitting}
+                                  className="flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 text-red-600 rounded-lg text-sm font-bold hover:bg-red-100 transition-colors font-display disabled:opacity-50"
+                                >
+                                  <span className="material-symbols-outlined text-[18px]">
+                                    delete
+                                  </span>
+                                  {isSubmitting ? "..." : "Eliminar"}
                                 </button>
                               </div>
-                            ))
-                        )}
-                        {tasks.filter(t => t.client_id === (selectedClient as any).id && t.status === 'Pendiente').length > 3 && (
-                          <button 
-                            onClick={() => {
-                              setViewTab("Tareas");
-                              setTaskSearchTerm((selectedClient as any).full_name || (selectedClient as any).company_name);
-                            }}
-                            className="w-full py-1 text-[10px] font-bold text-slate-400 hover:text-primary transition-colors text-center font-display"
-                          >
-                            Ver todas las tareas...
-                          </button>
-                        )}
-                      </div>
-                    </div>
+                            </div>
+                          ) : activeTab === "Historial" ? (
+                            <div className="space-y-4">
+                              <h4 className="text-sm font-bold text-slate-900 font-display uppercase tracking-widest text-[11px] text-slate-400 mb-4">
+                                Pedidos Recientes
+                              </h4>
 
-                    <div className="space-y-4">
-                      <h4 className="text-sm font-bold text-slate-900 font-display uppercase tracking-widest text-[11px] text-slate-400">
-                        Línea de Tiempo
-                      </h4>
-
-                      {loadingInteractions ? (
-                        <div className="p-8 text-center">
-                          <div className="size-6 border-2 border-primary border-t-transparent animate-spin rounded-full mx-auto"></div>
-                        </div>
-                      ) : clientInteractions.length === 0 ? (
-                        <div className="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                          <span className="material-symbols-outlined text-slate-300 text-3xl mb-2">
-                            history
-                          </span>
-                          <p className="text-xs text-slate-500 font-display">
-                            Aún no hay registros de interacción.
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="space-y-4 relative before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-px before:bg-slate-200">
-                          {clientInteractions.map((item) => (
-                            <div key={item.id} className="relative pl-8">
-                              <div
-                                className={`absolute left-0 top-1 size-6 rounded-full border-2 border-white shadow-sm flex items-center justify-center z-10 ${
-                                  item.type === "Nota"
-                                    ? "bg-amber-100 text-amber-600"
-                                    : item.type === "Llamada"
-                                      ? "bg-emerald-100 text-emerald-600"
-                                      : item.type === "Reunión"
-                                        ? "bg-purple-100 text-purple-600"
-                                        : item.type === "Correo"
-                                          ? "bg-blue-100 text-blue-600"
-                                          : "bg-red-100 text-red-600"
-                                }`}
-                              >
-                                <span className="material-symbols-outlined text-[14px]">
-                                  {item.type === "Nota"
-                                    ? "sticky_note"
-                                    : item.type === "Llamada"
-                                      ? "call"
-                                      : item.type === "Reunión"
-                                        ? "groups"
-                                        : item.type === "Correo"
-                                          ? "mail"
-                                          : "support_agent"}
-                                </span>
-                              </div>
-                              <div className="p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
-                                <div className="flex justify-between items-center mb-1">
-                                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-900">
-                                    {item.type}
-                                  </span>
-                                  <span className="text-[10px] text-slate-400 font-medium">
-                                    {new Date(item.created_at).toLocaleString(
-                                      "es-CO",
-                                      {
-                                        day: "2-digit",
-                                        month: "short",
-                                        hour: "2-digit",
-                                        minute: "2-digit",
-                                      },
-                                    )}
-                                  </span>
+                              {loadingOrders ? (
+                                <div className="p-8 text-center">
+                                  <div className="size-6 border-2 border-primary border-t-transparent animate-spin rounded-full mx-auto"></div>
                                 </div>
-                                <p className="text-xs text-slate-700 font-display leading-relaxed">
-                                  {item.content}
-                                </p>
+                              ) : clientOrders.length === 0 ? (
+                                <div className="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                                  <span className="material-symbols-outlined text-slate-300 text-3xl mb-2">
+                                    shopping_bag
+                                  </span>
+                                  <p className="text-xs text-slate-500 font-display">
+                                    Este cliente aún no tiene pedidos.
+                                  </p>
+                                </div>
+                              ) : (
+                                <div className="space-y-3">
+                                  {clientOrders.map((order) => (
+                                    <div
+                                      key={order.id}
+                                      className="p-4 bg-white border border-slate-200 rounded-xl hover:shadow-md transition-all group"
+                                    >
+                                      <div className="flex justify-between items-start mb-2">
+                                        <div>
+                                          <p className="text-sm font-bold text-slate-900 font-display">
+                                            #
+                                            {order.id
+                                              .toString()
+                                              .padStart(5, "0")}
+                                          </p>
+                                          <p className="text-[10px] text-slate-500 font-display">
+                                            {new Date(
+                                              order.created_at,
+                                            ).toLocaleDateString()}
+                                          </p>
+                                        </div>
+                                        <span
+                                          className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                            order.status === "Completado"
+                                              ? "bg-emerald-100 text-emerald-700"
+                                              : order.status === "Pendiente"
+                                                ? "bg-amber-100 text-amber-700"
+                                                : "bg-blue-100 text-blue-700"
+                                          }`}
+                                        >
+                                          {order.status}
+                                        </span>
+                                      </div>
+                                      <div className="flex justify-between items-center">
+                                        <p className="text-sm font-bold text-primary font-mono">
+                                          ${formatCurrency(order.total_amount)}
+                                        </p>
+                                        <button
+                                          onClick={() =>
+                                            router.push(
+                                              `/admin/pedidos?id=${order.id}`,
+                                            )
+                                          }
+                                          className="text-[10px] font-bold text-slate-400 group-hover:text-primary transition-colors flex items-center gap-1"
+                                        >
+                                          DETALLES{" "}
+                                          <span className="material-symbols-outlined text-sm">
+                                            arrow_forward
+                                          </span>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="space-y-6">
+                              {selectedClient.notes && (
+                                <div className="space-y-3 p-4 bg-amber-50 rounded-xl border border-amber-100">
+                                  <h4 className="text-[10px] font-bold text-amber-800 uppercase tracking-widest flex items-center gap-1.5">
+                                    <span className="material-symbols-outlined text-[16px]">
+                                      description
+                                    </span>
+                                    Requerimientos
+                                  </h4>
+                                  <p className="text-xs text-amber-900 font-display leading-relaxed italic">
+                                    &quot;{selectedClient.notes}&quot;
+                                  </p>
+                                </div>
+                              )}
+                              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                <h4 className="text-xs font-bold text-slate-900 font-display uppercase tracking-widest mb-3">
+                                  Registrar Interacción
+                                </h4>
+                                <form
+                                  onSubmit={handleAddInteraction}
+                                  className="space-y-3"
+                                >
+                                  <div className="flex gap-2">
+                                    {(
+                                      [
+                                        "Nota",
+                                        "Llamada",
+                                        "Reunión",
+                                        "Correo",
+                                        "Soporte",
+                                      ] as const
+                                    ).map((type) => (
+                                      <button
+                                        key={type}
+                                        type="button"
+                                        onClick={() =>
+                                          setNewInteraction((prev) => ({
+                                            ...prev,
+                                            type,
+                                          }))
+                                        }
+                                        className={`flex-1 py-1 px-2 rounded-lg text-[10px] font-bold border transition-all ${newInteraction.type === type ? "bg-primary border-primary text-white shadow-sm" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"}`}
+                                      >
+                                        {type}
+                                      </button>
+                                    ))}
+                                  </div>
+                                  <textarea
+                                    value={newInteraction.content}
+                                    onChange={(e) =>
+                                      setNewInteraction((prev) => ({
+                                        ...prev,
+                                        content: e.target.value,
+                                      }))
+                                    }
+                                    rows={3}
+                                    placeholder="Escribe los detalles aquí..."
+                                    className="w-full text-xs border-slate-200 rounded-lg focus:ring-primary p-3"
+                                    required
+                                  />
+                                  <button
+                                    type="submit"
+                                    disabled={
+                                      isAddingInteraction ||
+                                      !newInteraction.content.trim()
+                                    }
+                                    className="w-full bg-primary text-white py-2 rounded-lg text-xs font-bold hover:bg-blue-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                                  >
+                                    <span className="material-symbols-outlined text-[18px]">
+                                      save
+                                    </span>
+                                    {isAddingInteraction
+                                      ? "Guardando..."
+                                      : "Guardar en Historial"}
+                                  </button>
+                                </form>
+                              </div>
+
+                              <div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
+                                {!showFollowupForm ? (
+                                  <button
+                                    onClick={() => setShowFollowupForm(true)}
+                                    className="w-full flex items-center justify-center gap-2 py-2 text-primary font-bold text-xs hover:bg-blue-100/50 rounded-lg transition-all"
+                                  >
+                                    <span className="material-symbols-outlined text-[18px]">
+                                      calendar_add_on
+                                    </span>
+                                    Programar Seguimiento (GC)
+                                  </button>
+                                ) : (
+                                  <div className="space-y-3">
+                                    <div className="flex justify-between items-center">
+                                      <h4 className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">
+                                        Programar Seguimiento
+                                      </h4>
+                                      <button
+                                        onClick={() =>
+                                          setShowFollowupForm(false)
+                                        }
+                                        className="text-blue-400 hover:text-blue-600"
+                                      >
+                                        <span className="material-symbols-outlined text-[16px]">
+                                          close
+                                        </span>
+                                      </button>
+                                    </div>
+                                    <input
+                                      type="text"
+                                      placeholder="Asunto (ej: Revisar cotización)"
+                                      value={followupData.title}
+                                      onChange={(e) =>
+                                        setFollowupData((prev) => ({
+                                          ...prev,
+                                          title: e.target.value,
+                                        }))
+                                      }
+                                      className="w-full text-[11px] border-blue-100 rounded-lg focus:ring-primary py-1.5"
+                                    />
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <input
+                                        type="date"
+                                        value={followupData.date}
+                                        onChange={(e) =>
+                                          setFollowupData((prev) => ({
+                                            ...prev,
+                                            date: e.target.value,
+                                          }))
+                                        }
+                                        className="w-full text-[11px] border-blue-100 rounded-lg focus:ring-primary py-1.5"
+                                      />
+                                      <input
+                                        type="time"
+                                        value={followupData.time}
+                                        onChange={(e) =>
+                                          setFollowupData((prev) => ({
+                                            ...prev,
+                                            time: e.target.value,
+                                          }))
+                                        }
+                                        className="w-full text-[11px] border-blue-100 rounded-lg focus:ring-primary py-1.5"
+                                      />
+                                    </div>
+                                    <textarea
+                                      placeholder="Descripción adicional..."
+                                      value={followupData.description}
+                                      onChange={(e) =>
+                                        setFollowupData((prev) => ({
+                                          ...prev,
+                                          description: e.target.value,
+                                        }))
+                                      }
+                                      rows={2}
+                                      className="w-full text-[11px] border-blue-100 rounded-lg focus:ring-primary py-1.5"
+                                    />
+                                    <button
+                                      onClick={handleCreateGoogleCalendarEvent}
+                                      className="w-full bg-blue-600 text-white py-2 rounded-lg text-[10px] font-bold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                                    >
+                                      <span className="material-symbols-outlined text-[18px]">
+                                        event
+                                      </span>
+                                      Sincronizar con Google Calendar
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Tareas del Cliente */}
+                              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                <div className="flex justify-between items-center mb-3">
+                                  <h4 className="text-xs font-bold text-slate-900 font-display uppercase tracking-widest">
+                                    Tareas Pendientes
+                                  </h4>
+                                  <button
+                                    onClick={() => {
+                                      setIsEditingTask(false);
+                                      setTaskFormData({
+                                        title: "",
+                                        description: "",
+                                        due_date: new Date()
+                                          .toISOString()
+                                          .split("T")[0],
+                                        assigned_to:
+                                          (selectedClient as any)
+                                            .assigned_to_name || (currentUserProfile?.role === 'Vendedor' ? currentUserProfile.full_name : ""),
+                                        assigned_to_id: (selectedClient as any).assigned_to_id || (currentUserProfile?.role === 'Vendedor' ? currentUserProfile.id : ""),
+                                        client_id: (selectedClient as any).id,
+                                        status: "Pendiente",
+                                      });
+                                      setIsTaskModalOpen(true);
+                                    }}
+                                    className="flex items-center gap-1 text-[10px] font-bold text-primary hover:text-blue-700 transition-colors"
+                                  >
+                                    <span className="material-symbols-outlined text-[14px]">
+                                      add
+                                    </span>
+                                    NUEVA
+                                  </button>
+                                </div>
+
+                                <div className="space-y-2">
+                                  {tasks.filter(
+                                    (t) =>
+                                      t.client_id ===
+                                        (selectedClient as any).id &&
+                                      t.status === "Pendiente",
+                                  ).length === 0 ? (
+                                    <p className="text-[10px] text-slate-400 italic font-display">
+                                      No hay tareas pendientes para este
+                                      cliente.
+                                    </p>
+                                  ) : (
+                                    tasks
+                                      .filter(
+                                        (t) =>
+                                          t.client_id ===
+                                            (selectedClient as any).id &&
+                                          t.status === "Pendiente",
+                                      )
+                                      .slice(0, 3)
+                                      .map((task) => (
+                                        <div
+                                          key={task.id}
+                                          className="p-2 bg-white rounded-lg border border-slate-100 flex justify-between items-center group"
+                                        >
+                                          <div className="min-w-0">
+                                            <p className="text-[11px] font-bold text-slate-700 truncate font-display">
+                                              #
+                                              {task.codigo
+                                                ?.toString()
+                                                .padStart(4, "0")}{" "}
+                                              {task.title}
+                                            </p>
+                                            <p className="text-[9px] text-slate-400 font-display">
+                                              Vence:{" "}
+                                              {new Date(
+                                                task.due_date,
+                                              ).toLocaleDateString("es-CO", {
+                                                day: "2-digit",
+                                                month: "short",
+                                                year: "numeric",
+                                                timeZone: "UTC",
+                                              })}
+                                            </p>
+                                          </div>
+                                          <button
+                                            onClick={() =>
+                                              handleUpdateTaskStatus(
+                                                task.id,
+                                                "Completada",
+                                              )
+                                            }
+                                            className="size-6 rounded-md hover:bg-emerald-50 text-slate-300 hover:text-emerald-500 transition-colors flex items-center justify-center"
+                                            title="Marcar como completada"
+                                          >
+                                            <span className="material-symbols-outlined text-[18px]">
+                                              check_circle
+                                            </span>
+                                          </button>
+                                        </div>
+                                      ))
+                                  )}
+                                  {tasks.filter(
+                                    (t) =>
+                                      t.client_id ===
+                                        (selectedClient as any).id &&
+                                      t.status === "Pendiente",
+                                  ).length > 3 && (
+                                    <button
+                                      onClick={() => {
+                                        setViewTab("Tareas");
+                                        setTaskSearchTerm(
+                                          (selectedClient as any).full_name ||
+                                            (selectedClient as any)
+                                              .company_name,
+                                        );
+                                      }}
+                                      className="w-full py-1 text-[10px] font-bold text-slate-400 hover:text-primary transition-colors text-center font-display"
+                                    >
+                                      Ver todas las tareas...
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="space-y-4">
+                                <h4 className="text-sm font-bold text-slate-900 font-display uppercase tracking-widest text-[11px] text-slate-400">
+                                  Línea de Tiempo
+                                </h4>
+
+                                {loadingInteractions ? (
+                                  <div className="p-8 text-center">
+                                    <div className="size-6 border-2 border-primary border-t-transparent animate-spin rounded-full mx-auto"></div>
+                                  </div>
+                                ) : clientInteractions.length === 0 ? (
+                                  <div className="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                                    <span className="material-symbols-outlined text-slate-300 text-3xl mb-2">
+                                      history
+                                    </span>
+                                    <p className="text-xs text-slate-500 font-display">
+                                      Aún no hay registros de interacción.
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-4 relative before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-px before:bg-slate-200">
+                                    {clientInteractions.map((item) => (
+                                      <div
+                                        key={item.id}
+                                        className="relative pl-8"
+                                      >
+                                        <div
+                                          className={`absolute left-0 top-1 size-6 rounded-full border-2 border-white shadow-sm flex items-center justify-center z-10 ${
+                                            item.type === "Nota"
+                                              ? "bg-amber-100 text-amber-600"
+                                              : item.type === "Llamada"
+                                                ? "bg-emerald-100 text-emerald-600"
+                                                : item.type === "Reunión"
+                                                  ? "bg-purple-100 text-purple-600"
+                                                  : item.type === "Correo"
+                                                    ? "bg-blue-100 text-blue-600"
+                                                    : "bg-red-100 text-red-600"
+                                          }`}
+                                        >
+                                          <span className="material-symbols-outlined text-[14px]">
+                                            {item.type === "Nota"
+                                              ? "sticky_note"
+                                              : item.type === "Llamada"
+                                                ? "call"
+                                                : item.type === "Reunión"
+                                                  ? "groups"
+                                                  : item.type === "Correo"
+                                                    ? "mail"
+                                                    : "support_agent"}
+                                          </span>
+                                        </div>
+                                        <div className="p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
+                                          <div className="flex justify-between items-center mb-1">
+                                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-900">
+                                              {item.type}
+                                            </span>
+                                            <span className="text-[10px] text-slate-400 font-medium">
+                                              {new Date(
+                                                item.created_at,
+                                              ).toLocaleString("es-CO", {
+                                                day: "2-digit",
+                                                month: "short",
+                                                hour: "2-digit",
+                                                minute: "2-digit",
+                                              })}
+                                            </span>
+                                          </div>
+                                          <p className="text-xs text-slate-700 font-display leading-relaxed">
+                                            {item.content}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             </div>
-                          ))}
+                          )}
                         </div>
-                      )}
+                      </div>
+
+                      {/* Fixed "Add Order" button at the bottom of the sidebar */}
+                      <div className="border-t border-slate-100 p-8 pt-6">
+                        <button
+                          onClick={() =>
+                            router.push(
+                              `/admin/pedidos?create=true&clientId=${selectedClient.id}`,
+                            )
+                          }
+                          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-primary text-white rounded-xl text-sm font-bold hover:bg-blue-600 transition-all shadow-lg shadow-primary/25 font-display"
+                        >
+                          <span className="material-symbols-outlined text-[20px]">
+                            add_shopping_cart
+                          </span>
+                          Nuevo Pedido
+                        </button>
+                      </div>
                     </div>
-                  </div>
-              )}
-            </div>
-          </div>
-              
-              {/* Fixed "Add Order" button at the bottom of the sidebar */}
-              <div className="border-t border-slate-100 p-8 pt-6">
-                <button
-                  onClick={() =>
-                    router.push(
-                      `/admin/pedidos?create=true&clientId=${selectedClient.id}`,
-                    )
-                  }
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-primary text-white rounded-xl text-sm font-bold hover:bg-blue-600 transition-all shadow-lg shadow-primary/25 font-display"
-                >
-                  <span className="material-symbols-outlined text-[20px]">
-                    add_shopping_cart
-                  </span>
-                  Nuevo Pedido
-                </button>
-              </div>
-            </div>
-            );
-          }
-        } else {
-          if (!selectedTask) {
-              return (
-                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-white">
-                  <span className="material-symbols-outlined text-5xl text-slate-200 mb-4">
-                    task
-                  </span>
-                  <p className="text-slate-500 font-display">
-                    Selecciona una tarea para ver sus detalles.
-                  </p>
-                </div>
+                  );
+                }
+              } else {
+                if (!selectedTask) {
+                  return (
+                    <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-white">
+                      <span className="material-symbols-outlined text-5xl text-slate-200 mb-4">
+                        task
+                      </span>
+                      <p className="text-slate-500 font-display">
+                        Selecciona una tarea para ver sus detalles.
+                      </p>
+                    </div>
                   );
                 } else {
                   return (
-                <div className="flex flex-col h-full bg-white relative">
-                  {/* Botón de Cierre */}
-                  <button 
-                    onClick={() => setSelectedTaskId(null)}
-                    className="absolute top-6 right-6 size-10 flex items-center justify-center text-slate-400 hover:text-red-500 transition-all z-20"
-                    title="Cerrar detalles"
-                  >
-                    <span className="material-symbols-outlined text-[28px]">close</span>
-                  </button>
-
-                  <div className="p-8 pb-4 flex-1 overflow-y-auto">
-                    <div className="flex justify-between items-start mb-6 pr-8">
-                      <div className="text-xs font-bold uppercase tracking-wider text-slate-400 font-display">
-                        Detalles de la Tarea
-                      </div>
-                      <div className="inline-flex items-center justify-center px-2 py-1 rounded bg-slate-100 text-slate-600 text-[10px] font-bold font-mono border border-slate-200 shadow-sm">
-                        #{selectedTask.codigo?.toString().padStart(4, "0")}
-                      </div>
-                    </div>
-
-                    <h3 className="text-xl font-bold text-slate-900 font-display mb-2">
-                      {selectedTask.title}
-                    </h3>
-                    
-                    <div className="flex flex-wrap gap-2 mb-6">
-                      <div className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border font-display ${
-                          selectedTask.status === 'Pendiente' ? 'bg-orange-50 text-orange-700 border-orange-200' :
-                          selectedTask.status === 'Completada' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                          'bg-slate-50 text-slate-700 border-slate-200'
-                        }`}
+                    <div className="flex flex-col h-full bg-white relative">
+                      {/* Botón de Cierre */}
+                      <button
+                        onClick={() => setSelectedTaskId(null)}
+                        className="absolute top-6 right-6 size-10 flex items-center justify-center text-slate-400 hover:text-red-500 transition-all z-20"
+                        title="Cerrar detalles"
                       >
-                        {selectedTask.status}
-                      </div>
-                    </div>
+                        <span className="material-symbols-outlined text-[28px]">
+                          close
+                        </span>
+                      </button>
 
-                    <div className="space-y-6">
-                      <div>
-                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
-                          <span className="material-symbols-outlined text-sm">description</span>
-                          Descripción
-                        </h4>
-                        <p className="text-sm text-slate-600 font-display leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-100 italic">
-                          {selectedTask.description || "Sin descripción proporcionada."}
-                        </p>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                          <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-2">
-                            <span className="material-symbols-outlined text-sm">event</span>
-                            Vencimiento
-                          </h4>
-                          <p className="text-sm font-bold text-slate-700 font-display">
-                            {new Date(selectedTask.due_date).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'UTC' })}
-                          </p>
-                        </div>
-                        <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                          <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-2">
-                            <span className="material-symbols-outlined text-sm">person</span>
-                            Asignado a
-                          </h4>
-                          <p className="text-sm font-bold text-slate-700 font-display">
-                            {selectedTask.assigned_to || "No asignado"}
-                          </p>
-                        </div>
-                      </div>
-
-                      {selectedTask.client && (
-                        <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-100/50 group hover:bg-blue-50 transition-all cursor-pointer"
-                          onClick={() => {
-                            if (selectedTask.client_id) {
-                              setSelectedClientId(selectedTask.client_id);
-                              setViewTab('Clientes');
-                            }
-                          }}
-                        >
-                          <h4 className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-2 flex items-center gap-2">
-                            <span className="material-symbols-outlined text-sm">contact_page</span>
-                            Cliente Relacionado
-                          </h4>
-                          <div className="flex items-center gap-3">
-                            <div className="size-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform">
-                               <span className="material-symbols-outlined text-lg">person</span>
-                            </div>
-                            <div className="flex-1">
-                              <p className="text-sm font-bold text-slate-900 font-display">
-                                {selectedTask.client.full_name || selectedTask.client.company_name}
-                              </p>
-                              <p className="text-[10px] text-blue-500 font-semibold font-display">Ver perfil detallado del cliente →</p>
-                            </div>
+                      <div className="p-8 pb-4 flex-1 overflow-y-auto">
+                        <div className="flex justify-between items-start mb-6 pr-8">
+                          <div className="text-xs font-bold uppercase tracking-wider text-slate-400 font-display">
+                            Detalles de la Tarea
+                          </div>
+                          <div className="inline-flex items-center justify-center px-2 py-1 rounded bg-slate-100 text-slate-600 text-[10px] font-bold font-mono border border-slate-200 shadow-sm">
+                            #{selectedTask.codigo?.toString().padStart(4, "0")}
                           </div>
                         </div>
-                      )}
-                    </div>
-                  </div>
 
-                  <div className="p-8 pt-4 border-t border-slate-100 bg-white mt-auto">
-                     <div className="flex gap-3">
-                        <button 
-                           onClick={() => {
+                        <h3 className="text-xl font-bold text-slate-900 font-display mb-2">
+                          {selectedTask.title}
+                        </h3>
+
+                        <div className="flex flex-wrap gap-2 mb-6">
+                          <div
+                            className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border font-display ${
+                              selectedTask.status === "Pendiente"
+                                ? "bg-orange-50 text-orange-700 border-orange-200"
+                                : selectedTask.status === "Completada"
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                  : "bg-slate-50 text-slate-700 border-slate-200"
+                            }`}
+                          >
+                            {selectedTask.status}
+                          </div>
+                        </div>
+
+                        <div className="space-y-6">
+                          <div>
+                            <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                              <span className="material-symbols-outlined text-sm">
+                                description
+                              </span>
+                              Descripción
+                            </h4>
+                            <p className="text-sm text-slate-600 font-display leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-100 italic">
+                              {selectedTask.description ||
+                                "Sin descripción proporcionada."}
+                            </p>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-2">
+                                <span className="material-symbols-outlined text-sm">
+                                  event
+                                </span>
+                                Vencimiento
+                              </h4>
+                              <p className="text-sm font-bold text-slate-700 font-display">
+                                {new Date(
+                                  selectedTask.due_date,
+                                ).toLocaleDateString("es-CO", {
+                                  day: "2-digit",
+                                  month: "long",
+                                  year: "numeric",
+                                  timeZone: "UTC",
+                                })}
+                              </p>
+                            </div>
+                            <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-2">
+                                <span className="material-symbols-outlined text-sm">
+                                  person
+                                </span>
+                                Asignado a
+                              </h4>
+                              <p className="text-sm font-bold text-slate-700 font-display">
+                                {selectedTask.assigned_to || "No asignado"}
+                              </p>
+                            </div>
+                          </div>
+
+                          {selectedTask.client && (
+                            <div
+                              className="p-4 bg-blue-50/50 rounded-xl border border-blue-100/50 group hover:bg-blue-50 transition-all cursor-pointer"
+                              onClick={() => {
+                                if (selectedTask.client_id) {
+                                  setSelectedClientId(selectedTask.client_id);
+                                  setViewTab("Clientes");
+                                }
+                              }}
+                            >
+                              <h4 className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                <span className="material-symbols-outlined text-sm">
+                                  contact_page
+                                </span>
+                                Cliente Relacionado
+                              </h4>
+                              <div className="flex items-center gap-3">
+                                <div className="size-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform">
+                                  <span className="material-symbols-outlined text-lg">
+                                    person
+                                  </span>
+                                </div>
+                                <div className="flex-1">
+                                  <p className="text-sm font-bold text-slate-900 font-display">
+                                    {selectedTask.client.full_name ||
+                                      selectedTask.client.company_name}
+                                  </p>
+                                  <p className="text-[10px] text-blue-500 font-semibold font-display">
+                                    Ver perfil detallado del cliente →
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="p-8 pt-4 border-t border-slate-100 bg-white mt-auto">
+                        <div className="flex gap-3">
+                          <button
+                            onClick={() => {
                               setEditingTaskId(selectedTask.id);
                               setIsEditingTask(true);
                               setTaskFormData({
                                 title: selectedTask.title,
                                 description: selectedTask.description || "",
-                                due_date: selectedTask.due_date.split('T')[0],
+                                due_date: selectedTask.due_date.split("T")[0],
                                 assigned_to: selectedTask.assigned_to || "",
+                                assigned_to_id: selectedTask.assigned_to_id || "",
                                 client_id: selectedTask.client_id || "",
                                 status: selectedTask.status,
                               });
                               setIsTaskModalOpen(true);
-                           }}
-                           className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-50 hover:border-slate-300 transition-all font-display"
-                        >
-                          <span className="material-symbols-outlined text-[20px]">edit</span>
-                          Editar
-                        </button>
-                        <button 
-                           onClick={(e) => {
-                             e.stopPropagation();
-                             handleDeleteTask(selectedTask.id);
-                           }}
-                           className="flex items-center justify-center size-[48px] bg-red-50 text-red-500 border border-red-100 rounded-xl hover:bg-red-500 hover:text-white transition-all shadow-sm"
-                           title="Eliminar tarea"
-                        >
-                          <span className="material-symbols-outlined text-[20px]">delete</span>
-                        </button>
-                     </div>
-                  </div>
-              </div>
-              );
-            }
-          }
-        })()}
+                            }}
+                            className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-50 hover:border-slate-300 transition-all font-display"
+                          >
+                            <span className="material-symbols-outlined text-[20px]">
+                              edit
+                            </span>
+                            Editar
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteTask(selectedTask.id);
+                            }}
+                            className="flex items-center justify-center size-[48px] bg-red-50 text-red-500 border border-red-100 rounded-xl hover:bg-red-500 hover:text-white transition-all shadow-sm"
+                            title="Eliminar tarea"
+                          >
+                            <span className="material-symbols-outlined text-[20px]">
+                              delete
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+              }
+            })()}
           </div>
         </aside>
       </div>
@@ -2804,7 +3244,8 @@ const AdminClientsPage = () => {
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
-                        Tipo de Documento <span className="text-red-500">*</span>
+                        Tipo de Documento{" "}
+                        <span className="text-red-500">*</span>
                       </label>
                       <select
                         name="document_type"
@@ -2821,7 +3262,8 @@ const AdminClientsPage = () => {
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
-                        Número de Documento <span className="text-red-500">*</span>
+                        Número de Documento{" "}
+                        <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="text"
@@ -2835,7 +3277,8 @@ const AdminClientsPage = () => {
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
-                        Número de Contacto <span className="text-red-500">*</span>
+                        Número de Contacto{" "}
+                        <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="tel"
@@ -2849,7 +3292,8 @@ const AdminClientsPage = () => {
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
-                        Correo Electrónico <span className="text-red-500">*</span>
+                        Correo Electrónico{" "}
+                        <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="email"
@@ -2874,7 +3318,9 @@ const AdminClientsPage = () => {
                       >
                         <option value="">Seleccionar...</option>
                         {departments.map((dept) => (
-                          <option key={dept} value={dept}>{dept}</option>
+                          <option key={dept} value={dept}>
+                            {dept}
+                          </option>
                         ))}
                       </select>
                     </div>
@@ -2891,14 +3337,18 @@ const AdminClientsPage = () => {
                         disabled={!formData.department}
                       >
                         <option value="">Seleccionar...</option>
-                        {formData.department && colombiaData[formData.department]?.map((mun) => (
-                          <option key={mun} value={mun}>{mun}</option>
-                        ))}
+                        {formData.department &&
+                          colombiaData[formData.department]?.map((mun) => (
+                            <option key={mun} value={mun}>
+                              {mun}
+                            </option>
+                          ))}
                       </select>
                     </div>
                     <div className="md:col-span-2">
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
-                        Dirección de Residencia <span className="text-red-500">*</span>
+                        Dirección de Residencia{" "}
+                        <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="text"
@@ -2913,7 +3363,8 @@ const AdminClientsPage = () => {
                     <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div>
                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
-                          Sector / Industria <span className="text-red-500">*</span>
+                          Sector / Industria{" "}
+                          <span className="text-red-500">*</span>
                         </label>
                         <select
                           name="industry_sector"
@@ -2924,7 +3375,9 @@ const AdminClientsPage = () => {
                         >
                           <option value="">Seleccionar...</option>
                           {CLIENT_SECTORS.map((sector) => (
-                            <option key={sector} value={sector}>{sector}</option>
+                            <option key={sector} value={sector}>
+                              {sector}
+                            </option>
                           ))}
                         </select>
                       </div>
@@ -2937,16 +3390,27 @@ const AdminClientsPage = () => {
                           value={formData.source_type}
                           onChange={(e) => {
                             const val = e.target.value;
-                            setFormData(prev => ({ ...prev, source_type: val, source_sub_type: '', source: val }));
+                            setFormData((prev) => ({
+                              ...prev,
+                              source_type: val,
+                              source_sub_type: "",
+                              source: val,
+                            }));
                           }}
                           required
                           className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
                         >
                           <option value="Nuevo">Nuevo</option>
                           <option value="Redes sociales">Redes sociales</option>
-                          <option value="Gestion marketing">Gestión marketing</option>
-                          <option value="Referido por cliente">Referido por cliente</option>
-                          <option value="Referido por marca">Referido por marca</option>
+                          <option value="Gestion marketing">
+                            Gestión marketing
+                          </option>
+                          <option value="Referido por cliente">
+                            Referido por cliente
+                          </option>
+                          <option value="Referido por marca">
+                            Referido por marca
+                          </option>
                           <option value="Mercado Libre">Mercado Libre</option>
                           <option value="Otro">Otro</option>
                         </select>
@@ -2954,20 +3418,29 @@ const AdminClientsPage = () => {
                     </div>
 
                     {/* Procedencia Condicional (Natural) */}
-                    {(formData.source_type === 'Redes sociales' || formData.source_type === 'Gestion marketing' || formData.source_type === 'Referido por cliente' || formData.source_type === 'Referido por marca' || formData.source_type === 'Otro') && (
+                    {(formData.source_type === "Redes sociales" ||
+                      formData.source_type === "Gestion marketing" ||
+                      formData.source_type === "Referido por cliente" ||
+                      formData.source_type === "Referido por marca" ||
+                      formData.source_type === "Otro") && (
                       <div className="md:col-span-2 animate-in fade-in slide-in-from-top-2 duration-300">
                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
-                          {formData.source_type === 'Redes sociales' ? 'Seleccionar Red Social' : 
-                           formData.source_type === 'Gestion marketing' ? 'Seleccionar Gestión' :
-                           formData.source_type === 'Referido por cliente' ? '¿Quién lo refirió?' :
-                           formData.source_type === 'Referido por marca' ? 'Seleccionar Marca' :
-                           'Especifique Procedencia'} <span className="text-red-500">*</span>
+                          {formData.source_type === "Redes sociales"
+                            ? "Seleccionar Red Social"
+                            : formData.source_type === "Gestion marketing"
+                              ? "Seleccionar Gestión"
+                              : formData.source_type === "Referido por cliente"
+                                ? "¿Quién lo refirió?"
+                                : formData.source_type === "Referido por marca"
+                                  ? "Seleccionar Marca"
+                                  : "Especifique Procedencia"}{" "}
+                          <span className="text-red-500">*</span>
                         </label>
-                        {formData.source_type === 'Redes sociales' ? (
-                          <select 
-                            name="source_sub_type" 
-                            value={formData.source_sub_type} 
-                            onChange={handleInputChange} 
+                        {formData.source_type === "Redes sociales" ? (
+                          <select
+                            name="source_sub_type"
+                            value={formData.source_sub_type}
+                            onChange={handleInputChange}
                             required
                             className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
                           >
@@ -2978,29 +3451,35 @@ const AdminClientsPage = () => {
                             <option value="X">X (Twitter)</option>
                             <option value="LinkedIn">LinkedIn</option>
                           </select>
-                        ) : formData.source_type === 'Gestion marketing' ? (
-                          <select 
-                            name="source_sub_type" 
-                            value={formData.source_sub_type} 
-                            onChange={handleInputChange} 
+                        ) : formData.source_type === "Gestion marketing" ? (
+                          <select
+                            name="source_sub_type"
+                            value={formData.source_sub_type}
+                            onChange={handleInputChange}
                             required
                             className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
                           >
                             <option value="">Seleccionar...</option>
-                            <option value="Bases de datos">Bases de datos</option>
-                            <option value="Correos masivos">Correos masivos</option>
+                            <option value="Bases de datos">
+                              Bases de datos
+                            </option>
+                            <option value="Correos masivos">
+                              Correos masivos
+                            </option>
                           </select>
-                        ) : formData.source_type === 'Referido por marca' ? (
-                          <select 
-                            name="referred_by_brand_id" 
-                            value={formData.referred_by_brand_id} 
-                            onChange={handleInputChange} 
+                        ) : formData.source_type === "Referido por marca" ? (
+                          <select
+                            name="referred_by_brand_id"
+                            value={formData.referred_by_brand_id}
+                            onChange={handleInputChange}
                             required
                             className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
                           >
                             <option value={0}>Seleccionar Marca...</option>
                             {brands.map((brand) => (
-                              <option key={brand.id} value={brand.id}>{brand.name}</option>
+                              <option key={brand.id} value={brand.id}>
+                                {brand.name}
+                              </option>
                             ))}
                           </select>
                         ) : (
@@ -3011,7 +3490,11 @@ const AdminClientsPage = () => {
                             onChange={handleInputChange}
                             required
                             className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
-                            placeholder={formData.source_type === 'Referido por cliente' ? 'Nombre del cliente...' : 'Escriba aquí...'}
+                            placeholder={
+                              formData.source_type === "Referido por cliente"
+                                ? "Nombre del cliente..."
+                                : "Escriba aquí..."
+                            }
                           />
                         )}
                       </div>
@@ -3036,16 +3519,39 @@ const AdminClientsPage = () => {
                       <div className="relative aspect-video rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 flex items-center justify-center overflow-hidden group hover:border-primary transition-colors cursor-pointer">
                         {imagePreview ? (
                           <>
-                            <Image src={imagePreview} alt="Preview" fill className="object-cover" />
-                            <button type="button" onClick={() => {setImageFile(null); setImagePreview(null);}} className="absolute top-2 right-2 size-8 bg-white/90 rounded-full flex items-center justify-center text-red-500 shadow-lg hover:bg-white">
-                              <span className="material-symbols-outlined text-[20px]">delete</span>
+                            <Image
+                              src={imagePreview}
+                              alt="Preview"
+                              fill
+                              className="object-cover"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setImageFile(null);
+                                setImagePreview(null);
+                              }}
+                              className="absolute top-2 right-2 size-8 bg-white/90 rounded-full flex items-center justify-center text-red-500 shadow-lg hover:bg-white"
+                            >
+                              <span className="material-symbols-outlined text-[20px]">
+                                delete
+                              </span>
                             </button>
                           </>
                         ) : (
                           <label className="cursor-pointer flex flex-col items-center p-8 text-center w-full h-full justify-center">
-                            <span className="material-symbols-outlined text-4xl text-slate-300 mb-2">add_a_photo</span>
-                            <span className="text-xs font-bold text-primary font-display">SUBIR FOTO</span>
-                            <input type="file" className="sr-only" onChange={handleImageChange} accept="image/*" />
+                            <span className="material-symbols-outlined text-4xl text-slate-300 mb-2">
+                              add_a_photo
+                            </span>
+                            <span className="text-xs font-bold text-primary font-display">
+                              SUBIR FOTO
+                            </span>
+                            <input
+                              type="file"
+                              className="sr-only"
+                              onChange={handleImageChange}
+                              accept="image/*"
+                            />
                           </label>
                         )}
                       </div>
@@ -3055,167 +3561,331 @@ const AdminClientsPage = () => {
                   <>
                     {/* CORPORATE (EMPRESA) FIELDS */}
                     <div className="md:col-span-2">
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">Nombre de la Empresa <span className="text-red-500">*</span></label>
-                        <input type="text" name="full_name" value={formData.full_name} onChange={handleInputChange} required className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium" placeholder="Ej: Soluciones Tech S.A.S" />
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
+                        Nombre de la Empresa{" "}
+                        <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        name="full_name"
+                        value={formData.full_name}
+                        onChange={handleInputChange}
+                        required
+                        className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                        placeholder="Ej: Soluciones Tech S.A.S"
+                      />
                     </div>
                     <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">NIT</label>
-                        <input type="text" name="document_number" value={formData.document_number} onChange={handleInputChange} className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium" placeholder="900.123.456-1" />
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
+                        NIT
+                      </label>
+                      <input
+                        type="text"
+                        name="document_number"
+                        value={formData.document_number}
+                        onChange={handleInputChange}
+                        className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                        placeholder="900.123.456-1"
+                      />
                     </div>
                     <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">Contacto <span className="text-red-500">*</span></label>
-                        <input type="text" name="contact_person" value={formData.contact_person} onChange={handleInputChange} required className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium" placeholder="Nombre del representante..." />
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
+                        Contacto <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        name="contact_person"
+                        value={formData.contact_person}
+                        onChange={handleInputChange}
+                        required
+                        className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                        placeholder="Nombre del representante..."
+                      />
                     </div>
                     <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">Cargo <span className="text-red-500">*</span></label>
-                        <input type="text" name="position" value={formData.position} onChange={handleInputChange} required className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium" placeholder="Cargo del contacto..." />
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
+                        Cargo <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        name="position"
+                        value={formData.position}
+                        onChange={handleInputChange}
+                        required
+                        className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                        placeholder="Cargo del contacto..."
+                      />
                     </div>
                     <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">Número de Contacto <span className="text-red-500">*</span></label>
-                        <input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} required className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium" placeholder="+57 321..." />
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
+                        Número de Contacto{" "}
+                        <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="tel"
+                        name="phone"
+                        value={formData.phone}
+                        onChange={handleInputChange}
+                        required
+                        className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                        placeholder="+57 321..."
+                      />
                     </div>
                     <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">Número de WhatsApp <span className="text-red-500">*</span></label>
-                        <input type="tel" name="whatsapp" value={formData.whatsapp} onChange={handleInputChange} required className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium" placeholder="+57 321..." />
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
+                        Número de WhatsApp{" "}
+                        <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="tel"
+                        name="whatsapp"
+                        value={formData.whatsapp}
+                        onChange={handleInputChange}
+                        required
+                        className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                        placeholder="+57 321..."
+                      />
                     </div>
                     <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">Correo Electrónico <span className="text-red-500">*</span></label>
-                        <input type="email" name="email" value={formData.email} onChange={handleInputChange} required className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium" placeholder="cliente@correo.com" />
-                    </div>
-                    
-                    <div>
-                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">Departamento <span className="text-red-500">*</span></label>
-                       <select name="department" value={formData.department} onChange={handleInputChange} required className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium">
-                         <option value="">Seleccionar...</option>
-                         {departments.map(dept => (
-                           <option key={dept} value={dept}>{dept}</option>
-                         ))}
-                       </select>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
+                        Correo Electrónico{" "}
+                        <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="email"
+                        name="email"
+                        value={formData.email}
+                        onChange={handleInputChange}
+                        required
+                        className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                        placeholder="cliente@correo.com"
+                      />
                     </div>
 
                     <div>
-                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">Municipio <span className="text-red-500">*</span></label>
-                       <select name="municipality" value={formData.municipality} onChange={handleInputChange} required className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium" disabled={!formData.department}>
-                         <option value="">Seleccionar...</option>
-                         {formData.department && colombiaData[formData.department]?.map(mun => (
-                           <option key={mun} value={mun}>{mun}</option>
-                         ))}
-                       </select>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
+                        Departamento <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        name="department"
+                        value={formData.department}
+                        onChange={handleInputChange}
+                        required
+                        className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                      >
+                        <option value="">Seleccionar...</option>
+                        {departments.map((dept) => (
+                          <option key={dept} value={dept}>
+                            {dept}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
+                        Municipio <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        name="municipality"
+                        value={formData.municipality}
+                        onChange={handleInputChange}
+                        required
+                        className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                        disabled={!formData.department}
+                      >
+                        <option value="">Seleccionar...</option>
+                        {formData.department &&
+                          colombiaData[formData.department]?.map((mun) => (
+                            <option key={mun} value={mun}>
+                              {mun}
+                            </option>
+                          ))}
+                      </select>
                     </div>
 
                     <div className="md:col-span-2">
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">Dirección</label>
-                        <input type="text" name="address" value={formData.address} onChange={handleInputChange} className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium" placeholder="Calle 123 #45-67..." />
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
+                        Dirección
+                      </label>
+                      <input
+                        type="text"
+                        name="address"
+                        value={formData.address}
+                        onChange={handleInputChange}
+                        className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                        placeholder="Calle 123 #45-67..."
+                      />
                     </div>
 
                     <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">Sector Industria <span className="text-red-500">*</span></label>
-                        <select name="industry_sector" value={formData.industry_sector} onChange={handleInputChange} required className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium">
-                            <option value="">Seleccionar...</option>
-                            {CLIENT_SECTORS.map(sector => (
-                                <option key={sector} value={sector}>{sector}</option>
-                            ))}
-                        </select>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
+                        Sector Industria <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        name="industry_sector"
+                        value={formData.industry_sector}
+                        onChange={handleInputChange}
+                        required
+                        className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                      >
+                        <option value="">Seleccionar...</option>
+                        {CLIENT_SECTORS.map((sector) => (
+                          <option key={sector} value={sector}>
+                            {sector}
+                          </option>
+                        ))}
+                      </select>
                     </div>
 
                     <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">Procedencia <span className="text-red-500">*</span></label>
-                        <select 
-                          name="source_type" 
-                          value={formData.source_type} 
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setFormData(prev => ({ ...prev, source_type: val, source_sub_type: '', source: val }));
-                          }} 
-                          required 
-                          className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
-                        >
-                            <option value="Nuevo">Nuevo</option>
-                            <option value="Redes sociales">Redes sociales</option>
-                            <option value="Gestion marketing">Gestión marketing</option>
-                            <option value="Referido por cliente">Referido por cliente</option>
-                            <option value="Referido por marca">Referido por marca</option>
-                            <option value="Mercado Libre">Mercado Libre</option>
-                            <option value="Otro">Otro</option>
-                        </select>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
+                        Procedencia <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        name="source_type"
+                        value={formData.source_type}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFormData((prev) => ({
+                            ...prev,
+                            source_type: val,
+                            source_sub_type: "",
+                            source: val,
+                          }));
+                        }}
+                        required
+                        className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                      >
+                        <option value="Nuevo">Nuevo</option>
+                        <option value="Redes sociales">Redes sociales</option>
+                        <option value="Gestion marketing">
+                          Gestión marketing
+                        </option>
+                        <option value="Referido por cliente">
+                          Referido por cliente
+                        </option>
+                        <option value="Referido por marca">
+                          Referido por marca
+                        </option>
+                        <option value="Mercado Libre">Mercado Libre</option>
+                        <option value="Otro">Otro</option>
+                      </select>
                     </div>
 
                     {/* Procedencia Condicional (Empresa) */}
-                    {(formData.source_type === 'Redes sociales' || formData.source_type === 'Gestion marketing' || formData.source_type === 'Referido por cliente' || formData.source_type === 'Referido por marca' || formData.source_type === 'Otro') && (
+                    {(formData.source_type === "Redes sociales" ||
+                      formData.source_type === "Gestion marketing" ||
+                      formData.source_type === "Referido por cliente" ||
+                      formData.source_type === "Referido por marca" ||
+                      formData.source_type === "Otro") && (
                       <div className="md:col-span-2 animate-in fade-in slide-in-from-top-2 duration-300">
-                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
-                           {formData.source_type === 'Redes sociales' ? 'Seleccionar Red Social' : 
-                            formData.source_type === 'Gestion marketing' ? 'Seleccionar Gestión' :
-                            formData.source_type === 'Referido por cliente' ? '¿Quién lo refirió?' :
-                            formData.source_type === 'Referido por marca' ? 'Seleccionar Marca' :
-                            'Especifique Procedencia'} <span className="text-red-500">*</span>
-                         </label>
-                         {formData.source_type === 'Redes sociales' ? (
-                           <select 
-                             name="source_sub_type" 
-                             value={formData.source_sub_type} 
-                             onChange={handleInputChange} 
-                             required
-                             className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
-                           >
-                             <option value="">Seleccionar...</option>
-                             <option value="Facebook">Facebook</option>
-                             <option value="Instagram">Instagram</option>
-                             <option value="Tiktok">Tiktok</option>
-                             <option value="X">X (Twitter)</option>
-                             <option value="LinkedIn">LinkedIn</option>
-                           </select>
-                         ) : formData.source_type === 'Gestion marketing' ? (
-                           <select 
-                             name="source_sub_type" 
-                             value={formData.source_sub_type} 
-                             onChange={handleInputChange} 
-                             required
-                             className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
-                           >
-                             <option value="">Seleccionar...</option>
-                             <option value="Bases de datos">Bases de datos</option>
-                             <option value="Correos masivos">Correos masivos</option>
-                           </select>
-                         ) : formData.source_type === 'Referido por marca' ? (
-                           <select 
-                             name="referred_by_brand_id" 
-                             value={formData.referred_by_brand_id} 
-                             onChange={handleInputChange} 
-                             required
-                             className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
-                           >
-                             <option value={0}>Seleccionar Marca...</option>
-                             {brands.map((brand) => (
-                               <option key={brand.id} value={brand.id}>{brand.name}</option>
-                             ))}
-                           </select>
-                         ) : (
-                           <input
-                             type="text"
-                             name="source_sub_type"
-                             value={formData.source_sub_type}
-                             onChange={handleInputChange}
-                             required
-                             className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
-                             placeholder={formData.source_type === 'Referido por cliente' ? 'Nombre del cliente...' : 'Escriba aquí...'}
-                           />
-                         )}
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
+                          {formData.source_type === "Redes sociales"
+                            ? "Seleccionar Red Social"
+                            : formData.source_type === "Gestion marketing"
+                              ? "Seleccionar Gestión"
+                              : formData.source_type === "Referido por cliente"
+                                ? "¿Quién lo refirió?"
+                                : formData.source_type === "Referido por marca"
+                                  ? "Seleccionar Marca"
+                                  : "Especifique Procedencia"}{" "}
+                          <span className="text-red-500">*</span>
+                        </label>
+                        {formData.source_type === "Redes sociales" ? (
+                          <select
+                            name="source_sub_type"
+                            value={formData.source_sub_type}
+                            onChange={handleInputChange}
+                            required
+                            className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                          >
+                            <option value="">Seleccionar...</option>
+                            <option value="Facebook">Facebook</option>
+                            <option value="Instagram">Instagram</option>
+                            <option value="Tiktok">Tiktok</option>
+                            <option value="X">X (Twitter)</option>
+                            <option value="LinkedIn">LinkedIn</option>
+                          </select>
+                        ) : formData.source_type === "Gestion marketing" ? (
+                          <select
+                            name="source_sub_type"
+                            value={formData.source_sub_type}
+                            onChange={handleInputChange}
+                            required
+                            className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                          >
+                            <option value="">Seleccionar...</option>
+                            <option value="Bases de datos">
+                              Bases de datos
+                            </option>
+                            <option value="Correos masivos">
+                              Correos masivos
+                            </option>
+                          </select>
+                        ) : formData.source_type === "Referido por marca" ? (
+                          <select
+                            name="referred_by_brand_id"
+                            value={formData.referred_by_brand_id}
+                            onChange={handleInputChange}
+                            required
+                            className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                          >
+                            <option value={0}>Seleccionar Marca...</option>
+                            {brands.map((brand) => (
+                              <option key={brand.id} value={brand.id}>
+                                {brand.name}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            type="text"
+                            name="source_sub_type"
+                            value={formData.source_sub_type}
+                            onChange={handleInputChange}
+                            required
+                            className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                            placeholder={
+                              formData.source_type === "Referido por cliente"
+                                ? "Nombre del cliente..."
+                                : "Escriba aquí..."
+                            }
+                          />
+                        )}
                       </div>
                     )}
 
                     <div className="md:col-span-2">
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">Ejecutivo comercial asignado <span className="text-red-500">*</span></label>
-                        <select name="assigned_to_name" value={formData.assigned_to_name} onChange={handleInputChange} required className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium">
-                            <option value="">Seleccionar...</option>
-                            <option value="Asesor 1">Asesor 1</option>
-                            <option value="Asesor 2">Asesor 2</option>
-                        </select>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
+                        Ejecutivo comercial asignado{" "}
+                        <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        name="assigned_to_name"
+                        value={formData.assigned_to_name}
+                        onChange={handleInputChange}
+                        required
+                        className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                      >
+                        <option value="">Seleccionar...</option>
+                        <option value="Asesor 1">Asesor 1</option>
+                        <option value="Asesor 2">Asesor 2</option>
+                      </select>
                     </div>
 
                     <div className="md:col-span-2">
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">Requerimientos</label>
-                        <textarea name="notes" value={formData.notes} onChange={handleInputChange} rows={3} className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium" placeholder="Describa los requerimientos del cliente..." />
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
+                        Requerimientos
+                      </label>
+                      <textarea
+                        name="notes"
+                        value={formData.notes}
+                        onChange={handleInputChange}
+                        rows={3}
+                        className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                        placeholder="Describa los requerimientos del cliente..."
+                      />
                     </div>
                   </>
                 )}
@@ -3349,7 +4019,9 @@ const AdminClientsPage = () => {
 
               <div className="p-4 bg-primary/5 rounded-xl border border-primary/10">
                 <p className="text-[11px] text-primary font-medium leading-relaxed">
-                  <span className="font-bold">Nota:</span> El informe incluirá los clientes creados en este rango, sus pedidos registrados y su línea de tiempo completa hasta la fecha.
+                  <span className="font-bold">Nota:</span> El informe incluirá
+                  los clientes creados en este rango, sus pedidos registrados y
+                  su línea de tiempo completa hasta la fecha.
                 </p>
               </div>
             </div>
@@ -3393,7 +4065,7 @@ const AdminClientsPage = () => {
               <div className="flex items-center gap-3">
                 <div className="size-10 rounded-xl bg-orange-100 flex items-center justify-center text-orange-600">
                   <span className="material-symbols-outlined text-[24px]">
-                    {isEditingTask ? 'edit_note' : 'add_task'}
+                    {isEditingTask ? "edit_note" : "add_task"}
                   </span>
                 </div>
                 <div>
@@ -3401,7 +4073,9 @@ const AdminClientsPage = () => {
                     {isEditingTask ? "Editar Tarea" : "Nueva Tarea CRM"}
                   </h3>
                   <p className="text-xs text-slate-500 font-display">
-                    {isEditingTask ? "Modifica los detalles de la tarea" : "Asigna una nueva tarea al equipo"}
+                    {isEditingTask
+                      ? "Modifica los detalles de la tarea"
+                      : "Asigna una nueva tarea al equipo"}
                   </p>
                 </div>
               </div>
@@ -3423,10 +4097,43 @@ const AdminClientsPage = () => {
                   required
                   type="text"
                   value={taskFormData.title}
-                  onChange={(e) => setTaskFormData({ ...taskFormData, title: e.target.value })}
+                  onChange={(e) =>
+                    setTaskFormData({ ...taskFormData, title: e.target.value })
+                  }
                   placeholder="Ej: Seguimiento de propuesta comercial"
                   className="w-full text-sm border-slate-200 rounded-xl focus:ring-primary focus:border-primary transition-all p-2.5"
                 />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
+                  Asesor Asignado
+                </label>
+                {currentUserProfile?.role === 'Admin' ? (
+                  <select
+                    value={taskFormData.assigned_to_id || ""}
+                    onChange={(e) => {
+                      const selectedProfile = allProfiles.find(p => p.id === e.target.value);
+                      setTaskFormData({ 
+                        ...taskFormData, 
+                        assigned_to_id: e.target.value,
+                        assigned_to: selectedProfile?.full_name || ""
+                      });
+                    }}
+                    className="w-full text-sm border-slate-200 rounded-xl focus:ring-primary focus:border-primary transition-all p-2.5"
+                  >
+                    <option value="">Seleccionar asesor...</option>
+                    {allProfiles.map(profile => (
+                      <option key={profile.id} value={profile.id}>
+                        {profile.full_name} ({profile.role})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="w-full text-sm bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-600 font-medium">
+                    {currentUserProfile?.full_name || taskFormData.assigned_to || 'Cargando...'}
+                  </div>
+                )}
               </div>
 
               <div className="space-y-1.5">
@@ -3436,14 +4143,19 @@ const AdminClientsPage = () => {
                 <textarea
                   rows={3}
                   value={taskFormData.description}
-                  onChange={(e) => setTaskFormData({ ...taskFormData, description: e.target.value })}
+                  onChange={(e) =>
+                    setTaskFormData({
+                      ...taskFormData,
+                      description: e.target.value,
+                    })
+                  }
                   placeholder="Añade detalles adicionales..."
                   className="w-full text-sm border-slate-200 rounded-xl focus:ring-primary focus:border-primary transition-all p-2.5 resize-none"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 col-span-2">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
                     Fecha de Vencimiento <span className="text-red-500">*</span>
                   </label>
@@ -3451,19 +4163,12 @@ const AdminClientsPage = () => {
                     required
                     type="date"
                     value={taskFormData.due_date}
-                    onChange={(e) => setTaskFormData({ ...taskFormData, due_date: e.target.value })}
-                    className="w-full text-sm border-slate-200 rounded-xl focus:ring-primary focus:border-primary transition-all p-2.5"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
-                    Asesor Asignado
-                  </label>
-                  <input
-                    type="text"
-                    value={taskFormData.assigned_to}
-                    onChange={(e) => setTaskFormData({ ...taskFormData, assigned_to: e.target.value })}
-                    placeholder="Nombre del asesor"
+                    onChange={(e) =>
+                      setTaskFormData({
+                        ...taskFormData,
+                        due_date: e.target.value,
+                      })
+                    }
                     className="w-full text-sm border-slate-200 rounded-xl focus:ring-primary focus:border-primary transition-all p-2.5"
                   />
                 </div>
@@ -3481,19 +4186,31 @@ const AdminClientsPage = () => {
                       className="flex-1 flex items-center justify-between px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:border-primary hover:text-primary transition-all text-left font-display"
                     >
                       <div className="flex items-center gap-2 overflow-hidden">
-                        <span className="material-symbols-outlined text-slate-400 text-[20px]">person</span>
+                        <span className="material-symbols-outlined text-slate-400 text-[20px]">
+                          person
+                        </span>
                         <span className="truncate">
-                          {taskFormData.client_id 
-                            ? (clients.find(c => c.id === taskFormData.client_id)?.full_name || clients.find(c => c.id === taskFormData.client_id)?.company_name || "Cliente seleccionado")
+                          {taskFormData.client_id
+                            ? clients.find(
+                                (c) => c.id === taskFormData.client_id,
+                              )?.full_name ||
+                              clients.find(
+                                (c) => c.id === taskFormData.client_id,
+                              )?.company_name ||
+                              "Cliente seleccionado"
                             : "Seleccionar cliente..."}
                         </span>
                       </div>
-                      <span className="material-symbols-outlined text-slate-400">search</span>
+                      <span className="material-symbols-outlined text-slate-400">
+                        search
+                      </span>
                     </button>
                     {taskFormData.client_id && (
                       <button
                         type="button"
-                        onClick={() => setTaskFormData({ ...taskFormData, client_id: "" })}
+                        onClick={() =>
+                          setTaskFormData({ ...taskFormData, client_id: "" })
+                        }
                         className="size-10 flex items-center justify-center bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-500 rounded-xl transition-all shadow-sm"
                         title="Quitar cliente"
                       >
@@ -3509,7 +4226,12 @@ const AdminClientsPage = () => {
                     </label>
                     <select
                       value={taskFormData.status}
-                      onChange={(e) => setTaskFormData({ ...taskFormData, status: e.target.value as Task["status"] })}
+                      onChange={(e) =>
+                        setTaskFormData({
+                          ...taskFormData,
+                          status: e.target.value as Task["status"],
+                        })
+                      }
                       className="w-full text-sm border-slate-200 rounded-xl focus:ring-primary focus:border-primary transition-all p-2.5"
                     >
                       <option value="Pendiente">Pendiente</option>
@@ -3560,24 +4282,32 @@ const AdminClientsPage = () => {
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
               <div className="flex items-center gap-3">
                 <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-                  <span className="material-symbols-outlined text-[24px]">person_search</span>
+                  <span className="material-symbols-outlined text-[24px]">
+                    person_search
+                  </span>
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-slate-900 font-display">Seleccionar Cliente</h3>
-                  <p className="text-xs text-slate-500 font-display">Busca y selecciona un cliente para esta tarea</p>
+                  <h3 className="text-lg font-bold text-slate-900 font-display">
+                    Seleccionar Cliente
+                  </h3>
+                  <p className="text-xs text-slate-500 font-display">
+                    Busca y selecciona un cliente para esta tarea
+                  </p>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={() => setIsClientSearchModalOpen(false)}
                 className="p-2 rounded-full hover:bg-slate-100 text-slate-400 transition-colors"
               >
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
-            
+
             <div className="p-6">
               <div className="relative">
-                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                  search
+                </span>
                 <input
                   type="text"
                   placeholder="Buscar por nombre, empresa o documento..."
@@ -3591,28 +4321,32 @@ const AdminClientsPage = () => {
 
             <div className="flex-1 overflow-y-auto px-6 pb-6 custom-scrollbar">
               <div className="grid gap-3">
-                {clients.filter(client => {
+                {clients.filter((client) => {
                   const search = clientModalSearchTerm.toLowerCase();
                   return (
-                    (client.full_name?.toLowerCase().includes(search)) ||
-                    (client.company_name?.toLowerCase().includes(search)) ||
-                    (client.document_number?.includes(search)) ||
-                    (client.email?.toLowerCase().includes(search))
+                    client.full_name?.toLowerCase().includes(search) ||
+                    client.company_name?.toLowerCase().includes(search) ||
+                    client.document_number?.includes(search) ||
+                    client.email?.toLowerCase().includes(search)
                   );
                 }).length === 0 ? (
                   <div className="py-12 text-center">
-                    <span className="material-symbols-outlined text-slate-300 text-5xl mb-3">search_off</span>
-                    <p className="text-slate-500 font-display">No se encontraron clientes que coincidan</p>
+                    <span className="material-symbols-outlined text-slate-300 text-5xl mb-3">
+                      search_off
+                    </span>
+                    <p className="text-slate-500 font-display">
+                      No se encontraron clientes que coincidan
+                    </p>
                   </div>
                 ) : (
                   clients
-                    .filter(client => {
+                    .filter((client) => {
                       const search = clientModalSearchTerm.toLowerCase();
                       return (
-                        (client.full_name?.toLowerCase().includes(search)) ||
-                        (client.company_name?.toLowerCase().includes(search)) ||
-                        (client.document_number?.includes(search)) ||
-                        (client.email?.toLowerCase().includes(search))
+                        client.full_name?.toLowerCase().includes(search) ||
+                        client.company_name?.toLowerCase().includes(search) ||
+                        client.document_number?.includes(search) ||
+                        client.email?.toLowerCase().includes(search)
                       );
                     })
                     .map((client) => (
@@ -3620,14 +4354,17 @@ const AdminClientsPage = () => {
                         key={client.id}
                         type="button"
                         onClick={() => {
-                          setTaskFormData({ ...taskFormData, client_id: client.id });
+                          setTaskFormData({
+                            ...taskFormData,
+                            client_id: client.id,
+                          });
                           setIsClientSearchModalOpen(false);
                           setClientModalSearchTerm("");
                         }}
                         className={`w-full p-4 border rounded-xl text-left transition-all group ${
-                          taskFormData.client_id === client.id 
-                            ? 'border-primary bg-primary/5 ring-1 ring-primary' 
-                            : 'border-slate-100 hover:border-primary hover:bg-slate-50 shadow-sm'
+                          taskFormData.client_id === client.id
+                            ? "border-primary bg-primary/5 ring-1 ring-primary"
+                            : "border-slate-100 hover:border-primary hover:bg-slate-50 shadow-sm"
                         }`}
                       >
                         <div className="flex justify-between items-start">
@@ -3637,19 +4374,25 @@ const AdminClientsPage = () => {
                             </p>
                             <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1">
                               <span className="text-xs text-slate-500 font-display flex items-center gap-1">
-                                <span className="material-symbols-outlined text-sm">badge</span>
+                                <span className="material-symbols-outlined text-sm">
+                                  badge
+                                </span>
                                 {client.document_number}
                               </span>
                               {client.phone && (
                                 <span className="text-xs text-slate-500 font-display flex items-center gap-1">
-                                  <span className="material-symbols-outlined text-sm">call</span>
+                                  <span className="material-symbols-outlined text-sm">
+                                    call
+                                  </span>
                                   {client.phone}
                                 </span>
                               )}
                             </div>
                           </div>
                           {taskFormData.client_id === client.id && (
-                            <span className="material-symbols-outlined text-primary">check_circle</span>
+                            <span className="material-symbols-outlined text-primary">
+                              check_circle
+                            </span>
                           )}
                         </div>
                       </button>

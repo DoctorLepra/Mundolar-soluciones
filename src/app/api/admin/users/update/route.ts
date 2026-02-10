@@ -25,8 +25,7 @@ export async function POST(request: Request) {
       .from('profiles')
       .update({ 
         full_name, 
-        role,
-        updated_at: new Date().toISOString()
+        role
       })
       .eq('id', id);
 

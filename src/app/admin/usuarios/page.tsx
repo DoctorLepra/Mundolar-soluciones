@@ -46,6 +46,15 @@ export default function UsuariosPage() {
     fetchProfiles();
   }, []);
 
+  useEffect(() => {
+    if (notification) {
+      const timer = setTimeout(() => {
+        setNotification(null);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [notification]);
+
   const fetchProfiles = async () => {
     try {
       setLoading(true);

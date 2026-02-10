@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, Suspense } from 'react';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { notifyAdmins } from '@/lib/notifications';
 import { formatCurrency, formatOrderId } from '@/lib/utils';
 import { colombiaData } from '@/lib/colombia-data';
 
@@ -25,6 +26,12 @@ interface Client {
   address: string | null;
   photo_url: string | null;
   client_type: 'Natural' | 'Empresa';
+}
+
+interface UserProfile {
+  id: string;
+  full_name: string;
+  role: string;
 }
 
 interface Product {
@@ -62,6 +69,11 @@ interface Order {
     price_at_purchase: number;
     products: Product;
   }[];
+  created_by_id?: string | null;
+  profiles?: {
+    full_name: string | null;
+    role: string | null;
+  };
 }
 
 function AdminOrdersPageContent() {
@@ -107,6 +119,8 @@ function AdminOrdersPageContent() {
     discount_percentage: '0'
   });
 
+  const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null>(null);
+
   // Multibodega states
   const [isWarehouseSwitchModalOpen, setIsWarehouseSwitchModalOpen] = useState(false);
   const [pendingProduct, setPendingProduct] = useState<Product | null>(null);
@@ -121,6 +135,7 @@ function AdminOrdersPageContent() {
   useEffect(() => {
     fetchOrders();
     fetchWarehouses();
+    fetchUserProfile();
     
     if (orderIdFromUrl) {
       setSelectedOrderId(parseInt(orderIdFromUrl));
@@ -135,7 +150,39 @@ function AdminOrdersPageContent() {
       }
       setIsCreateModalOpen(true);
     }
+
+    // Realtime subscription for orders
+    const ordersChannel = supabase
+      .channel('orders-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', table: 'orders', schema: 'public' },
+        () => fetchOrders()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(ordersChannel);
+    };
   }, [orderIdFromUrl, shouldCreate, clientIdFromUrl, searchParams]);
+
+  const fetchUserProfile = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (error) throw error;
+      setCurrentUserProfile(profile);
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+    }
+  };
 
   const handleLoadFromQuote = async (quoteId: string) => {
     try {
@@ -271,7 +318,8 @@ function AdminOrdersPageContent() {
             document_number,
             client_type,
             photo_url
-          )
+          ),
+          profiles:created_by_id (full_name, role)
         `)
         .order('created_at', { ascending: false });
 
@@ -665,7 +713,8 @@ function AdminOrdersPageContent() {
             discount_percentage: parseFloat(orderForm.discount_percentage),
             total_amount: total,
             status: 'Pendiente',
-            shipping_address: shippingAddress
+            shipping_address: shippingAddress,
+            created_by_id: currentUserProfile?.id
           }])
           .select()
           .single();
@@ -695,6 +744,17 @@ function AdminOrdersPageContent() {
 
       if (itemsError) throw itemsError;
 
+      // Notification Logic
+      if (currentUserProfile?.role === 'Vendedor') {
+        const { data: { user } } = await supabase.auth.getUser();
+        await notifyAdmins({
+          title: 'Nuevo Pedido Registrado',
+          message: `El vendedor ${currentUserProfile.full_name} ha creado un nuevo pedido.`,
+          type: 'order',
+          related_id: orderId
+        });
+      }
+
       // Update product stock quantities (deduct new quantities) in parallel
       const stockUpdateResults = await Promise.all(selectedProducts.map(async (item) => {
         try {
@@ -702,7 +762,7 @@ function AdminOrdersPageContent() {
           const { data: product, error: fetchError } = await supabase
             .from('products')
             .select('stock_quantity, main_warehouse_stock, auxiliary_warehouse_stock, warehouse_id, auxiliary_warehouse_id')
-            .eq('id', productId)
+            .eq('id', productId.toString())
             .single();
 
           if (fetchError || !product) {
@@ -1117,6 +1177,22 @@ function AdminOrdersPageContent() {
                   </div>
                 </div>
 
+                {/* Atribución / Vendedor */}
+                <div className="bg-emerald-50/50 p-4 rounded-xl border border-emerald-100 flex items-center gap-3">
+                  <div className="size-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
+                    <span className="material-symbols-outlined text-xl">person_check</span>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest leading-none mb-1">Vendedor Asignado</p>
+                    <p className="text-sm font-bold text-emerald-900 font-display">
+                      {selectedOrder.profiles?.full_name || 'Sistema'}
+                    </p>
+                    <p className="text-[10px] font-medium text-emerald-500 font-display">
+                      {selectedOrder.profiles?.role || 'Admin'}
+                    </p>
+                  </div>
+                </div>
+
                 {/* Purchase Details */}
                 <div>
                   <h4 className="text-xs font-bold text-slate-400 uppercase tracking-relaxed mb-3 font-display">Detalle de Compra</h4>
@@ -1161,6 +1237,20 @@ function AdminOrdersPageContent() {
 
                 {/* Action Buttons */}
                 <div className="grid grid-cols-2 gap-3 pt-4">
+                  {/* Read-only Warning */}
+                  {(() => {
+                    const canModify = currentUserProfile?.role === 'Admin' || selectedOrder?.created_by_id === currentUserProfile?.id;
+                    if (!canModify) return (
+                      <div className="col-span-2 mb-2 p-3 bg-amber-50 border border-amber-100 rounded-xl flex items-center gap-3">
+                        <span className="material-symbols-outlined text-amber-500 text-sm">lock</span>
+                        <p className="text-[11px] font-medium text-amber-700 font-display">
+                          Solo el vendedor responsable o un administrador pueden realizar modificaciones.
+                        </p>
+                      </div>
+                    );
+                    return null;
+                  })()}
+
                   <div className="relative col-span-2" ref={contactMenuRef}>
                     <button 
                       onClick={() => setIsContactMenuOpen(!isContactMenuOpen)}
@@ -1200,35 +1290,44 @@ function AdminOrdersPageContent() {
                     )}
                   </div>
 
-                  <div className="relative" ref={statusMenuRef}>
-                    <button 
-                      onClick={() => setIsStatusMenuOpen(!isStatusMenuOpen)}
-                      className="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 p-3.5 rounded-xl font-bold text-sm transition-all shadow-sm font-display"
-                    >
-                      <span className="material-symbols-outlined text-[20px]">sync</span>
-                      <span>Estado</span>
-                    </button>
-                    {isStatusMenuOpen && (
-                      <div className="absolute bottom-full left-0 w-full mb-2 bg-white border border-slate-200 rounded-xl shadow-xl z-20 overflow-hidden">
-                        {['Pendiente', 'Procesando', 'Enviado', 'Completado', 'Cancelado'].map((status) => (
-                          <button
-                            key={status}
-                            onClick={() => handleUpdateStatus(selectedOrder.id, status)}
-                            className={`w-full text-left px-4 py-2.5 text-sm font-medium hover:bg-slate-50 transition-colors ${selectedOrder.status === status ? 'text-primary bg-primary/5' : 'text-slate-600'}`}
-                          >
-                            {status}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  {(() => {
+                    const canModify = currentUserProfile?.role === 'Admin' || selectedOrder?.created_by_id === currentUserProfile?.id;
+                    if (!canModify) return null;
 
-                  <button 
-                    onClick={handleEditOpen}
-                    className="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 p-3.5 rounded-xl font-bold text-sm transition-all shadow-sm font-display"
-                  >
-                    <span className="material-symbols-outlined text-[20px]">edit</span>
-                  </button>
+                    return (
+                      <>
+                        <div className="relative" ref={statusMenuRef}>
+                          <button 
+                            onClick={() => setIsStatusMenuOpen(!isStatusMenuOpen)}
+                            className="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 p-3.5 rounded-xl font-bold text-sm transition-all shadow-sm font-display"
+                          >
+                            <span className="material-symbols-outlined text-[20px]">sync</span>
+                            <span>Estado</span>
+                          </button>
+                          {isStatusMenuOpen && (
+                            <div className="absolute bottom-full left-0 w-full mb-2 bg-white border border-slate-200 rounded-xl shadow-xl z-20 overflow-hidden">
+                              {['Pendiente', 'Procesando', 'Enviado', 'Completado', 'Cancelada'].map((status) => (
+                                <button
+                                  key={status}
+                                  onClick={() => handleUpdateStatus(selectedOrder.id, status)}
+                                  className={`w-full text-left px-4 py-2.5 text-sm font-medium hover:bg-slate-50 transition-colors ${selectedOrder.status === status ? 'text-primary bg-primary/5' : 'text-slate-600'}`}
+                                >
+                                  {status}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <button 
+                          onClick={handleEditOpen}
+                          className="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 p-3.5 rounded-xl font-bold text-sm transition-all shadow-sm font-display"
+                        >
+                          <span className="material-symbols-outlined text-[20px]">edit</span>
+                        </button>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             </div>

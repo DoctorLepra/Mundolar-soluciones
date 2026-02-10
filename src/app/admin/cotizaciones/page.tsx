@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, Suspense } from 'react';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { notifyAdmins } from '@/lib/notifications';
 import { formatCurrency, formatQuoteId } from '@/lib/utils';
 
 interface Client {
@@ -29,6 +30,12 @@ interface Product {
   stock_quantity: number;
 }
 
+interface UserProfile {
+  id: string;
+  full_name: string;
+  role: string;
+}
+
 interface QuoteItem {
   product: Product;
   quantity: number;
@@ -47,6 +54,11 @@ interface Quote {
   observations: string | null;
   valid_until: string | null;
   clients?: Client;
+  created_by_id?: string | null;
+  profiles?: {
+    full_name: string | null;
+    role: string | null;
+  };
 }
 
 function AdminQuotesPageContent() {
@@ -91,15 +103,50 @@ function AdminQuotesPageContent() {
     valid_until: ''
   });
 
+  const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null>(null);
+
   const searchParams = useSearchParams();
   const quoteIdFromUrl = searchParams.get('id');
 
   useEffect(() => {
     fetchQuotes();
+    fetchUserProfile();
     if (quoteIdFromUrl) {
       setSelectedQuoteId(quoteIdFromUrl);
     }
+
+    // Realtime subscription for quotes
+    const quotesChannel = supabase
+      .channel('quotes-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', table: 'quotes', schema: 'public' },
+        () => fetchQuotes()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(quotesChannel);
+    };
   }, [quoteIdFromUrl]);
+
+  const fetchUserProfile = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (error) throw error;
+      setCurrentUserProfile(profile);
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+    }
+  };
 
   useEffect(() => {
     setCurrentPage(1);
@@ -134,7 +181,8 @@ function AdminQuotesPageContent() {
         .from('quotes')
         .select(`
           *,
-          clients (*)
+          clients (*),
+          profiles:created_by_id (full_name, role)
         `)
         .order('created_at', { ascending: false });
 
@@ -354,7 +402,8 @@ function AdminQuotesPageContent() {
             total_amount: total,
             observations: quoteForm.observations,
             valid_until: quoteForm.valid_until || null,
-            status: 'Pendiente'
+            status: 'Pendiente',
+            created_by_id: (await supabase.auth.getUser()).data.user?.id
           }])
           .select()
           .single();
@@ -373,6 +422,19 @@ function AdminQuotesPageContent() {
 
       const { error: itemsError } = await supabase.from('quote_items').insert(items);
       if (itemsError) throw itemsError;
+
+      // Notification Logic
+      if (currentUserProfile?.role === 'Vendedor') {
+        const quoteNumber = isEditMode ? 'Existente' : (typeof quoteId === 'string' ? 'Nueva' : '');
+        await notifyAdmins({
+          title: isEditMode ? 'Cotización Actualizada' : 'Nueva Cotización Generada',
+          message: isEditMode 
+            ? `El vendedor ${currentUserProfile.full_name} ha actualizado una cotización.`
+            : `El vendedor ${currentUserProfile.full_name} ha generado una nueva cotización.`,
+          type: 'quote',
+          related_id: quoteId || undefined
+        });
+      }
 
       setIsCreateModalOpen(false);
       setIsEditMode(false);
@@ -709,6 +771,22 @@ function AdminQuotesPageContent() {
                       </div>
                     </div>
 
+                    {/* Atribución */}
+                    <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 flex items-center gap-3">
+                      <div className="size-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+                        <span className="material-symbols-outlined text-xl">person_edit</span>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest leading-none mb-1">Creado por</p>
+                        <p className="text-sm font-bold text-blue-900 font-display">
+                          {quotes.find(q => q.id === selectedQuoteId)?.profiles?.full_name || 'Sistema'}
+                        </p>
+                        <p className="text-[10px] font-medium text-blue-500 font-display">
+                          {quotes.find(q => q.id === selectedQuoteId)?.profiles?.role || 'Admin'}
+                        </p>
+                      </div>
+                    </div>
+
                     {/* Purchase Details (Products) */}
                     <div className="pt-2">
                       <h4 className="text-xs font-bold text-slate-400 uppercase tracking-relaxed mb-4 font-display">Productos Cotizados</h4>
@@ -762,6 +840,21 @@ function AdminQuotesPageContent() {
 
                     {/* Action Buttons */}
                     <div className="grid grid-cols-2 gap-3 pt-4">
+                      {/* Read-only Warning */}
+                      {(() => {
+                        const q = quotes.find(q => q.id === selectedQuoteId);
+                        const canModify = currentUserProfile?.role === 'Admin' || q?.created_by_id === currentUserProfile?.id;
+                        if (!canModify) return (
+                          <div className="col-span-2 mb-2 p-3 bg-amber-50 border border-amber-100 rounded-xl flex items-center gap-3">
+                            <span className="material-symbols-outlined text-amber-500 text-sm">lock</span>
+                            <p className="text-[11px] font-medium text-amber-700 font-display">
+                              Solo el creadora de esta cotización o un administrador pueden realizar modificaciones.
+                            </p>
+                          </div>
+                        );
+                        return null;
+                      })()}
+
                       {/* Contact Dropdown */}
                       <div className="relative col-span-2" ref={contactMenuRef}>
                         <button 
@@ -805,41 +898,57 @@ function AdminQuotesPageContent() {
                       </div>
 
                       {/* Status Dropdown */}
-                      <div className="relative" ref={statusMenuRef}>
-                        <button 
-                          onClick={() => setIsStatusMenuOpen(!isStatusMenuOpen)}
-                          className="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 p-3.5 rounded-xl font-bold text-sm transition-all shadow-sm font-display"
-                        >
-                          <span className="material-symbols-outlined text-[20px]">sync</span>
-                          <span>Estado</span>
-                        </button>
-                        {isStatusMenuOpen && (
-                          <div className="absolute bottom-full left-0 w-full mb-2 bg-white border border-slate-200 rounded-xl shadow-xl z-20 overflow-hidden">
-                            {['Pendiente', 'Aprobada', 'Renovada', 'Cancelada'].map((status) => (
-                              <button
-                                key={status}
-                                onClick={() => {
-                                  handleStatusChange(selectedQuoteId, status);
-                                  setIsStatusMenuOpen(false);
-                                }}
-                                className={`w-full text-left px-4 py-2.5 text-sm font-medium hover:bg-slate-50 transition-colors ${quotes.find(q => q.id === selectedQuoteId)?.status === status ? 'text-primary bg-primary/5' : 'text-slate-600'}`}
-                              >
-                                {status}
-                              </button>
-                            ))}
+                      {(() => {
+                        const q = quotes.find(q => q.id === selectedQuoteId);
+                        const canModify = currentUserProfile?.role === 'Admin' || q?.created_by_id === currentUserProfile?.id;
+                        if (!canModify) return null;
+                        
+                        return (
+                          <div className="relative" ref={statusMenuRef}>
+                            <button 
+                              onClick={() => setIsStatusMenuOpen(!isStatusMenuOpen)}
+                              className="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 p-3.5 rounded-xl font-bold text-sm transition-all shadow-sm font-display"
+                            >
+                              <span className="material-symbols-outlined text-[20px]">sync</span>
+                              <span>Estado</span>
+                            </button>
+                            {isStatusMenuOpen && (
+                              <div className="absolute bottom-full left-0 w-full mb-2 bg-white border border-slate-200 rounded-xl shadow-xl z-20 overflow-hidden">
+                                {['Pendiente', 'Aprobada', 'Renovada', 'Cancelada'].map((status) => (
+                                  <button
+                                    key={status}
+                                    onClick={() => {
+                                      handleStatusChange(selectedQuoteId, status);
+                                      setIsStatusMenuOpen(false);
+                                    }}
+                                    className={`w-full text-left px-4 py-2.5 text-sm font-medium hover:bg-slate-50 transition-colors ${quotes.find(q => q.id === selectedQuoteId)?.status === status ? 'text-primary bg-primary/5' : 'text-slate-600'}`}
+                                  >
+                                    {status}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
+                        );
+                      })()}
 
-                      <button 
-                        onClick={() => {
-                          const q = quotes.find(q => q.id === selectedQuoteId);
-                          if (q) handleEditQuote(q);
-                        }}
-                        className="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 p-3.5 rounded-xl font-bold text-sm transition-all shadow-sm font-display"
-                      >
-                        <span className="material-symbols-outlined text-[20px]">edit</span>
-                      </button>
+                      {(() => {
+                        const q = quotes.find(q => q.id === selectedQuoteId);
+                        const canModify = currentUserProfile?.role === 'Admin' || q?.created_by_id === currentUserProfile?.id;
+                        if (!canModify) return null;
+
+                        return (
+                          <button 
+                            onClick={() => {
+                              const q = quotes.find(q => q.id === selectedQuoteId);
+                              if (q) handleEditQuote(q);
+                            }}
+                            className="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 p-3.5 rounded-xl font-bold text-sm transition-all shadow-sm font-display"
+                          >
+                            <span className="material-symbols-outlined text-[20px]">edit</span>
+                          </button>
+                        );
+                      })()}
 
                       <button 
                         onClick={() => window.location.href = `/admin/pedidos?create=true&fromQuote=${selectedQuoteId}`}
@@ -849,12 +958,20 @@ function AdminQuotesPageContent() {
                         Convertir a Pedido
                       </button>
 
-                      <button 
-                        onClick={() => handleDeleteQuote(selectedQuoteId)}
-                        className="col-span-2 w-full flex items-center justify-center gap-2 px-3 py-2 text-red-400 hover:text-red-600 text-xs font-bold transition-colors font-display"
-                      >
-                        Eliminar Cotización
-                      </button>
+                      {(() => {
+                        const q = quotes.find(q => q.id === selectedQuoteId);
+                        const canModify = currentUserProfile?.role === 'Admin' || q?.created_by_id === currentUserProfile?.id;
+                        if (!canModify) return null;
+
+                        return (
+                          <button 
+                            onClick={() => handleDeleteQuote(selectedQuoteId)}
+                            className="col-span-2 w-full flex items-center justify-center gap-2 px-3 py-2 text-red-400 hover:text-red-600 text-xs font-bold transition-colors font-display"
+                          >
+                            Eliminar Cotización
+                          </button>
+                        );
+                      })()}
                     </div>
                   </>
                 )}
@@ -1028,14 +1145,14 @@ function AdminQuotesPageContent() {
                 <div className="space-y-6">
                   <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Vigencia de la Cotización</label>
-                    <div className="relative">
+                    <div className="relative group">
                       <input 
                         type="date"
-                        className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-primary outline-none font-display"
+                        className="w-full p-4 pr-12 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-primary focus:bg-white outline-none font-display transition-all cursor-pointer appearance-none"
                         value={quoteForm.valid_until}
                         onChange={e => setQuoteForm({...quoteForm, valid_until: e.target.value})}
                       />
-                      <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">calendar_today</span>
+                      <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-hover:text-primary transition-colors">calendar_today</span>
                     </div>
                   </div>
                   <div>

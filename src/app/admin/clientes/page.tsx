@@ -3249,6 +3249,7 @@ const AdminClientsPageContent = () => {
                                 assigned_to_id: selectedTask.assigned_to_id || "",
                                 client_id: selectedTask.client_id || "",
                                 status: selectedTask.status,
+                                created_by_id: selectedTask.created_by_id || "",
                               });
                               setIsTaskModalOpen(true);
                             }}

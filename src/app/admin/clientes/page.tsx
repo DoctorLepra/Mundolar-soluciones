@@ -1338,6 +1338,7 @@ const AdminClientsPageContent = () => {
                   assigned_to_id: "",
                   client_id: "",
                   status: "Pendiente",
+                  created_by_id: currentUserProfile?.id || "",
                 });
                 setIsTaskModalOpen(true);
               }}

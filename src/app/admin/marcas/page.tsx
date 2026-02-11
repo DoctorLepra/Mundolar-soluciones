@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
+import RoleGuard from '@/components/admin/RoleGuard';
 import { convertToWebP } from '@/lib/image-utils';
 
 // Brand interface matching the updated DB schema (Omnitting slug as requested)
@@ -16,6 +17,14 @@ interface Brand {
 }
 
 export default function AdminBrandsPage() {
+  return (
+    <RoleGuard allowedRoles={['Admin']}>
+      <AdminBrandsPageContent />
+    </RoleGuard>
+  );
+}
+
+function AdminBrandsPageContent() {
     // DB State
     const [allBrands, setAllBrands] = useState<Brand[]>([]);
     const [loading, setLoading] = useState(true);

@@ -39,3 +39,13 @@ export const formatQuoteId = (
   const numericId = typeof id === "string" ? parseInt(id) : id;
   return `COT-${numericId.toString().padStart(4, "0")}`;
 };
+/**
+ * Formats a numerical ID into a standardized task string: TAR-0001
+ */
+export const formatTaskId = (
+  id: number | string | null | undefined,
+): string => {
+  if (id === null || id === undefined) return "N/A";
+  const numericId = typeof id === "string" ? parseInt(id) : id;
+  return `TAR-${numericId.toString().padStart(4, "0")}`;
+};

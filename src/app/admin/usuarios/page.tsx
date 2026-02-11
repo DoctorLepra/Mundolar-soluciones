@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import RoleGuard from '@/components/admin/RoleGuard';
 import { 
   UserPlus, 
   Search, 
@@ -26,6 +27,14 @@ interface Profile {
 }
 
 export default function UsuariosPage() {
+  return (
+    <RoleGuard allowedRoles={['Admin']}>
+      <UsuariosPageContent />
+    </RoleGuard>
+  );
+}
+
+function UsuariosPageContent() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');

@@ -305,7 +305,11 @@ function AdminOrdersPageContent() {
   const fetchOrders = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: profile } = user ? await supabase.from('profiles').select('role').eq('id', user.id).single() : { data: null };
+
+      let query = supabase
         .from('orders')
         .select(`
           *,
@@ -321,8 +325,13 @@ function AdminOrdersPageContent() {
             photo_url
           ),
           profiles:created_by_id (full_name, role)
-        `)
-        .order('created_at', { ascending: false });
+        `);
+
+      if (profile && profile.role === 'Vendedor') {
+        query = query.eq('created_by_id', user!.id);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) throw error;
       setOrders(data || []);

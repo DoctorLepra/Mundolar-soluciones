@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { createNotification, notifyAdmins } from "@/lib/notifications";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatTaskId } from "@/lib/utils";
 import { colombiaData, departments } from "@/lib/colombia-data";
 import * as XLSX from "xlsx";
 
@@ -68,9 +68,13 @@ interface Task {
   assigned_to_id: string | null; // Added for linking to profiles
   client_id: string | null;
   created_by: string | null;
+  created_by_id: string | null;
   client?: {
     full_name: string | null;
     company_name: string | null;
+  };
+  creator?: {
+    full_name: string | null;
   };
 }
 
@@ -180,6 +184,8 @@ const AdminClientsPageContent = () => {
     useState(false);
   const taskDropdownRef = useRef<HTMLDivElement>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [taskCurrentPage, setTaskCurrentPage] = useState(1);
+  const TASKS_PER_PAGE = 6;
 
   // User Profile & Roles State
   const [currentUserProfile, setCurrentUserProfile] =
@@ -194,6 +200,7 @@ const AdminClientsPageContent = () => {
     assigned_to_id: "",
     client_id: "",
     status: "Pendiente" as Task["status"],
+    created_by_id: "",
   });
 
   // Google Calendar / Follow-up State
@@ -286,10 +293,12 @@ const AdminClientsPageContent = () => {
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) || null;
 
   useEffect(() => {
-    fetchUserProfile();
-    fetchClients();
-    fetchBrands();
-    fetchTasks();
+    const init = async () => {
+      await fetchUserProfile();
+      fetchClients();
+      fetchBrands();
+    };
+    init();
 
     // CRM Tasks Realtime Subscription
     const tasksChannel = supabase
@@ -308,6 +317,10 @@ const AdminClientsPageContent = () => {
     };
   }, []);
 
+  useEffect(() => {
+    setTaskCurrentPage(1);
+  }, [taskSearchTerm, taskStatusFilter, taskAdvisorFilter, taskDueSoonFilter]);
+
   const fetchUserProfile = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
@@ -318,7 +331,10 @@ const AdminClientsPageContent = () => {
         .single();
       
       if (profile) {
+        console.log("DEBUG - User Profile Loaded:", profile.full_name, profile.role);
         setCurrentUserProfile(profile);
+        // Cargar tareas después de tener el perfil para aplicar filtros de rol
+        fetchTasks(profile);
         if (profile.role === 'Admin') {
           fetchAllProfiles();
         } else {
@@ -330,6 +346,9 @@ const AdminClientsPageContent = () => {
           }));
         }
       }
+    } else {
+      // Si no hay usuario, cargamos tareas sin filtro de perfil (o vacío)
+      fetchTasks(null);
     }
   };
 
@@ -349,22 +368,25 @@ const AdminClientsPageContent = () => {
     if (data) setBrands(data);
   };
 
-  const fetchTasks = async () => {
+  const fetchTasks = async (profileOverride?: UserProfile | null) => {
     setLoadingTasks(true);
+    const profile = profileOverride !== undefined ? profileOverride : currentUserProfile;
+    
     let query = supabase
       .from("client_tasks")
-      .select("*, client:clients(full_name, company_name)")
+      .select("*")
       .order("due_date", { ascending: true });
 
-    // Role-based filtering: Vendors only see their own tasks
-    if (currentUserProfile && currentUserProfile.role === 'Vendedor') {
-      query = query.eq('assigned_to_id', currentUserProfile.id);
+    // Role-based filtering: Vendors only see tasks they are assigned to OR tasks they created
+    if (profile && profile.role === 'Vendedor') {
+      query = query.or(`assigned_to_id.eq.${profile.id},created_by_id.eq.${profile.id}`);
     }
 
     const { data, error } = await query;
 
     if (error) {
-      console.error("Error fetching tasks:", error);
+      console.error("CRITICAL DEBUG - Error fetching tasks:", error);
+      console.error("DEBUG - Error Stringified:", JSON.stringify(error, null, 2));
     } else if (data) {
       setTasks(data);
       // Update pending tasks metric
@@ -387,8 +409,13 @@ const AdminClientsPageContent = () => {
         assigned_to_id: taskFormData.assigned_to_id || null,
         client_id: taskFormData.client_id || null,
         status: taskFormData.status,
+        created_by: currentUserProfile?.email || null,
         created_by_id: currentUserProfile?.id || null,
       };
+
+      if (!taskData.created_by_id) {
+        console.warn("DEBUG - No currentUserProfile id during task creation");
+      }
 
       let taskId = editingTaskId;
       if (isEditingTask && editingTaskId) {
@@ -444,6 +471,7 @@ const AdminClientsPageContent = () => {
         assigned_to_id: currentUserProfile?.role === 'Vendedor' ? currentUserProfile.id : "",
         client_id: "",
         status: "Pendiente",
+        created_by_id: currentUserProfile?.id || "",
       });
       fetchTasks();
     } catch (error: any) {
@@ -565,11 +593,16 @@ const AdminClientsPageContent = () => {
 
   const fetchClientOrders = async (clientId: string) => {
     setLoadingOrders(true);
-    const { data, error } = await supabase
+    let query = supabase
       .from("orders")
       .select("*")
-      .eq("client_id", clientId)
-      .order("created_at", { ascending: false });
+      .eq("client_id", clientId);
+
+    if (currentUserProfile && currentUserProfile.role === 'Vendedor') {
+      query = query.eq('created_by_id', currentUserProfile.id);
+    }
+
+    const { data, error } = await query.order("created_at", { ascending: false });
 
     if (error) {
       console.error("Error fetching client orders:", error);
@@ -836,6 +869,44 @@ const AdminClientsPageContent = () => {
   const endItem = Math.min(
     currentPage * ITEMS_PER_PAGE,
     filteredClients.length,
+  );
+
+  // Task Pagination Logic
+  const filteredTasks = tasks.filter((task) => {
+    const searchStr = taskSearchTerm.toLowerCase();
+    const paddedCodigo = (task.codigo?.toString() || "").padStart(4, "0");
+    const matchesSearch =
+      task.title.toLowerCase().includes(searchStr) ||
+      paddedCodigo.includes(searchStr) ||
+      (task.codigo?.toString() || "").includes(searchStr);
+    const matchesStatus =
+      taskStatusFilter === "all" || task.status === taskStatusFilter;
+    const matchesAdvisor =
+      taskAdvisorFilter === "all" || task.assigned_to === taskAdvisorFilter;
+
+    let matchesDueSoon = true;
+    if (taskDueSoonFilter) {
+      const dueDate = new Date(task.due_date);
+      const diff = dueDate.getTime() - new Date().getTime();
+      const days = diff / (1000 * 60 * 60 * 24);
+      matchesDueSoon = days >= 0 && days <= 3;
+    }
+
+    return (
+      matchesSearch && matchesStatus && matchesAdvisor && matchesDueSoon
+    );
+  });
+
+  const taskTotalPages = Math.ceil(filteredTasks.length / TASKS_PER_PAGE);
+  const paginatedTasks = filteredTasks.slice(
+    (taskCurrentPage - 1) * TASKS_PER_PAGE,
+    taskCurrentPage * TASKS_PER_PAGE,
+  );
+
+  const taskStartItem = (taskCurrentPage - 1) * TASKS_PER_PAGE + 1;
+  const taskEndItem = Math.min(
+    taskCurrentPage * TASKS_PER_PAGE,
+    filteredTasks.length,
   );
 
   const handleClearFilters = () => {
@@ -1895,28 +1966,6 @@ const AdminClientsPageContent = () => {
                           )}
                         </button>
 
-                        <button
-                          onClick={() => {
-                            setEditingTaskId(null);
-                            setIsEditingTask(false);
-                            setTaskFormData({
-                              title: "",
-                              description: "",
-                              due_date: new Date().toISOString().split("T")[0],
-                              assigned_to: currentUserProfile?.role === 'Vendedor' ? currentUserProfile.full_name : "",
-                              assigned_to_id: currentUserProfile?.role === 'Vendedor' ? currentUserProfile.id : "",
-                              client_id: "",
-                              status: "Pendiente",
-                            });
-                            setIsTaskModalOpen(true);
-                          }}
-                          className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-bold hover:bg-blue-600 transition-all shadow-md font-display"
-                        >
-                          <span className="material-symbols-outlined text-[20px]">
-                            add_task
-                          </span>
-                          NUEVA TAREA
-                        </button>
                       </div>
 
                       {isTaskFilterDropdownOpen && (
@@ -1940,31 +1989,33 @@ const AdminClientsPageContent = () => {
                               </select>
                             </div>
 
-                            <div>
-                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">
-                                Asesor
-                              </label>
-                              <select
-                                value={taskAdvisorFilter}
-                                onChange={(e) =>
-                                  setTaskAdvisorFilter(e.target.value)
-                                }
-                                className="w-full text-sm border-slate-200 rounded-lg focus:ring-primary py-1.5"
-                              >
-                                <option value="all">Todos los Asesores</option>
-                                {Array.from(
-                                  new Set(
-                                    tasks
-                                      .map((t) => t.assigned_to)
-                                      .filter(Boolean),
-                                  ),
-                                ).map((advisor) => (
-                                  <option key={advisor} value={advisor!}>
-                                    {advisor}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
+                            {currentUserProfile?.role === 'Admin' && (
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">
+                                  Asesor
+                                </label>
+                                <select
+                                  value={taskAdvisorFilter}
+                                  onChange={(e) =>
+                                    setTaskAdvisorFilter(e.target.value)
+                                  }
+                                  className="w-full text-sm border-slate-200 rounded-lg focus:ring-primary py-1.5"
+                                >
+                                  <option value="all">Todos los Asesores</option>
+                                  {Array.from(
+                                    new Set(
+                                      tasks
+                                        .map((t) => t.assigned_to)
+                                        .filter(Boolean),
+                                    ),
+                                  ).map((advisor) => (
+                                    <option key={advisor} value={advisor!}>
+                                      {advisor}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
 
                             <div className="pt-2 border-t border-slate-100">
                               <button
@@ -2036,7 +2087,7 @@ const AdminClientsPageContent = () => {
                               </p>
                             </td>
                           </tr>
-                        ) : tasks.length === 0 ? (
+                        ) : paginatedTasks.length === 0 ? (
                           <tr>
                             <td colSpan={7} className="px-6 py-10 text-center">
                               <p className="text-sm text-slate-500 font-display">
@@ -2045,61 +2096,37 @@ const AdminClientsPageContent = () => {
                             </td>
                           </tr>
                         ) : (
-                          tasks
-                            .filter((task) => {
-                              const searchStr = taskSearchTerm.toLowerCase();
-                              const paddedCodigo = (
-                                task.codigo?.toString() || ""
-                              ).padStart(4, "0");
-                              const matchesSearch =
-                                task.title.toLowerCase().includes(searchStr) ||
-                                paddedCodigo.includes(searchStr) ||
-                                (task.codigo?.toString() || "").includes(
-                                  searchStr,
-                                );
-                              const matchesStatus =
-                                taskStatusFilter === "all" ||
-                                task.status === taskStatusFilter;
-                              const matchesAdvisor =
-                                taskAdvisorFilter === "all" ||
-                                task.assigned_to === taskAdvisorFilter;
-
-                              let matchesDueSoon = true;
-                              if (taskDueSoonFilter) {
-                                const dueDate = new Date(task.due_date);
-                                const diff =
-                                  dueDate.getTime() - new Date().getTime();
-                                const days = diff / (1000 * 60 * 60 * 24);
-                                matchesDueSoon = days >= 0 && days <= 3;
-                              }
-
-                              return (
-                                matchesSearch &&
-                                matchesStatus &&
-                                matchesAdvisor &&
-                                matchesDueSoon
-                              );
-                            })
-                            .map((task) => (
+                          paginatedTasks.map((task) => (
                               <tr
                                 key={task.id}
                                 onClick={() => setSelectedTaskId(task.id)}
-                                className={`hover:bg-slate-50 group transition-colors cursor-pointer ${selectedTaskId === task.id ? "bg-blue-50/50" : ""}`}
+                                className={`hover:bg-slate-50 group transition-colors cursor-pointer ${
+                                  selectedTaskId === task.id
+                                    ? "bg-primary/5 border-l-4 border-l-primary"
+                                    : "border-l-4 border-l-transparent"
+                                }`}
                               >
-                                <td className="px-6 py-4">
-                                  <span className="inline-flex items-center justify-center px-2 py-1 rounded bg-slate-100 text-slate-600 text-[10px] font-bold font-mono border border-slate-200 shadow-sm">
-                                    #{task.codigo?.toString().padStart(4, "0")}
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <span className="font-bold text-primary group-hover:underline font-display">
+                                    {formatTaskId(task.codigo)}
                                   </span>
                                 </td>
                                 <td className="px-6 py-4">
-                                  <p className="text-sm font-bold text-slate-900 mb-0.5 font-display">
-                                    {task.title}
-                                  </p>
-                                  {task.description && (
-                                    <p className="text-xs text-slate-500 line-clamp-1 font-display">
-                                      {task.description}
+                                  <div className="flex flex-col">
+                                    <p className="text-[11px] font-bold text-slate-700 font-display">
+                                      {task.title}
                                     </p>
-                                  )}
+                                    {task.description && (
+                                      <p className="text-[10px] text-slate-500 line-clamp-1 font-display">
+                                        {task.description}
+                                      </p>
+                                    )}
+                                    {task.creator?.full_name && task.creator.full_name !== task.assigned_to && (
+                                      <p className="text-[9px] text-blue-500 font-bold font-display mt-0.5 italic">
+                                        Asignado por: {task.creator.full_name}
+                                      </p>
+                                    )}
+                                  </div>
                                 </td>
                                 <td className="px-6 py-4">
                                   <div className="flex items-center gap-2">
@@ -2115,10 +2142,12 @@ const AdminClientsPageContent = () => {
                                 </td>
                                 <td className="px-6 py-4">
                                   {task.client ? (
-                                    <p className="text-xs text-slate-700 font-medium font-display">
-                                      {task.client.full_name ||
-                                        task.client.company_name}
-                                    </p>
+                                    <div className="flex flex-col">
+                                      <span className="text-[11px] font-medium text-slate-700 font-display">
+                                        {task.client.full_name ||
+                                          task.client.company_name}
+                                      </span>
+                                    </div>
                                   ) : (
                                     <span className="text-xs text-slate-400 font-display">
                                       Sin cliente
@@ -2151,15 +2180,15 @@ const AdminClientsPageContent = () => {
                                     onChange={(e) =>
                                       handleUpdateTaskStatus(
                                         task.id,
-                                        e.target.value as Task["status"],
+                                        e.target.value as any,
                                       )
                                     }
-                                    className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border cursor-pointer font-display ${
-                                      task.status === "Pendiente"
-                                        ? "bg-orange-50 text-orange-700 border-orange-200"
-                                        : task.status === "Completada"
-                                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                          : "bg-slate-50 text-slate-700 border-slate-200"
+                                    className={`text-[10px] font-bold px-2 py-1 rounded-full border-none focus:ring-1 focus:ring-primary ${
+                                      task.status === "Completada"
+                                        ? "bg-emerald-100 text-emerald-700"
+                                        : task.status === "Cancelada"
+                                          ? "bg-red-100 text-red-700"
+                                          : "bg-amber-100 text-amber-700"
                                     }`}
                                   >
                                     <option value="Pendiente">Pendiente</option>
@@ -2170,43 +2199,132 @@ const AdminClientsPageContent = () => {
                                   </select>
                                 </td>
                                 <td className="px-6 py-4 text-right">
-                                  <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                                    <button
-                                      onClick={() => {
-                                        setEditingTaskId(task.id);
-                                        setIsEditingTask(true);
-                                        setTaskFormData({
-                                          title: task.title,
-                                          description: task.description || "",
-                                          due_date: task.due_date.split("T")[0],
-                                          assigned_to: task.assigned_to || "",
-                                          assigned_to_id: task.assigned_to_id || "",
-                                          client_id: task.client_id || "",
-                                          status: task.status,
-                                        });
-                                        setIsTaskModalOpen(true);
-                                      }}
-                                      className="p-1.5 text-slate-400 hover:text-blue-600 transition-colors"
-                                    >
-                                      <span className="material-symbols-outlined text-[18px]">
-                                        edit
-                                      </span>
-                                    </button>
-                                    <button
-                                      onClick={() => handleDeleteTask(task.id)}
-                                      className="p-1.5 text-slate-400 hover:text-red-600 transition-colors"
-                                    >
-                                      <span className="material-symbols-outlined text-[18px]">
-                                        delete
-                                      </span>
-                                    </button>
-                                  </div>
+                                  { (currentUserProfile?.role === "Admin" || (task.created_by_id && currentUserProfile?.id && task.created_by_id === currentUserProfile.id)) && (
+                                    <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                                      <button
+                                        onClick={() => {
+                                          setEditingTaskId(task.id);
+                                          setIsEditingTask(true);
+                                          setTaskFormData({
+                                            title: task.title,
+                                            description: task.description || "",
+                                            due_date: task.due_date.split("T")[0],
+                                            assigned_to: task.assigned_to || "",
+                                            assigned_to_id: task.assigned_to_id || "",
+                                            client_id: task.client_id || "",
+                                            status: task.status,
+                                            created_by_id: task.created_by_id || "",
+                                          });
+                                          setIsTaskModalOpen(true);
+                                        }}
+                                        className="p-1.5 text-slate-400 hover:text-blue-600 transition-colors"
+                                      >
+                                        <span className="material-symbols-outlined text-[18px]">
+                                          edit
+                                        </span>
+                                      </button>
+                                      <button
+                                        onClick={() => handleDeleteTask(task.id)}
+                                        className="p-1.5 text-slate-400 hover:text-red-600 transition-colors"
+                                      >
+                                        <span className="material-symbols-outlined text-[18px]">
+                                          delete
+                                        </span>
+                                      </button>
+                                    </div>
+                                  )}
                                 </td>
                               </tr>
                             ))
                         )}
                       </tbody>
                     </table>
+                  </div>
+                  {/* Task Pagination Pager */}
+                  <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-slate-200 sm:px-6">
+                    <div className="flex-1 flex justify-between sm:hidden">
+                      <button
+                        onClick={() =>
+                          setTaskCurrentPage((p) => Math.max(1, p - 1))
+                        }
+                        disabled={taskCurrentPage === 1}
+                        className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        Anterior
+                      </button>
+                      <button
+                        onClick={() =>
+                          setTaskCurrentPage((p) => Math.min(taskTotalPages, p + 1))
+                        }
+                        disabled={taskCurrentPage === taskTotalPages}
+                        className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        Siguiente
+                      </button>
+                    </div>
+                    <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-sm text-slate-700 font-display">
+                          Mostrando{" "}
+                          <span className="font-medium">
+                            {filteredTasks.length > 0 ? taskStartItem : 0}
+                          </span>{" "}
+                          a <span className="font-medium">{taskEndItem}</span> de{" "}
+                          <span className="font-medium">
+                            {filteredTasks.length}
+                          </span>{" "}
+                          resultados
+                        </p>
+                      </div>
+                      {taskTotalPages > 1 && (
+                        <div>
+                          <nav
+                            className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px"
+                            aria-label="Pagination"
+                          >
+                            <button
+                              onClick={() =>
+                                setTaskCurrentPage((p) => Math.max(1, p - 1))
+                              }
+                              disabled={taskCurrentPage === 1}
+                              className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                            >
+                              <span className="sr-only">Anterior</span>
+                              <span className="material-symbols-outlined text-[18px]">
+                                chevron_left
+                              </span>
+                            </button>
+                            {Array.from({ length: Math.min(taskTotalPages, 10) }, (_, i) => (
+                              <button
+                                key={i + 1}
+                                onClick={() => setTaskCurrentPage(i + 1)}
+                                className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium font-display ${
+                                  taskCurrentPage === i + 1
+                                    ? "z-10 bg-primary border-primary text-white"
+                                    : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50"
+                                }`}
+                              >
+                                {i + 1}
+                              </button>
+                            ))}
+                            <button
+                              onClick={() =>
+                                setTaskCurrentPage((p) =>
+                                  Math.min(taskTotalPages, p + 1),
+                                )
+                              }
+                              disabled={taskCurrentPage === taskTotalPages}
+                              className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                            >
+                              <span className="sr-only">Siguiente</span>
+                              <span className="material-symbols-outlined text-[18px]">
+                                chevron_right
+                              </span>
+                            </button>
+                          </nav>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2777,6 +2895,7 @@ const AdminClientsPageContent = () => {
                                         assigned_to_id: (selectedClient as any).assigned_to_id || (currentUserProfile?.role === 'Vendedor' ? currentUserProfile.id : ""),
                                         client_id: (selectedClient as any).id,
                                         status: "Pendiente",
+                                        created_by_id: currentUserProfile?.id || "",
                                       });
                                       setIsTaskModalOpen(true);
                                     }}
@@ -2792,9 +2911,11 @@ const AdminClientsPageContent = () => {
                                 <div className="space-y-2">
                                   {tasks.filter(
                                     (t) =>
-                                      t.client_id ===
-                                        (selectedClient as any).id &&
-                                      t.status === "Pendiente",
+                                      t.client_id === (selectedClient as any).id &&
+                                      t.status === "Pendiente" &&
+                                      (currentUserProfile?.role === 'Admin' || 
+                                       t.assigned_to_id === currentUserProfile?.id || 
+                                       t.created_by_id === currentUserProfile?.id)
                                   ).length === 0 ? (
                                     <p className="text-[10px] text-slate-400 italic font-display">
                                       No hay tareas pendientes para este
@@ -2804,9 +2925,11 @@ const AdminClientsPageContent = () => {
                                     tasks
                                       .filter(
                                         (t) =>
-                                          t.client_id ===
-                                            (selectedClient as any).id &&
-                                          t.status === "Pendiente",
+                                          t.client_id === (selectedClient as any).id &&
+                                          t.status === "Pendiente" &&
+                                          (currentUserProfile?.role === 'Admin' || 
+                                           t.assigned_to_id === currentUserProfile?.id || 
+                                           t.created_by_id === currentUserProfile?.id)
                                       )
                                       .slice(0, 3)
                                       .map((task) => (
@@ -2815,13 +2938,14 @@ const AdminClientsPageContent = () => {
                                           className="p-2 bg-white rounded-lg border border-slate-100 flex justify-between items-center group"
                                         >
                                           <div className="min-w-0">
-                                            <p className="text-[11px] font-bold text-slate-700 truncate font-display">
-                                              #
-                                              {task.codigo
-                                                ?.toString()
-                                                .padStart(4, "0")}{" "}
-                                              {task.title}
+                                            <p className="text-[11px] font-bold text-primary truncate font-display">
+                                              {formatTaskId(task.codigo)} {task.title}
                                             </p>
+                                            {task.creator?.full_name && task.creator.full_name !== task.assigned_to && (
+                                              <p className="text-[9px] text-blue-600 font-bold font-display italic">
+                                                Asignado por: {task.creator.full_name}
+                                              </p>
+                                            )}
                                             <p className="text-[9px] text-slate-400 font-display">
                                               Vence:{" "}
                                               {new Date(
@@ -3004,8 +3128,8 @@ const AdminClientsPageContent = () => {
                           <div className="text-xs font-bold uppercase tracking-wider text-slate-400 font-display">
                             Detalles de la Tarea
                           </div>
-                          <div className="inline-flex items-center justify-center px-2 py-1 rounded bg-slate-100 text-slate-600 text-[10px] font-bold font-mono border border-slate-200 shadow-sm">
-                            #{selectedTask.codigo?.toString().padStart(4, "0")}
+                          <div className="font-bold text-primary font-display">
+                            {formatTaskId(selectedTask.codigo)}
                           </div>
                         </div>
 

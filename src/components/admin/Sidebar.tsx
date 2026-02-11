@@ -183,20 +183,24 @@ export default function AdminSidebar() {
     }
   };
 
+  const isAdmin = userProfile?.role === 'Admin';
+
   const menuItems = [
     { label: 'Dashboard', path: '/admin', icon: 'dashboard' },
     { label: 'Productos', path: '/admin/productos', icon: 'inventory_2' },
-    { label: 'Bodegas', path: '/admin/bodegas', icon: 'warehouse' },
-    { label: 'Categorías', path: '/admin/categorias', icon: 'category' },
-    { label: 'Marcas', path: '/admin/marcas', icon: 'verified' },
+    ...(isAdmin ? [
+      { label: 'Bodegas', path: '/admin/bodegas', icon: 'warehouse' },
+      { label: 'Categorías', path: '/admin/categorias', icon: 'category' },
+      { label: 'Marcas', path: '/admin/marcas', icon: 'verified' },
+    ] : []),
     { label: 'Pedidos', path: '/admin/pedidos', icon: 'shopping_cart' },
     { label: 'Cotizaciones', path: '/admin/cotizaciones', icon: 'request_quote' },
     { label: 'CRM', path: '/admin/clientes', icon: 'group' },
   ];
 
-  const contentItems = [
+  const contentItems = isAdmin ? [
     { label: 'CMS Páginas', path: '/admin/cms', icon: 'article' },
-  ];
+  ] : [];
 
   const isActive = (path: string) => pathname === path;
 
@@ -250,38 +254,46 @@ export default function AdminSidebar() {
           </Link>
         ))}
         
-        <div className="pt-4 pb-2 px-3">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider font-display">Contenido</p>
-        </div>
-        {contentItems.map((item) => (
-          <Link
-            key={`content-${item.path}-${item.label}`}
-            href={item.path}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors group ${
-              isActive(item.path)
-                ? 'bg-primary/10 text-primary'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <span className={`material-symbols-outlined text-[22px] ${isActive(item.path) ? 'icon-fill' : ''}`}>{item.icon}</span>
-            <span className="text-sm font-medium font-display">{item.label}</span>
-          </Link>
-        ))}
+        {contentItems.length > 0 && (
+          <>
+            <div className="pt-4 pb-2 px-3">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider font-display">Contenido</p>
+            </div>
+            {contentItems.map((item) => (
+              <Link
+                key={`content-${item.path}-${item.label}`}
+                href={item.path}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors group ${
+                  isActive(item.path)
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <span className={`material-symbols-outlined text-[22px] ${isActive(item.path) ? 'icon-fill' : ''}`}>{item.icon}</span>
+                <span className="text-sm font-medium font-display">{item.label}</span>
+              </Link>
+            ))}
+          </>
+        )}
 
-        <div className="pt-4 pb-2 px-3">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider font-display">Sistema</p>
-        </div>
-        <Link 
-          href="/admin/usuarios"
-          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors group ${
-            isActive('/admin/usuarios')
-              ? 'bg-primary/10 text-primary'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <span className={`material-symbols-outlined text-[22px] ${isActive('/admin/usuarios') ? 'icon-fill' : ''}`}>group_add</span>
-          <span className="text-sm font-medium font-display">Usuarios</span>
-        </Link>
+        {isAdmin && (
+          <>
+            <div className="pt-4 pb-2 px-3">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider font-display">Sistema</p>
+            </div>
+            <Link 
+              href="/admin/usuarios"
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors group ${
+                isActive('/admin/usuarios')
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <span className={`material-symbols-outlined text-[22px] ${isActive('/admin/usuarios') ? 'icon-fill' : ''}`}>group_add</span>
+              <span className="text-sm font-medium font-display">Usuarios</span>
+            </Link>
+          </>
+        )}
       </nav>
 
       <div className="p-4 border-t border-slate-200 relative">

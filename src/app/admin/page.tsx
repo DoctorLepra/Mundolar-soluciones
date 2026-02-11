@@ -37,20 +37,52 @@ export default function AdminDashboard() {
   const [topProducts, setTopProducts] = useState<any[]>([]);
   const [lowStockProducts, setLowStockProducts] = useState<any[]>([]);
   const [geoData, setGeoData] = useState<any[]>([]);
+  const [userProfile, setUserProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchDashboardData();
+    const loadData = async () => {
+      setLoading(true);
+      await fetchUserProfile();
+      setLoading(false);
+    };
+    loadData();
   }, []);
 
+  useEffect(() => {
+    if (userProfile) {
+      fetchDashboardData();
+    }
+  }, [userProfile]);
+
+  const fetchUserProfile = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+        setUserProfile(data);
+      }
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+    }
+  };
+
   const fetchDashboardData = async () => {
+    if (!userProfile) return;
     try {
       setLoading(true);
+      const isAdmin = userProfile.role === 'Admin';
       
       // 1. Fetch Basic Metrics
-      const { data: ordersData } = await supabase
-        .from('orders')
-        .select('*, order_items(quantity, price_at_purchase, product_id)');
+      let ordersQuery = supabase.from('orders').select('*, order_items(quantity, price_at_purchase, product_id)');
+      if (!isAdmin) {
+        ordersQuery = ordersQuery.eq('created_by_id', userProfile.id);
+      }
+      const { data: ordersData } = await ordersQuery;
       
       if (!ordersData) return;
 
@@ -74,9 +106,17 @@ export default function AdminDashboard() {
       });
 
       // 1.1 Fetch Operational Metrics
+      let tasksQuery = supabase.from('client_tasks').select('*', { count: 'exact', head: true }).eq('status', 'Pendiente');
+      let quotesQuery = supabase.from('quotes').select('*', { count: 'exact', head: true }).eq('status', 'Pendiente');
+      
+      if (!isAdmin) {
+        tasksQuery = tasksQuery.or(`assigned_to_id.eq.${userProfile.id},created_by_id.eq.${userProfile.id}`);
+        quotesQuery = quotesQuery.eq('created_by_id', userProfile.id);
+      }
+
       const [{ count: pendingTasks }, { count: pendingQuotes }, { count: totalWarehouses }] = await Promise.all([
-        supabase.from('client_tasks').select('*', { count: 'exact', head: true }).eq('status', 'Pendiente'),
-        supabase.from('quotes').select('*', { count: 'exact', head: true }).eq('status', 'Pendiente'),
+        tasksQuery,
+        quotesQuery,
         supabase.from('warehouses').select('*', { count: 'exact', head: true })
       ]);
 
@@ -164,11 +204,16 @@ export default function AdminDashboard() {
         .limit(5);
       setRecentInventory(inventoryData || []);
 
-      const { data: recentOrdersData } = await supabase
+      let recentOrdersQuery = supabase
         .from('orders')
         .select('*, clients(full_name, company_name)')
         .order('created_at', { ascending: false })
         .limit(5);
+      
+      if (!isAdmin) {
+        recentOrdersQuery = recentOrdersQuery.eq('created_by_id', userProfile.id);
+      }
+      const { data: recentOrdersData } = await recentOrdersQuery;
       setRecentOrders(recentOrdersData || []);
 
     } catch (error) {
@@ -179,6 +224,7 @@ export default function AdminDashboard() {
   };
 
   const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+  const isAdmin = userProfile?.role === 'Admin';
 
   if (loading) {
     return (
@@ -243,7 +289,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Operational Metrics Row */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className={`grid grid-cols-1 md:grid-cols-${isAdmin ? '3' : '2'} gap-6`}>
           <Link href="/admin/clientes" className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all group">
             <div className="flex justify-between items-center mb-4">
               <div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
@@ -266,16 +312,18 @@ export default function AdminDashboard() {
             <p className="text-slate-400 text-xs mt-1 font-bold">POR APROBAR</p>
           </Link>
 
-          <Link href="/admin/bodegas" className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all group">
-            <div className="flex justify-between items-center mb-4">
-              <div className="p-3 bg-orange-50 rounded-2xl text-orange-600 group-hover:bg-orange-600 group-hover:text-white transition-colors">
-                <Warehouse size={24} />
+          {isAdmin && (
+            <Link href="/admin/bodegas" className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all group">
+              <div className="flex justify-between items-center mb-4">
+                <div className="p-3 bg-orange-50 rounded-2xl text-orange-600 group-hover:bg-orange-600 group-hover:text-white transition-colors">
+                  <Warehouse size={24} />
+                </div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Bodegas</span>
               </div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Bodegas</span>
-            </div>
-            <h3 className="text-3xl font-black text-slate-900 font-display">{metrics.totalWarehouses}</h3>
-            <p className="text-slate-400 text-xs mt-1 font-bold">BODEGAS ACTIVAS</p>
-          </Link>
+              <h3 className="text-3xl font-black text-slate-900 font-display">{metrics.totalWarehouses}</h3>
+              <p className="text-slate-400 text-xs mt-1 font-bold">BODEGAS ACTIVAS</p>
+            </Link>
+          )}
         </div>
 
         {/* Main Analytics Row */}

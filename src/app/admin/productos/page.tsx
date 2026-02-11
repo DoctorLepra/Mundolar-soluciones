@@ -50,6 +50,13 @@ interface Warehouse {
   name: string;
 }
 
+interface UserProfile {
+  id: string;
+  email: string | null;
+  full_name: string | null;
+  role: 'Admin' | 'Vendedor' | null;
+}
+
 export default function AdminProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,6 +70,7 @@ export default function AdminProductsPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null>(null);
   
   // Image handling states - Supporting up to 5 images
   const [imagePreviewUrls, setImagePreviewUrls] = useState<{ id: string, url: string, file?: File, isExisting?: boolean }[]>([]);
@@ -142,6 +150,7 @@ export default function AdminProductsPage() {
 
     updateItemsPerPage();
     window.addEventListener('resize', updateItemsPerPage);
+    fetchUserProfile();
     return () => window.removeEventListener('resize', updateItemsPerPage);
   }, []);
 
@@ -187,6 +196,18 @@ export default function AdminProductsPage() {
     };
     fetchData();
   }, []);
+
+  const fetchUserProfile = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      if (profile) setCurrentUserProfile(profile);
+    }
+  };
 
   const fetchTRM = async () => {
     setLoadingTrm(true);
@@ -944,70 +965,143 @@ export default function AdminProductsPage() {
 
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-50">
-      <header className="bg-white border-b border-slate-200 px-8 py-6 relative z-30">
+      <header className="bg-white border-b border-slate-200 px-8 py-6 relative z-30 space-y-6">
+        {/* Title and Management Actions */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div><h2 className="text-2xl font-bold text-slate-900">Gestión de Productos</h2><p className="text-slate-500 mt-1">Administra tu inventario de radios y repuestos</p></div>
+          <div>
+            <h2 className="text-2xl font-black text-slate-900 font-display tracking-tight">Gestión de Productos</h2>
+            <p className="text-slate-500 text-sm font-medium">Administra tu inventario de radios y repuestos.</p>
+          </div>
+          
           <div className="flex items-center gap-3">
             {(trm || loadingTrm) && (
-              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-100 rounded-lg" title="USD TRM Oficial">
-                <span className="material-symbols-outlined text-emerald-600 text-[18px]">payments</span>
-                <span className="text-xs font-bold text-emerald-700 font-mono">
-                  {loadingTrm ? 'Cargando...' : `USD: $${formatCurrency(trm!)}`}
+              <div className="hidden sm:flex items-center gap-2 px-4 py-2 bg-emerald-50 border border-emerald-100 rounded-2xl text-emerald-700" title="USD TRM Oficial">
+                <span className="material-symbols-outlined text-[18px]">payments</span>
+                <span className="text-xs font-bold font-mono">
+                  {loadingTrm ? '...' : `USD: $${formatCurrency(trm!)}`}
                 </span>
               </div>
             )}
-            <button onClick={handleDownloadTemplate} className="flex items-center gap-2 bg-white border border-slate-200 text-slate-700 px-4 py-2.5 rounded-lg font-medium hover:bg-slate-50 transition-all text-sm">
-              <span className="material-symbols-outlined text-[20px]">download</span>
-              Plantilla
-            </button>
-            <button onClick={handleExport} className="flex items-center gap-2 bg-white border border-slate-200 text-slate-700 px-4 py-2.5 rounded-lg font-medium hover:bg-slate-50 transition-all text-sm">
-              <span className="material-symbols-outlined text-[20px]">file_upload</span>
-              Exportar
-            </button>
-            
-            <div className="relative" ref={cargaMasivaRef}>
+
+            {currentUserProfile?.role === 'Admin' && (
+              <>
+                {/* Dropdown de Carga Masiva */}
+                <div className="relative" ref={cargaMasivaRef}>
+                  <button
+                    onClick={() => setIsCargaMasivaDropdownOpen(!isCargaMasivaDropdownOpen)}
+                    className="flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-700 px-5 py-2.5 rounded-2xl font-bold hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-sm"
+                  >
+                    <span className="material-symbols-outlined text-[20px]">cloud_upload</span>
+                    Importar
+                    <span className={`material-symbols-outlined text-[18px] transition-transform ${isCargaMasivaDropdownOpen ? 'rotate-180' : ''}`}>keyboard_arrow_down</span>
+                  </button>
+
+                  {isCargaMasivaDropdownOpen && (
+                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50 animate-in fade-in zoom-in-95 duration-200 origin-top-right">
+                      <button 
+                        onClick={() => {
+                          handleDownloadTemplate();
+                          setIsCargaMasivaDropdownOpen(false);
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 flex items-center gap-2"
+                      >
+                        <span className="material-symbols-outlined text-[18px]">download</span>
+                        Descargar Plantilla
+                      </button>
+                      <button 
+                        onClick={() => {
+                          handleExport();
+                          setIsCargaMasivaDropdownOpen(false);
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 flex items-center gap-2"
+                      >
+                        <span className="material-symbols-outlined text-[18px]">ios_share</span>
+                        Exportar Listado
+                      </button>
+                      <div className="px-4 py-2 border-t border-slate-50 mt-1">
+                        <label className="w-full block bg-slate-50 hover:bg-slate-100 text-slate-600 px-4 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer text-center">
+                          <span className="material-symbols-outlined text-[18px] mb-1 block text-primary">file_upload</span>
+                          Cargar Archivo
+                          <input type="file" accept=".xlsx, .xls" onChange={handleBulkImport} className="hidden" />
+                        </label>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <button 
+                  onClick={handleOpenCreateModal}
+                  className="flex items-center justify-center gap-2 bg-primary text-white px-6 py-2.5 rounded-2xl font-bold hover:bg-primary/90 transition-all shadow-lg shadow-primary/25 active:scale-95 shrink-0 text-sm"
+                >
+                  <span className="material-symbols-outlined text-[20px]">add</span>
+                  Nuevo Producto
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Search and Filters Bar */}
+        <div className="flex flex-col lg:flex-row items-center justify-between gap-4 mt-6">
+          <div className="relative w-full lg:max-w-md">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <span className="material-symbols-outlined text-slate-400 text-[20px]">search</span>
+            </div>
+            <input 
+              value={searchTerm} 
+              onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }} 
+              className="block w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-sm font-display shadow-[0_4px_12px_rgba(0,0,0,0.15)] outline-none" 
+              placeholder="Buscar por nombre, marca, categoría, sku..." 
+              type="text" 
+            />
+          </div>
+          <div className="flex flex-wrap gap-3 w-full lg:w-auto">
+            <div className="relative" ref={categoryRef}>
               <button 
-                onClick={() => setIsCargaMasivaDropdownOpen(!isCargaMasivaDropdownOpen)}
-                className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2.5 rounded-lg font-bold shadow-lg shadow-primary/20 transition-all text-sm"
+                onClick={() => { setIsCategoryFilterOpen(prev => !prev); setIsStatusFilterOpen(false); }} 
+                className="group w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-lg bg-white border border-slate-200 hover:border-primary transition-all shadow-[0_2px_4px_rgba(0,0,0,0.05)] font-display"
               >
-                <span className="material-symbols-outlined text-[20px]">add</span>
-                Nuevo Producto
-                <span className="material-symbols-outlined text-[18px]">keyboard_arrow_down</span>
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Categoría:</span>
+                <span className="text-sm font-medium text-slate-900 whitespace-nowrap">
+                  {selectedCategoryFilter === 'all' ? 'Todas' : categories.find(c => c.id.toString() === selectedCategoryFilter)?.name}
+                </span>
+                <span className="material-symbols-outlined text-slate-400 group-hover:text-primary text-[20px] transition-transform">expand_more</span>
               </button>
-              
-              {isCargaMasivaDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-48 origin-top-right rounded-xl bg-white shadow-2xl ring-1 ring-black ring-opacity-5 focus:outline-none z-[100] border border-slate-100 overflow-hidden animate-in fade-in zoom-in duration-200">
+              {isCategoryFilterOpen && (
+                <div className="absolute right-0 mt-2 w-56 origin-top-right rounded-xl bg-white shadow-xl ring-1 ring-black ring-opacity-5 focus:outline-none z-50 border border-slate-100 p-1">
+                  <div className="py-1 max-h-60 overflow-y-auto custom-scrollbar">
+                    <a href="#" onClick={e => { e.preventDefault(); setSelectedCategoryFilter('all'); setIsCategoryFilterOpen(false); setCurrentPage(1); }} className="text-slate-600 block px-4 py-2 text-sm hover:bg-slate-50 rounded-lg transition-colors font-display italic">Todas</a>
+                    {categories.map(cat => (
+                      <a href="#" key={cat.id} onClick={e => { e.preventDefault(); setSelectedCategoryFilter(cat.id.toString()); setIsCategoryFilterOpen(false); setCurrentPage(1); }} className="text-slate-700 block px-4 py-2 text-sm hover:bg-slate-50 rounded-lg transition-colors font-display">{cat.name}</a>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="relative" ref={statusRef}>
+              <button 
+                onClick={() => { setIsStatusFilterOpen(prev => !prev); setIsCategoryFilterOpen(false); }} 
+                className="group w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-lg bg-white border border-slate-200 hover:border-primary transition-all shadow-[0_2px_4px_rgba(0,0,0,0.05)] font-display"
+              >
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Estado:</span>
+                <span className="text-sm font-medium text-slate-900 whitespace-nowrap">{selectedStatusFilter === 'all' ? 'Todos' : selectedStatusFilter}</span>
+                <span className="material-symbols-outlined text-slate-400 group-hover:text-primary text-[20px] transition-transform">expand_more</span>
+              </button>
+              {isStatusFilterOpen && (
+                <div className="absolute right-0 mt-2 w-48 origin-top-right rounded-xl bg-white shadow-xl ring-1 ring-black ring-opacity-5 focus:outline-none z-50 border border-slate-100 p-1">
                   <div className="py-1">
-                    <button
-                      onClick={() => { handleOpenCreateModal(); setIsCargaMasivaDropdownOpen(false); }}
-                      className="flex items-center gap-3 w-full px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors border-b border-slate-50"
-                    >
-                      <span className="material-symbols-outlined text-primary">add_circle</span>
-                      <span className="font-medium">Nuevo Producto</span>
-                    </button>
-                    <label className="flex items-center gap-3 w-full px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer">
-                      <span className="material-symbols-outlined text-emerald-500">upload_file</span>
-                      <span className="font-medium">Carga Masiva</span>
-                      <input type="file" className="sr-only" accept=".xlsx, .xls" onChange={(e) => { handleBulkImport(e); setIsCargaMasivaDropdownOpen(false); }} />
-                    </label>
+                    <a href="#" onClick={e => { e.preventDefault(); setSelectedStatusFilter('all'); setIsStatusFilterOpen(false); setCurrentPage(1); }} className="text-slate-600 block px-4 py-2 text-sm hover:bg-slate-50 rounded-lg transition-colors font-display italic">Todos</a>
+                    {statuses.map(status => (
+                      <a href="#" key={status} onClick={e => { e.preventDefault(); setSelectedStatusFilter(status); setIsStatusFilterOpen(false); setCurrentPage(1); }} className="text-slate-700 block px-4 py-2 text-sm hover:bg-slate-50 rounded-lg transition-colors font-display">{status}</a>
+                    ))}
                   </div>
                 </div>
               )}
             </div>
           </div>
         </div>
-        <div className="mt-8 flex flex-col lg:flex-row gap-4 justify-between items-start lg:items-center">
-          <div className="relative w-full lg:max-w-md"><div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><span className="material-symbols-outlined text-slate-400">search</span></div><input value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }} className="block w-full pl-10 pr-3 py-2.5 border border-slate-600 rounded-lg leading-5 bg-white shadow-[0_2px_4px_rgba(0,0,0,0.25)] placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary sm:text-sm transition-shadow" placeholder="Buscar por nombre, marca, categoría, sku..." type="text" /></div>
-          <div className="flex flex-wrap gap-3 w-full lg:w-auto">
-            <div className="relative" ref={categoryRef}><button onClick={() => { setIsCategoryFilterOpen(prev => !prev); setIsStatusFilterOpen(false); }} className="group w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-primary transition-colors"><span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Categoría:</span><span className="text-sm font-medium text-slate-900 whitespace-nowrap">{selectedCategoryFilter === 'all' ? 'Todas' : categories.find(c => c.id.toString() === selectedCategoryFilter)?.name}</span><span className="material-symbols-outlined text-slate-400 group-hover:text-primary text-[20px]">keyboard_arrow_down</span></button>
-              {isCategoryFilterOpen && (<div className="absolute right-0 mt-2 w-56 origin-top-right rounded-md bg-white shadow-xl ring-1 ring-black ring-opacity-5 focus:outline-none z-50"><div className="py-1 max-h-60 overflow-y-auto custom-scrollbar"><a href="#" onClick={e => { e.preventDefault(); setSelectedCategoryFilter('all'); setIsCategoryFilterOpen(false); setCurrentPage(1); }} className="text-gray-700 block px-4 py-2 text-sm hover:bg-gray-100 italic">Todas</a>{categories.map(cat => <a href="#" key={cat.id} onClick={e => { e.preventDefault(); setSelectedCategoryFilter(cat.id.toString()); setIsCategoryFilterOpen(false); setCurrentPage(1); }} className="text-gray-700 block px-4 py-2 text-sm hover:bg-gray-100">{cat.name}</a>)}</div></div>)}
-            </div>
-            <div className="relative" ref={statusRef}><button onClick={() => { setIsStatusFilterOpen(prev => !prev); setIsCategoryFilterOpen(false); }} className="group w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-primary transition-colors"><span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Estado:</span><span className="text-sm font-medium text-slate-900 whitespace-nowrap">{selectedStatusFilter === 'all' ? 'Todos' : selectedStatusFilter}</span><span className="material-symbols-outlined text-slate-400 group-hover:text-primary text-[20px]">keyboard_arrow_down</span></button>
-              {isStatusFilterOpen && (<div className="absolute right-0 mt-2 w-56 origin-top-right rounded-md bg-white shadow-xl ring-1 ring-black ring-opacity-5 focus:outline-none z-50"><div className="py-1"><a href="#" onClick={e => { e.preventDefault(); setSelectedStatusFilter('all'); setIsStatusFilterOpen(false); setCurrentPage(1); }} className="text-gray-700 block px-4 py-2 text-sm hover:bg-gray-100 italic">Todos</a>{statuses.map(status => <a href="#" key={status} onClick={e => { e.preventDefault(); setSelectedStatusFilter(status); setIsStatusFilterOpen(false); setCurrentPage(1); }} className="text-gray-700 block px-4 py-2 text-sm hover:bg-gray-100">{status}</a>)}</div></div>)}
-            </div>
-          </div>
-        </div>
       </header>
+
       <div className="p-8 pt-4">
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
           <div className="overflow-x-auto">
@@ -1022,7 +1116,9 @@ export default function AdminProductsPage() {
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Bodega Auxiliar</th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Stock Total</th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Estado</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Acciones</th>
+                  {currentUserProfile?.role === 'Admin' && (
+                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Acciones</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
@@ -1101,8 +1197,13 @@ export default function AdminProductsPage() {
                         <div className="flex items-center gap-3">
                           <button
                             type="button"
-                            onClick={() => toggleStatus(p)}
-                            className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 ${p.status === 'Activo' ? 'bg-primary' : 'bg-slate-200'}`}
+                            onClick={() => {
+                              if (currentUserProfile?.role === 'Admin') {
+                                toggleStatus(p);
+                              }
+                            }}
+                            className={`relative inline-flex h-5 w-9 flex-shrink-0 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 ${p.status === 'Activo' ? 'bg-primary' : 'bg-slate-200'} ${currentUserProfile?.role !== 'Admin' ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
+                            disabled={currentUserProfile?.role !== 'Admin'}
                           >
                             <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${p.status === 'Activo' ? 'translate-x-4' : 'translate-x-0'}`} />
                           </button>
@@ -1111,7 +1212,18 @@ export default function AdminProductsPage() {
                           </span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right"><div className="flex items-center justify-end gap-2"><button onClick={() => handleOpenEditModal(p)} className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"><span className="material-symbols-outlined text-[20px]">edit</span></button><button onClick={() => openDeleteModal(p)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"><span className="material-symbols-outlined text-[20px]">delete</span></button></div></td>
+                      {currentUserProfile?.role === 'Admin' && (
+                        <td className="px-6 py-4 whitespace-nowrap text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button onClick={() => handleOpenEditModal(p)} className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors">
+                              <span className="material-symbols-outlined text-[20px]">edit</span>
+                            </button>
+                            <button onClick={() => openDeleteModal(p)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors">
+                              <span className="material-symbols-outlined text-[20px]">delete</span>
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>);
                 })) : (<tr><td colSpan={9} className="text-center p-8 text-slate-500">No se encontraron productos.</td></tr>)
               }

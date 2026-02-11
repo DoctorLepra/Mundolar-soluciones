@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
+import RoleGuard from '@/components/admin/RoleGuard';
 import { formatCurrency } from '@/lib/utils';
 import * as XLSX from 'xlsx';
 
@@ -17,6 +18,14 @@ interface Warehouse {
 }
 
 export default function AdminWarehousesPage() {
+  return (
+    <RoleGuard allowedRoles={['Admin']}>
+      <AdminWarehousesPageContent />
+    </RoleGuard>
+  );
+}
+
+function AdminWarehousesPageContent() {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

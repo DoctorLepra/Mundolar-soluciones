@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
+import RoleGuard from '@/components/admin/RoleGuard';
 import { convertToWebP } from '@/lib/image-utils';
 
 // Interfaces based on original project
@@ -22,6 +23,14 @@ interface CategoryNode extends Category {
 }
 
 export default function AdminCategoriesPage() {
+  return (
+    <RoleGuard allowedRoles={['Admin']}>
+      <AdminCategoriesPageContent />
+    </RoleGuard>
+  );
+}
+
+function AdminCategoriesPageContent() {
     // DB State
     const [allCategories, setAllCategories] = useState<Category[]>([]);
     const [categoryTree, setCategoryTree] = useState<CategoryNode[]>([]);

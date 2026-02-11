@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, Suspense } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
@@ -101,7 +101,7 @@ const CLIENT_SECTORS = [
   "Manufactura",
 ];
 
-const AdminClientsPage = () => {
+const AdminClientsPageContent = () => {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
@@ -4408,3 +4408,15 @@ const AdminClientsPage = () => {
   );
 };
 
+// Exported component with Suspense boundary
+export default function AdminClientsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+      </div>
+    }>
+      <AdminClientsPageContent />
+    </Suspense>
+  );
+}

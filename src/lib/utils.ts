@@ -49,3 +49,17 @@ export const formatTaskId = (
   const numericId = typeof id === "string" ? parseInt(id) : id;
   return `TAR-${numericId.toString().padStart(4, "0")}`;
 };
+
+/**
+ * Rounds a price according to Mundolar's business logic for IVA-included prices:
+ * - If remainder is 0, return as is.
+ * - If remainder <= 500, round to the nearest 500.
+ * - Otherwise, round up to the nearest 1000.
+ */
+export const roundIvaPrice = (price: number): number => {
+  const roundedBase = Math.round(price);
+  const remainder = roundedBase % 1000;
+  if (remainder === 0) return roundedBase;
+  if (remainder <= 500) return Math.floor(roundedBase / 1000) * 1000 + 500;
+  return Math.ceil(roundedBase / 1000) * 1000;
+};

@@ -37,7 +37,7 @@ const Hero: React.FC = () => {
       }
     }, 40);
     return () => clearInterval(typingInterval);
-  }, [currentSlide]);
+  }, []); // Run only once on mount to avoid loop with currentSlide changes
 
   return (
       <section className="relative w-full h-[60vh] md:h-[70vh] flex items-center text-white overflow-hidden -mt-6 md:-mt-10">

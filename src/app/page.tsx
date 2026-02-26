@@ -1,6 +1,8 @@
 
+import React from 'react';
 import { supabase } from '@/lib/supabase';
 import Hero from '@/components/home/Hero';
+import ProductCarousel from '@/components/home/ProductCarousel';
 import Link from 'next/link';
 import Image from 'next/image';
 
@@ -12,45 +14,78 @@ interface Category {
   image_url: string | null;
 }
 
+interface Brand {
+  id: number;
+  name: string;
+  image_url: string | null;
+}
+
 interface Product {
   id: number;
   name: string;
   price: number;
   original_price: number | null;
-  brands: { name: string } | null; // Handle array or single object depending on relation
+  price_with_iva: number | null;
+  description: string | null;
+  image_urls: string[] | null;
+  brands: { name: string } | { name: string }[] | null;
+  isBestSeller?: boolean;
 }
 
 // Data Fetching Functions
 async function getFeaturedProducts() {
+  // Fetch top 5 best selling products based on order_items quantity
+  const { data: salesData } = await supabase
+    .from('order_items')
+    .select('product_id, quantity');
+
+  const productSales: Record<number, number> = {};
+  salesData?.forEach(item => {
+    productSales[item.product_id] = (productSales[item.product_id] || 0) + item.quantity;
+  });
+
+  const topProductIds = Object.entries(productSales)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 5)
+    .map(([id]) => parseInt(id));
+
   const { data, error } = await supabase
     .from('products')
     .select(`
       id,
       name,
+      description,
       price,
       original_price,
+      price_with_iva,
       status,
-      brands (name)
+      image_urls,
+      brands (name),
+      categories (name)
     `)
-    .eq('is_featured', true)
     .eq('status', 'Activo')
-    .limit(8);
+    .order('created_at', { ascending: false })
+    .limit(12);
 
   if (error) {
     console.error('Error fetching featured products:', error);
     return [];
   }
-  return data || [];
+
+  return (data as any[]).map(p => ({
+    ...p,
+    isBestSeller: topProductIds.includes(p.id)
+  })) as Product[];
 }
 
 async function getCategories() {
   const { data, error } = await supabase
     .from('categories')
-    .select('id, name, description, image_url')
+    .select('id, name, description, image_url, position')
     .eq('status', 'Activo')
     .is('parent_id', null)
     .limit(4)
-    .order('name', { ascending: true });
+    .order('position', { ascending: true, nullsFirst: false });
 
   if (error) {
     console.error('Error fetching categories:', error);
@@ -59,22 +94,63 @@ async function getCategories() {
   return data as Category[] || [];
 }
 
+async function getBrands() {
+  const { data, error } = await supabase
+    .from('brands')
+    .select('id, name, image_url')
+    .eq('status', 'Activo')
+    .order('position', { ascending: true, nullsFirst: false });
+
+  if (error) {
+    console.error('Error fetching brands:', error);
+    return [];
+  }
+  return data as Brand[];
+}
+
 export default async function Home() {
   const featuredProducts = await getFeaturedProducts();
   const categories = await getCategories();
+  const brands = await getBrands();
 
   return (
     <div className="space-y-16 py-6 md:py-10">
       <Hero />
 
-      <section className="border-y border-slate-200 py-10">
+      <section className="border-y border-slate-200 py-10 overflow-hidden">
         <div className="max-w-[1440px] mx-auto px-4 md:px-10">
-          <p className="text-center text-sm font-medium text-slate-500 mb-6 uppercase tracking-wider">Distribuidor Autorizado De</p>
-          <div className="flex flex-wrap justify-center items-center gap-8 md:gap-16 opacity-60 grayscale hover:grayscale-0 transition-all duration-500">
-            <h3 className="text-2xl font-bold font-sans italic text-slate-800">MOTOROLA</h3>
-            <h3 className="text-2xl font-bold font-serif text-slate-800">KENWOOD</h3>
-            <h3 className="text-2xl font-black tracking-tighter text-slate-800">Hytera</h3>
-            <h3 className="text-2xl font-bold tracking-widest text-slate-800">ICOM</h3>
+          <p className="text-center text-sm font-medium text-slate-500 mb-8 uppercase tracking-wider">Distribuidor Autorizado De</p>
+          
+          <div className="relative">
+            <div className="logo-loop-container gap-12 md:gap-24 opacity-60 grayscale hover:grayscale-0 transition-all duration-500">
+              {brands.length > 0 ? (
+                // Repeat brands 3 times to ensure the loop is always full
+                [...brands, ...brands, ...brands].map((brand, idx) => (
+                  <div key={`${brand.id}-${idx}`} className="relative h-12 w-32 md:w-40 flex items-center justify-center shrink-0">
+                    {brand.image_url ? (
+                      <Image 
+                        src={brand.image_url} 
+                        alt={brand.name} 
+                        fill 
+                        className="object-contain"
+                      />
+                    ) : (
+                      <h3 className="text-xl font-bold text-slate-800 uppercase tracking-tight">{brand.name}</h3>
+                    )}
+                  </div>
+                ))
+              ) : (
+                // Static Fallback repeated for the loop
+                [1, 2, 3].map((i) => (
+                  <React.Fragment key={i}>
+                    <h3 className="text-2xl font-bold font-sans italic text-slate-800 shrink-0">MOTOROLA</h3>
+                    <h3 className="text-2xl font-bold font-serif text-slate-800 shrink-0">KENWOOD</h3>
+                    <h3 className="text-2xl font-black tracking-tighter text-slate-800 shrink-0">Hytera</h3>
+                    <h3 className="text-2xl font-bold tracking-widest text-slate-800 shrink-0">ICOM</h3>
+                  </React.Fragment>
+                ))
+              )}
+            </div>
           </div>
         </div>
       </section>
@@ -91,7 +167,7 @@ export default async function Home() {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {categories.map((cat) => (
-            <Link key={cat.id} href="/catalogo" className="group block relative overflow-hidden rounded-xl bg-white border border-slate-200 shadow-sm hover:shadow-md transition-all">
+            <Link key={cat.id} href={`/catalogo?categoria=${cat.id}`} className="group block relative overflow-hidden rounded-xl bg-white border border-slate-200 shadow-sm hover:shadow-md transition-all">
               <div className="aspect-[4/3] relative bg-slate-100 group-hover:scale-105 transition-transform duration-500">
                  <Image 
                     src={cat.image_url || `https://picsum.photos/400/300?random=${cat.id}`} 
@@ -110,56 +186,7 @@ export default async function Home() {
         </div>
       </section>
 
-      <section className="max-w-[1440px] mx-auto px-4 md:px-10">
-        <div className="flex items-center justify-between mb-8">
-            <h2 className="text-3xl font-bold text-slate-900">Novedades y Destacados</h2>
-            <div className="flex gap-2">
-                <button className="p-2 rounded-full border border-slate-200 hover:bg-slate-100 text-slate-600 transition-colors">
-                    <span className="material-symbols-outlined">chevron_left</span>
-                </button>
-                <button className="p-2 rounded-full border border-slate-200 hover:bg-slate-100 text-slate-600 transition-colors">
-                    <span className="material-symbols-outlined">chevron_right</span>
-                </button>
-            </div>
-        </div>
-        <div className="flex overflow-x-auto gap-6 pb-8 -mx-4 px-4 md:mx-0 md:px-0 no-scrollbar snap-x snap-mandatory">
-          {featuredProducts.map((product: any) => (
-              <div key={product.id} className="snap-start min-w-[280px] md:min-w-[300px] flex flex-col rounded-xl bg-white border border-slate-200 shadow-sm hover:shadow-lg transition-all">
-                  <div className="relative w-full aspect-[4/5] overflow-hidden rounded-t-xl bg-slate-50 p-6 flex items-center justify-center">
-                      {product.original_price && (
-                          <span className="absolute top-3 left-3 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wide z-10">Oferta</span>
-                      )}
-                      <div className="relative w-full h-full">
-                        <Image 
-                            src={`https://picsum.photos/300/300?random=${product.id}`}
-                            alt={product.name}
-                            fill
-                            sizes="(max-width: 768px) 50vw, 25vw"
-                            className="object-contain"
-                        />
-                      </div>
-                  </div>
-                  <div className="p-5 flex flex-col flex-1 gap-3">
-                      <div>
-                          <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">{product.brands?.name || 'Marca'}</p>
-                          <h3 className="text-lg font-bold text-slate-900">{product.name}</h3>
-                      </div>
-                      <div className="flex items-end justify-between mt-auto">
-                          <div>
-                              {product.original_price && (
-                                  <p className="text-slate-400 text-xs line-through">${Number(product.original_price).toFixed(2)}</p>
-                              )}
-                              <p className="text-xl font-bold text-primary">${Number(product.price).toFixed(2)}</p>
-                          </div>
-                          <button className="flex items-center justify-center size-10 rounded-full bg-slate-100 text-slate-900 hover:bg-primary hover:text-white transition-colors cursor-pointer">
-                              <span className="material-symbols-outlined text-[20px]">add_shopping_cart</span>
-                          </button>
-                      </div>
-                  </div>
-              </div>
-          ))}
-        </div>
-      </section>
+      <ProductCarousel products={featuredProducts} />
 
       <section className="bg-primary/5 rounded-2xl p-8 md:p-12 max-w-[1440px] mx-auto px-4 md:px-10">
         <div className="text-center max-w-2xl mx-auto mb-12">
@@ -195,10 +222,19 @@ export default async function Home() {
         <div className="absolute inset-0 opacity-10" style={{backgroundImage: 'url("https://www.transparenttextures.com/patterns/carbon-fibre.png")'}}></div>
         <div className="relative z-10 p-8 md:p-16 text-center text-white flex flex-col items-center gap-6">
           <h2 className="text-3xl md:text-4xl font-bold">Mantente Conectado</h2>
-          <p className="max-w-xl opacity-90 text-lg">Suscríbete a nuestro boletín para recibir las últimas actualizaciones sobre tecnología de radio.</p>
-          <form className="flex w-full max-w-md gap-2 flex-col sm:flex-row">
-            <input className="flex-1 rounded-lg border-none px-4 py-3 text-slate-900 focus:ring-2 focus:ring-white/50 outline-none" placeholder="Ingresa tu correo electrónico" required type="email"/>
-            <button className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 px-6 rounded-lg transition-colors">Suscribirse</button>
+          <p className="max-w-2xl opacity-90 text-lg">
+            Suscríbete a nuestro boletín para recibir las últimas actualizaciones sobre tecnología de radio, ofertas exclusivas y noticias de la industria.
+          </p>
+          <form className="flex w-full max-w-lg gap-3 flex-col sm:flex-row">
+            <input 
+              className="flex-1 rounded-xl border-none px-6 py-4 text-slate-900 bg-white placeholder:text-slate-400 focus:ring-2 focus:ring-white/50 outline-none shadow-sm" 
+              placeholder="Ingresa tu correo electrónico" 
+              required 
+              type="email"
+            />
+            <button className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-4 px-8 rounded-xl transition-colors shadow-lg">
+              Suscribirse
+            </button>
           </form>
         </div>
       </section>

@@ -3,9 +3,11 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useCart } from '@/context/CartContext';
 
 const Navbar: React.FC = () => {
   const pathname = usePathname();
+  const { cartCount } = useCart();
   const isAdmin = pathname?.startsWith('/admin');
   const isAuth = pathname?.startsWith('/login') || pathname?.startsWith('/auth');
 
@@ -15,11 +17,18 @@ const Navbar: React.FC = () => {
     <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200">
       <div className="bg-primary text-white py-2 px-4 md:px-10 text-xs font-medium flex justify-between items-center">
         <div className="flex gap-4">
-          <span className="flex items-center gap-1"><span className="material-symbols-outlined text-[16px]">call</span> +1 (555) 123-4567</span>
-          <span className="flex items-center gap-1"><span className="material-symbols-outlined text-[16px]">mail</span> ventas@mundolar.com</span>
+          <span className="flex items-center gap-1"><span className="material-symbols-outlined text-[16px]">call</span> +57 305 2200300</span>
+          <span className="flex items-center gap-1"><span className="material-symbols-outlined text-[16px]">mail</span> comercial@mundolarsoluciones.com</span>
         </div>
         <div className="hidden sm:flex gap-4">
-          <Link href="/servicios" className="hover:underline opacity-90">Soporte</Link>
+          <a 
+            href="https://api.whatsapp.com/send?phone=573052200300&text=Hola!%20Quisiera%20obtener%20m%C3%A1s%20informaci%C3%B3n." 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="hover:underline opacity-90"
+          >
+            Soporte
+          </a>
           <Link href="/admin" className="hover:underline opacity-90">Portal Admin</Link>
         </div>
       </div>
@@ -46,7 +55,11 @@ const Navbar: React.FC = () => {
           <div className="flex items-center gap-3 md:gap-4">
             <Link href="/carrito" className="relative flex flex-col items-center gap-1 text-slate-600 hover:text-primary transition-colors">
               <span className="material-symbols-outlined">shopping_cart</span>
-              <span className="absolute -top-2 -right-2 bg-primary text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">3</span>
+              {cartCount > 0 && (
+                <span className="absolute -top-2 -right-2 bg-primary text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                  {cartCount}
+                </span>
+              )}
             </Link>
             <Link href="/admin" className="flex flex-col items-center gap-1 text-slate-600 hover:text-primary transition-colors">
               <span className="material-symbols-outlined">account_circle</span>

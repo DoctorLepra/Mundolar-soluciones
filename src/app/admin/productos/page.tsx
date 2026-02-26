@@ -1497,35 +1497,40 @@ export default function AdminProductsPage() {
           )}
 
           <div>
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex flex-col mb-2">
+              <div className="flex items-center justify-between">
                 <label className="block text-sm font-medium text-slate-700">Imágenes (Max 5) <span className="text-red-500">*</span></label>
                 <span className="text-xs text-slate-500">{imagePreviewUrls.length} / 5</span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                <span className="font-bold">Recomendado:</span> 1200 x 900 px (Relación 4:3) &bull; <span className="font-bold">Mínimo:</span> 800 x 600 px &bull; <span className="font-bold">Formato:</span> WebP o JPG.
+              </p>
             </div>
             
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-                {imagePreviewUrls.map((preview) => (
-                    <div key={preview.id} className="relative aspect-square rounded-lg border border-slate-200 overflow-hidden bg-slate-100 group">
-                        <Image src={preview.url} alt="Preview" fill sizes="(max-width: 768px) 50vw, 10vw" className="object-cover" />
-                        <button 
-                            type="button" 
-                            onClick={() => handleRemoveImage(preview.id)}
-                            className="absolute top-1 right-1 size-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
-                        >
-                            <span className="material-symbols-outlined text-[16px]">close</span>
-                        </button>
-                        {!preview.isExisting && (
-                            <span className="absolute bottom-1 left-1 bg-primary text-white text-[8px] px-1 rounded uppercase font-bold">Nuevo</span>
-                        )}
-                    </div>
-                ))}
-                
-                {imagePreviewUrls.length < 5 && (
-                    <label className="aspect-square flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-600 bg-slate-50 hover:border-primary hover:bg-slate-100 cursor-pointer transition-all">
-                        <span className="material-symbols-outlined text-slate-400 text-3xl">add_a_photo</span>
-                        <span className="text-[10px] font-medium text-slate-500 mt-1">Añadir</span>
-                        <input type="file" className="sr-only" onChange={handleImageChange} accept="image/*" multiple />
-                    </label>
-                )}
+              {imagePreviewUrls.map((preview) => (
+                <div key={preview.id} className="relative aspect-square rounded-lg border border-slate-200 overflow-hidden bg-slate-100 group">
+                  <Image src={preview.url} alt="Preview" fill sizes="(max-width: 768px) 50vw, 10vw" className="object-cover" />
+                  <button 
+                    type="button" 
+                    onClick={() => handleRemoveImage(preview.id)}
+                    className="absolute top-1 right-1 size-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">close</span>
+                  </button>
+                  {!preview.isExisting && (
+                    <span className="absolute bottom-1 left-1 bg-primary text-white text-[8px] px-1 rounded uppercase font-bold">Nuevo</span>
+                  )}
+                </div>
+              ))}
+              
+              {imagePreviewUrls.length < 5 && (
+                <label className="aspect-square flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-600 bg-slate-50 hover:border-primary hover:bg-slate-100 cursor-pointer transition-all">
+                  <span className="material-symbols-outlined text-slate-400 text-3xl">add_a_photo</span>
+                  <span className="text-[10px] font-medium text-slate-500 mt-1">Añadir</span>
+                  <input type="file" className="sr-only" onChange={handleImageChange} accept="image/*" multiple />
+                </label>
+              )}
             </div>
           </div>
         </form>
@@ -1535,7 +1540,9 @@ export default function AdminProductsPage() {
             {isSubmitting ? (productToEdit ? 'Guardando...' : 'Creando...') : (productToEdit ? 'Guardar Cambios' : 'Crear Producto')}
           </button>
         </div>
-      </div></div>)}
+      </div>
+    </div>
+  )}
 
 {isDeleteModalOpen && productToDelete && (<div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true"><div className="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col"><div className="p-6 flex items-start gap-4"><div className="size-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center shrink-0"><span className="material-symbols-outlined text-3xl">warning</span></div><div><h2 className="text-xl font-bold text-slate-900">Eliminar Producto</h2><p className="text-slate-600 mt-2">¿Estás seguro de que quieres eliminar "<strong>{productToDelete?.name}</strong>"? Esta acción es irreversible.</p></div></div><div className="p-6 border-t border-slate-200 bg-slate-50 flex justify-end gap-3"><button onClick={closeDeleteModal} type="button" className="px-5 py-2.5 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm font-bold shadow-sm hover:bg-slate-50">Cancelar</button><button onClick={handleConfirmDelete} disabled={isDeleting} type="button" className="px-5 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-bold shadow-md disabled:bg-red-600/50 disabled:cursor-not-allowed transition-all">{isDeleting ? 'Eliminando...' : 'Sí, eliminar'}</button></div></div></div>)}
 

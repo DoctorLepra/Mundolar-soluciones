@@ -21,6 +21,7 @@ export const metadata: Metadata = {
 
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import { CartProvider } from "@/context/CartContext";
 
 export default function RootLayout({
   children,
@@ -40,11 +41,13 @@ export default function RootLayout({
       <body
         className={`${spaceGrotesk.variable} ${notoSans.variable} antialiased bg-background-light text-slate-900 font-body`}
       >
-        <Navbar />
-        <main className="flex-grow min-h-screen">
-          {children}
-        </main>
-        <Footer />
+        <CartProvider>
+          <Navbar />
+          <main className="flex-grow min-h-screen">
+            {children}
+          </main>
+          <Footer />
+        </CartProvider>
         <script
           dangerouslySetInnerHTML={{
             __html: `

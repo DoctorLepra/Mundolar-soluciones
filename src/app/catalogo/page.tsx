@@ -40,11 +40,13 @@ async function getProducts(params: {
   }
 
   if (params.minPrice) {
-    query = query.gte('price', params.minPrice);
+    const minBase = Number(params.minPrice) / 1.19;
+    query = query.gte('price', minBase);
   }
 
   if (params.maxPrice) {
-    query = query.lte('price', params.maxPrice);
+    const maxBase = Number(params.maxPrice) / 1.19;
+    query = query.lte('price', maxBase);
   }
 
   // Sorting

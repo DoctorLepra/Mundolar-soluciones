@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { roundIvaPrice, formatCurrency } from '@/lib/utils';
 
 interface Category {
   id: number;
@@ -26,6 +27,14 @@ const Sidebar: React.FC = () => {
   const selectedCategories = searchParams.get('categoria')?.split(',').filter(Boolean) || [];
   const selectedBrands = searchParams.get('marca')?.split(',').filter(Boolean) || [];
   const isOferta = searchParams.get('oferta') === 'true';
+
+  // Price Range States
+  const [minPriceLimit, setMinPriceLimit] = useState(0);
+  const [maxPriceLimit, setMaxPriceLimit] = useState(1000000);
+  const [priceRange, setPriceRange] = useState({ 
+    min: Number(searchParams.get('minPrice')) || 0, 
+    max: Number(searchParams.get('maxPrice')) || 1000000 
+  });
 
   useEffect(() => {
     async function fetchData() {
@@ -55,11 +64,64 @@ const Sidebar: React.FC = () => {
         }));
         setCategories(structured);
       }
+
+      // Fetch Price Limits (Converted to IVA)
+      const { data: priceData } = await supabase
+        .from('products')
+        .select('price')
+        .eq('status', 'Activo');
+
+      if (priceData && priceData.length > 0) {
+        const ivaPrices = priceData.map(p => roundIvaPrice(Number(p.price) * 1.19));
+        const minL = Math.floor(Math.min(...ivaPrices));
+        const maxL = Math.ceil(Math.max(...ivaPrices));
+        setMinPriceLimit(minL);
+        setMaxPriceLimit(maxL);
+        
+        // If no params in URL, set initial range to full limits
+        setPriceRange(prev => ({
+          min: Number(searchParams.get('minPrice')) || minL,
+          max: Number(searchParams.get('maxPrice')) || maxL
+        }));
+      }
       
       setLoading(false);
     }
     fetchData();
   }, []);
+
+  // Debounced price update
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams(searchParams.toString());
+      
+      // Update or delete minPrice based on limit
+      if (priceRange.min > minPriceLimit) {
+        params.set('minPrice', priceRange.min.toString());
+      } else {
+        params.delete('minPrice');
+      }
+
+      // Update or delete maxPrice based on limit
+      if (priceRange.max < maxPriceLimit) {
+        params.set('maxPrice', priceRange.max.toString());
+      } else {
+        params.delete('maxPrice');
+      }
+
+      // Only push if values actually changed from URL
+      const currentMin = searchParams.get('minPrice');
+      const currentMax = searchParams.get('maxPrice');
+      const newMin = params.get('minPrice');
+      const newMax = params.get('maxPrice');
+
+      if (currentMin !== newMin || currentMax !== newMax) {
+        router.push(`/catalogo?${params.toString()}`);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [priceRange, minPriceLimit, maxPriceLimit, router, searchParams]);
 
   const updateFilters = (key: string, value: string, checked: boolean) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -92,7 +154,10 @@ const Sidebar: React.FC = () => {
 
   const clearAll = () => {
     router.push('/catalogo');
+    setPriceRange({ min: minPriceLimit, max: maxPriceLimit });
   };
+
+  const formatPrice = (val: number) => `$${formatCurrency(val)}`;
 
   const handleSupport = () => {
     window.open("https://api.whatsapp.com/send?phone=573052200300&text=Hola!%20Necesito%20asesor%C3%ADa%20técnica%20sobre%20un%20producto%20del%20cat%C3%A1logo.", "_blank");
@@ -115,7 +180,7 @@ const Sidebar: React.FC = () => {
           <button 
             onClick={clearAll}
             className={`w-full py-2 px-4 rounded-lg text-sm font-bold border transition-all ${
-              selectedCategories.length === 0 && selectedBrands.length === 0 && !isOferta
+              selectedCategories.length === 0 && selectedBrands.length === 0 && !isOferta && !searchParams.has('minPrice') && !searchParams.has('maxPrice')
                 ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20'
                 : 'bg-white text-slate-700 border-slate-200 hover:border-primary/50'
             }`}
@@ -135,6 +200,57 @@ const Sidebar: React.FC = () => {
               />
               <span className="text-sm font-bold text-red-700 group-hover:text-red-800 transition-colors">En Oferta</span>
             </label>
+        </div>
+
+        <div className="h-px bg-slate-200"></div>
+
+        {/* Rango de Precios */}
+        <div className="space-y-6">
+          <h4 className="font-display font-semibold text-sm text-slate-900 uppercase tracking-wider">Rango de Precio</h4>
+          <div className="px-2">
+            <div className="flex items-center justify-between gap-4 mb-4">
+              <div className="flex-1">
+                <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Mínimo</p>
+                <p className="text-xs font-bold text-slate-900 bg-slate-50 p-2 rounded border border-slate-100">{formatPrice(priceRange.min)}</p>
+              </div>
+              <div className="flex-1 text-right">
+                <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Máximo</p>
+                <p className="text-xs font-bold text-slate-900 bg-slate-50 p-2 rounded border border-slate-100">{formatPrice(priceRange.max)}</p>
+              </div>
+            </div>
+            
+            <div className="relative h-2 flex items-center">
+              {/* Progress Track Background */}
+              <div className="absolute w-full h-1 bg-slate-100 rounded-full"></div>
+              
+              <input
+                type="range"
+                min={minPriceLimit}
+                max={maxPriceLimit}
+                value={priceRange.min}
+                onChange={(e) => {
+                  const val = Math.min(Number(e.target.value), priceRange.max - 100);
+                  setPriceRange(prev => ({ ...prev, min: val }));
+                }}
+                className="absolute w-full h-1 bg-transparent appearance-none cursor-pointer accent-primary pointer-events-none [&::-webkit-slider-thumb]:pointer-events-auto [&::-moz-range-thumb]:pointer-events-auto z-20"
+              />
+              <input
+                type="range"
+                min={minPriceLimit}
+                max={maxPriceLimit}
+                value={priceRange.max}
+                onChange={(e) => {
+                  const val = Math.max(Number(e.target.value), priceRange.min + 100);
+                  setPriceRange(prev => ({ ...prev, max: val }));
+                }}
+                className="absolute w-full h-1 bg-transparent appearance-none cursor-pointer accent-primary pointer-events-none [&::-webkit-slider-thumb]:pointer-events-auto [&::-moz-range-thumb]:pointer-events-auto z-30"
+              />
+            </div>
+            <div className="flex justify-between mt-2">
+              <span className="text-[9px] text-slate-400 font-medium">{formatPrice(minPriceLimit)}</span>
+              <span className="text-[9px] text-slate-400 font-medium">{formatPrice(maxPriceLimit)}</span>
+            </div>
+          </div>
         </div>
 
         <div className="h-px bg-slate-200"></div>

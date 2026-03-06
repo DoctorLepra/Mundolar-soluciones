@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
@@ -33,15 +34,12 @@ const Footer: React.FC = () => {
   if (isAdmin || isAuth) return null;
 
   return (
-    <footer className="bg-slate-900 text-slate-300 pt-16 pb-8 border-t border-slate-800">
+    <footer className="bg-[#0d0d0d] text-slate-300 pt-16 pb-8 border-t border-[#1a1a1a]">
       <div className="max-w-[1440px] mx-auto px-4 md:px-10">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 mb-12">
           <div className="space-y-4">
-            <div className="flex items-center gap-2 text-white">
-              <div className="size-8 bg-primary rounded-md flex items-center justify-center text-white">
-                <span className="material-symbols-outlined text-lg">leak_add</span>
-              </div>
-              <h3 className="text-lg font-bold">Mundolar Soluciones</h3>
+            <div className="flex items-center text-white">
+              <Image src="/img/logo-rojo-blanco.png" alt="Mundolar Soluciones" width={180} height={45} className="h-11 w-auto object-contain" />
             </div>
             <p className="text-sm text-slate-400 leading-relaxed">
               Estando comprometidos al 100% en el crecimiento y desarrollo de nuestros clientes aliados, mejorando la productividad y mejor su conectividad con el mundo.

@@ -20,7 +20,7 @@ export default function ServicesHeroActions() {
     <div className="mt-10 flex flex-wrap justify-center gap-4">
       <Link 
         href="/contacto" 
-        className="inline-flex items-center justify-center rounded-lg bg-primary px-8 py-3 text-base font-bold text-white transition-all hover:bg-primary/90 hover:scale-105 shadow-lg"
+        className="inline-flex items-center justify-center rounded-lg bg-primary px-8 py-3 text-base font-bold text-white transition-all hover:bg-primary-dark hover:scale-105 shadow-lg"
       >
         Solicitar Cotización
       </Link>

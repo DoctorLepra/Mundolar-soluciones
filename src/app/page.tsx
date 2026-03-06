@@ -1,5 +1,7 @@
 
 import React from 'react';
+import type { Metadata } from 'next';
+export const metadata: Metadata = { title: 'Inicio' };
 import { supabase } from '@/lib/supabase';
 import Hero from '@/components/home/Hero';
 import ProductCarousel from '@/components/home/ProductCarousel';

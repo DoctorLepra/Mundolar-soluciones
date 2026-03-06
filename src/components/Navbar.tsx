@@ -108,11 +108,8 @@ const Navbar: React.FC = () => {
       </div>
       <div className="max-w-[1440px] mx-auto px-4 md:px-10 py-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <Link href="/" className="flex items-center gap-3">
-            <div className="size-10 bg-primary rounded-lg flex items-center justify-center text-white shadow-lg shadow-primary/30">
-              <span className="material-symbols-outlined">leak_add</span>
-            </div>
-            <h2 className="text-xl font-bold tracking-tight text-slate-900">Mundolar</h2>
+          <Link href="/" className="flex items-center">
+            <Image src="/img/logo-rojo-negro.png" alt="Mundolar" width={250} height={62} className="h-[62px] w-auto object-contain" priority />
           </Link>
           <div className="hidden md:flex flex-1 max-w-xl px-8" ref={searchContainerRef}>
             <form onSubmit={handleSearchSubmit} className="relative w-full group">
@@ -177,7 +174,7 @@ const Navbar: React.FC = () => {
                       ))}
                       <button
                         type="submit"
-                        className="w-full p-3 bg-slate-50 text-xs font-bold text-primary hover:text-blue-700 transition-colors text-center"
+                        className="w-full p-3 bg-slate-50 text-xs font-bold text-primary hover:text-primary-dark transition-colors text-center"
                       >
                         Ver todos los resultados
                       </button>

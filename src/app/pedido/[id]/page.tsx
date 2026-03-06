@@ -85,7 +85,7 @@ export default function OrderRedirectPage() {
             </p>
             <button 
               onClick={() => router.push('/admin/login')}
-              className="w-full bg-primary hover:bg-blue-600 text-white font-bold py-3 rounded-xl transition-colors font-display"
+              className="w-full bg-primary hover:bg-primary-dark text-white font-bold py-3 rounded-xl transition-colors font-display"
             >
               Iniciar Sesión
             </button>

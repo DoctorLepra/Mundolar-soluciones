@@ -1,5 +1,7 @@
 
 import React from 'react';
+import type { Metadata } from 'next';
+export const metadata: Metadata = { title: 'Contacto' };
 import Link from 'next/link';
 
 export default function ContactPage() {

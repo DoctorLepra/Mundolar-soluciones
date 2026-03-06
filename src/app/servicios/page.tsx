@@ -1,5 +1,7 @@
 
 import React from 'react';
+import type { Metadata } from 'next';
+export const metadata: Metadata = { title: 'Servicios' };
 import Link from 'next/link';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabase';

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
@@ -226,11 +227,9 @@ export default function AdminSidebar() {
   return (
     <aside className="w-64 bg-white border-r border-slate-200 flex flex-col h-full flex-shrink-0 z-20 min-h-screen">
       <div className="p-6 border-b border-slate-100">
-        <Link href="/" className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary text-2xl font-bold">router</span>
-            <h1 className="text-xl font-bold font-display tracking-tight text-slate-900">Mundolar Admin</h1>
+        <Link href="/" className="flex items-center justify-center">
+            <Image src="/img/logo-rojo-negro.png" alt="Mundolar Admin" width={250} height={62} className="h-[62px] w-auto object-contain" />
         </Link>
-        <p className="text-slate-500 text-xs mt-1">Telecomunicaciones</p>
       </div>
       <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
         <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider font-display px-3 pb-2 pt-2">Menú Principal</p>

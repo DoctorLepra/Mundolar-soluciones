@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
+import { usePageTitle } from '@/hooks/usePageTitle';
 import { supabase } from '@/lib/supabase';
 import RoleGuard from '@/components/admin/RoleGuard';
 import { convertToWebP } from '@/lib/image-utils';
@@ -17,6 +18,7 @@ interface Brand {
 }
 
 export default function AdminBrandsPage() {
+  usePageTitle('Marcas');
   return (
     <RoleGuard allowedRoles={['Admin']}>
       <AdminBrandsPageContent />
@@ -406,7 +408,7 @@ function AdminBrandsPageContent() {
                 <span className="material-symbols-outlined text-[20px]">file_upload</span>
                 <span>Importar</span>
             </button>
-            <button onClick={handleOpenModal} className="flex items-center justify-center gap-2 bg-primary hover:bg-primary/95 text-white px-5 py-2.5 rounded-lg font-bold shadow-lg shadow-primary/20 transition-all text-sm font-display">
+            <button onClick={handleOpenModal} className="flex items-center justify-center gap-2 bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-lg font-bold shadow-lg shadow-primary/20 transition-all text-sm font-display">
                 <span className="material-symbols-outlined text-[20px]">add</span>
                 Crear Marca
             </button>
@@ -567,7 +569,7 @@ function AdminBrandsPageContent() {
                 </button>
                 <div className="flex gap-4">
                   <button onClick={() => setSelectedBrand(null)} className="px-6 py-2.5 rounded-lg border border-slate-300 text-slate-700 bg-white text-sm font-bold hover:bg-slate-50 transition-all font-display">Cerrar</button>
-                  <button onClick={handleUpdateSubmit} disabled={isUpdating} className="flex items-center gap-2 bg-primary hover:bg-primary/95 text-white px-8 py-2.5 rounded-lg font-bold shadow-lg shadow-primary/20 transition-all text-sm font-display disabled:opacity-50">
+                  <button onClick={handleUpdateSubmit} disabled={isUpdating} className="flex items-center gap-2 bg-primary hover:bg-primary-dark text-white px-8 py-2.5 rounded-lg font-bold shadow-lg shadow-primary/20 transition-all text-sm font-display disabled:opacity-50">
                     <span className="material-symbols-outlined text-[20px]">{isUpdating ? 'sync' : 'save'}</span>
                     <span>{isUpdating ? 'Guardando...' : 'Guardar Cambios'}</span>
                   </button>
@@ -621,7 +623,7 @@ function AdminBrandsPageContent() {
             </form>
             <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
               <button onClick={handleCloseModal} className="px-6 py-2.5 rounded-lg border border-slate-300 text-slate-600 font-bold text-sm bg-white hover:bg-slate-50 transition-all font-display">Cancelar</button>
-              <button onClick={handleCreateSubmit} disabled={isSubmitting} className="bg-primary hover:bg-primary/95 text-white px-8 py-2.5 rounded-lg font-bold shadow-lg shadow-primary/20 transition-all text-sm font-display disabled:opacity-50">
+              <button onClick={handleCreateSubmit} disabled={isSubmitting} className="bg-primary hover:bg-primary-dark text-white px-8 py-2.5 rounded-lg font-bold shadow-lg shadow-primary/20 transition-all text-sm font-display disabled:opacity-50">
                 {isSubmitting ? 'Creando...' : 'Crear Marca'}
               </button>
             </div>

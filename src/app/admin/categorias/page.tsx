@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
+import { usePageTitle } from '@/hooks/usePageTitle';
 import { supabase } from '@/lib/supabase';
 import RoleGuard from '@/components/admin/RoleGuard';
 import { convertToWebP } from '@/lib/image-utils';
@@ -23,6 +24,7 @@ interface CategoryNode extends Category {
 }
 
 export default function AdminCategoriesPage() {
+  usePageTitle('Categorías');
   return (
     <RoleGuard allowedRoles={['Admin']}>
       <AdminCategoriesPageContent />
@@ -516,7 +518,7 @@ function AdminCategoriesPageContent() {
             <h1 className="text-3xl font-bold text-slate-900 tracking-tight font-display">Gestión de Categorías</h1>
             <p className="text-slate-500 mt-1 font-display">Organiza la jerarquía de productos para el e-commerce.</p>
           </div>
-          <button onClick={handleOpenModal} className="flex items-center justify-center gap-2 bg-primary hover:bg-primary/95 text-white px-5 py-2.5 rounded-lg font-bold shadow-lg shadow-primary/20 transition-all text-sm font-display">
+          <button onClick={handleOpenModal} className="flex items-center justify-center gap-2 bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-lg font-bold shadow-lg shadow-primary/20 transition-all text-sm font-display">
             <span className="material-symbols-outlined text-[20px]">add</span>
             Nueva Categoría
           </button>
@@ -656,7 +658,7 @@ function AdminCategoriesPageContent() {
                 </button>
                 <div className="flex gap-4">
                   <button onClick={() => setSelectedCategory(null)} className="px-6 py-2.5 rounded-lg border border-slate-300 text-slate-600 text-sm font-bold hover:bg-slate-50 transition-all font-display">Cerrar</button>
-                  <button onClick={handleUpdateSubmit} disabled={isUpdating} className="flex items-center gap-2 bg-primary hover:bg-primary/95 text-white px-8 py-2.5 rounded-lg font-bold shadow-lg shadow-primary/20 transition-all text-sm font-display disabled:opacity-50">
+                  <button onClick={handleUpdateSubmit} disabled={isUpdating} className="flex items-center gap-2 bg-primary hover:bg-primary-dark text-white px-8 py-2.5 rounded-lg font-bold shadow-lg shadow-primary/20 transition-all text-sm font-display disabled:opacity-50">
                     <span className="material-symbols-outlined text-[20px]">{isUpdating ? 'sync' : 'save'}</span>
                     <span>{isUpdating ? 'Guardando...' : 'Guardar Cambios'}</span>
                   </button>
@@ -719,7 +721,7 @@ function AdminCategoriesPageContent() {
             </form>
             <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
               <button onClick={handleCloseModal} className="px-6 py-2.5 rounded-lg border border-slate-300 text-slate-600 font-bold text-sm bg-white hover:bg-slate-50 transition-all font-display">Cancelar</button>
-              <button onClick={handleCreateSubmit} disabled={isSubmitting} className="bg-primary hover:bg-primary/95 text-white px-8 py-2.5 rounded-lg font-bold shadow-lg shadow-primary/20 transition-all text-sm font-display disabled:opacity-50">
+              <button onClick={handleCreateSubmit} disabled={isSubmitting} className="bg-primary hover:bg-primary-dark text-white px-8 py-2.5 rounded-lg font-bold shadow-lg shadow-primary/20 transition-all text-sm font-display disabled:opacity-50">
                 {isSubmitting ? 'Creando...' : 'Crear Categoría'}
               </button>
             </div>

@@ -1,5 +1,7 @@
 
 import { supabase } from '@/lib/supabase';
+import type { Metadata } from 'next';
+export const metadata: Metadata = { title: 'Catálogo' };
 import Link from 'next/link';
 import Sidebar from '@/components/catalog/Sidebar';
 import SortSelector from '@/components/catalog/SortSelector';

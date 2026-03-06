@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, Suspense } from "react";
 import Image from "next/image";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { createNotification, notifyAdmins } from "@/lib/notifications";
@@ -1353,7 +1354,7 @@ const AdminClientsPageContent = () => {
           {viewTab === "Clientes" && (
             <button
               onClick={handleOpenNewModal}
-              className="flex items-center justify-center gap-2 bg-primary hover:bg-blue-600 text-white px-5 py-2.5 rounded-lg font-bold text-sm transition-colors shadow-sm shadow-primary/30 font-display"
+              className="flex items-center justify-center gap-2 bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-lg font-bold text-sm transition-colors shadow-sm shadow-primary/30 font-display"
             >
               <span className="material-symbols-outlined text-[20px]">
                 person_add
@@ -1597,7 +1598,7 @@ const AdminClientsPageContent = () => {
                             <div className="pt-2 border-t border-slate-100 flex justify-end">
                               <button
                                 onClick={handleClearFilters}
-                                className="text-[11px] font-bold text-primary hover:text-blue-700 uppercase tracking-wider font-display flex items-center gap-1"
+                                className="text-[11px] font-bold text-primary hover:text-primary-dark uppercase tracking-wider font-display flex items-center gap-1"
                               >
                                 <span className="material-symbols-outlined text-[16px]">
                                   filter_alt_off
@@ -1612,7 +1613,7 @@ const AdminClientsPageContent = () => {
 
                     <button
                       onClick={() => setIsReportModalOpen(true)}
-                      className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-bold hover:bg-blue-600 transition-all shadow-md font-display"
+                      className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-bold hover:bg-primary-dark transition-all shadow-md font-display"
                     >
                       <span className="material-symbols-outlined text-[20px]">
                         analytics
@@ -2218,7 +2219,7 @@ const AdminClientsPageContent = () => {
                                           });
                                           setIsTaskModalOpen(true);
                                         }}
-                                        className="p-1.5 text-slate-400 hover:text-blue-600 transition-colors"
+                                        className="p-1.5 text-slate-400 hover:text-primary transition-colors"
                                       >
                                         <span className="material-symbols-outlined text-[18px]">
                                           edit
@@ -2774,7 +2775,7 @@ const AdminClientsPageContent = () => {
                                       isAddingInteraction ||
                                       !newInteraction.content.trim()
                                     }
-                                    className="w-full bg-primary text-white py-2 rounded-lg text-xs font-bold hover:bg-blue-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                                    className="w-full bg-primary text-white py-2 rounded-lg text-xs font-bold hover:bg-primary-dark transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                                   >
                                     <span className="material-symbols-outlined text-[18px]">
                                       save
@@ -2807,7 +2808,7 @@ const AdminClientsPageContent = () => {
                                         onClick={() =>
                                           setShowFollowupForm(false)
                                         }
-                                        className="text-blue-400 hover:text-blue-600"
+                                        className="text-primary hover:text-primary-dark"
                                       >
                                         <span className="material-symbols-outlined text-[16px]">
                                           close
@@ -2864,7 +2865,7 @@ const AdminClientsPageContent = () => {
                                     />
                                     <button
                                       onClick={handleCreateGoogleCalendarEvent}
-                                      className="w-full bg-blue-600 text-white py-2 rounded-lg text-[10px] font-bold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                                      className="w-full bg-primary text-white py-2 rounded-lg text-[10px] font-bold hover:bg-primary-dark transition-colors flex items-center justify-center gap-2"
                                     >
                                       <span className="material-symbols-outlined text-[18px]">
                                         event
@@ -2943,7 +2944,7 @@ const AdminClientsPageContent = () => {
                                               {formatTaskId(task.codigo)} {task.title}
                                             </p>
                                             {task.creator?.full_name && task.creator.full_name !== task.assigned_to && (
-                                              <p className="text-[9px] text-blue-600 font-bold font-display italic">
+                                              <p className="text-[9px] text-primary font-bold font-display italic">
                                                 Asignado por: {task.creator.full_name}
                                               </p>
                                             )}
@@ -3033,7 +3034,7 @@ const AdminClientsPageContent = () => {
                                                 : item.type === "Reunión"
                                                   ? "bg-purple-100 text-purple-600"
                                                   : item.type === "Correo"
-                                                    ? "bg-blue-100 text-blue-600"
+                                                    ? "bg-primary/10 text-primary"
                                                     : "bg-red-100 text-red-600"
                                           }`}
                                         >
@@ -3087,7 +3088,7 @@ const AdminClientsPageContent = () => {
                               `/admin/pedidos?create=true&clientId=${selectedClient.id}`,
                             )
                           }
-                          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-primary text-white rounded-xl text-sm font-bold hover:bg-blue-600 transition-all shadow-lg shadow-primary/25 font-display"
+                          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-primary text-white rounded-xl text-sm font-bold hover:bg-primary-dark transition-all shadow-lg shadow-primary/25 font-display"
                         >
                           <span className="material-symbols-outlined text-[20px]">
                             add_shopping_cart
@@ -3215,7 +3216,7 @@ const AdminClientsPageContent = () => {
                                 Cliente Relacionado
                               </h4>
                               <div className="flex items-center gap-3">
-                                <div className="size-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform">
+                                <div className="size-8 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
                                   <span className="material-symbols-outlined text-lg">
                                     person
                                   </span>
@@ -4029,7 +4030,7 @@ const AdminClientsPageContent = () => {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="bg-primary hover:bg-blue-600 text-white px-10 py-3 rounded-xl font-bold shadow-lg shadow-primary/20 transition-all text-sm font-display disabled:opacity-50 flex items-center gap-2"
+                  className="bg-primary hover:bg-primary-dark text-white px-10 py-3 rounded-xl font-bold shadow-lg shadow-primary/20 transition-all text-sm font-display disabled:opacity-50 flex items-center gap-2"
                 >
                   {isSubmitting ? (
                     <>
@@ -4164,7 +4165,7 @@ const AdminClientsPageContent = () => {
               <button
                 onClick={handleGenerateReport}
                 disabled={isGeneratingReport}
-                className="flex-1 px-4 py-2.5 bg-primary text-white font-bold text-sm rounded-xl hover:bg-blue-600 transition-all shadow-md shadow-primary/20 flex items-center justify-center gap-2 disabled:opacity-50"
+                className="flex-1 px-4 py-2.5 bg-primary text-white font-bold text-sm rounded-xl hover:bg-primary-dark transition-all shadow-md shadow-primary/20 flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {isGeneratingReport ? (
                   <>
@@ -4381,7 +4382,7 @@ const AdminClientsPageContent = () => {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="flex-1 px-4 py-2.5 bg-primary text-white font-bold text-sm rounded-xl hover:bg-blue-600 transition-all shadow-md shadow-primary/20 flex items-center justify-center gap-2 disabled:opacity-50"
+                  className="flex-1 px-4 py-2.5 bg-primary text-white font-bold text-sm rounded-xl hover:bg-primary-dark transition-all shadow-md shadow-primary/20 flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   {isSubmitting ? (
                     <>
@@ -4536,6 +4537,7 @@ const AdminClientsPageContent = () => {
 
 // Exported component with Suspense boundary
 export default function AdminClientsPage() {
+  usePageTitle('CRM Clientes');
   return (
     <Suspense fallback={
       <div className="flex items-center justify-center min-h-screen">

@@ -1,5 +1,7 @@
 
 import React from 'react';
+import type { Metadata } from 'next';
+export const metadata: Metadata = { title: 'Nosotros' };
 import Link from 'next/link';
 import Image from 'next/image';
 
@@ -34,7 +36,7 @@ export default function AboutPage() {
             Somos expertos en soluciones de radiocomunicación portátil y móvil, asegurando que tu equipo permanezca conectado cuando más importa.
           </p>
           <div className="mt-10 flex flex-wrap justify-center gap-4">
-            <Link href="/catalogo" className="inline-flex items-center justify-center rounded-lg bg-primary px-6 py-3 text-base font-bold text-white transition-all hover:bg-primary/90 hover:scale-105">
+            <Link href="/catalogo" className="inline-flex items-center justify-center rounded-lg bg-primary px-6 py-3 text-base font-bold text-white transition-all hover:bg-primary-dark hover:scale-105">
               Explorar Catálogo
             </Link>
             <Link href="/servicios" className="inline-flex items-center justify-center rounded-lg bg-white/10 px-6 py-3 text-base font-bold text-white backdrop-blur-sm transition-all hover:bg-white/20">

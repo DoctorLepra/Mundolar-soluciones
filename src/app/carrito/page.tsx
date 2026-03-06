@@ -7,8 +7,10 @@ import { useCart } from '@/context/CartContext';
 import { formatCurrency } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import { colombiaData, departments } from '@/lib/colombia-data';
+import { usePageTitle } from '@/hooks/usePageTitle';
 
 export default function CartPage() {
+  usePageTitle('Carrito');
   const { cart, removeFromCart, updateQuantity, cartTotal, cartCount, clearCart } = useCart();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [isModalOpen, setIsModalOpen] = React.useState(false);
@@ -176,7 +178,7 @@ export default function CartPage() {
         <p className="text-slate-500 mb-8 text-center max-w-md">Parece que aún no has agregado ningún producto a tu carrito de compras.</p>
         <Link 
           href="/catalogo" 
-          className="px-8 py-3 bg-primary text-white rounded-xl font-bold hover:bg-blue-600 transition-all shadow-lg shadow-primary/25"
+          className="px-8 py-3 bg-primary text-white rounded-xl font-bold hover:bg-primary-dark transition-all shadow-lg shadow-primary/25"
         >
           Ir al catálogo
         </Link>
@@ -310,7 +312,7 @@ export default function CartPage() {
                 
                 <button 
                   onClick={() => setIsModalOpen(true)}
-                  className="w-full bg-primary hover:bg-blue-600 text-white font-bold py-3.5 px-4 rounded-lg shadow-lg shadow-blue-500/30 transition-all hover:scale-[1.02] flex items-center justify-center gap-2"
+                  className="w-full bg-primary hover:bg-primary-dark text-white font-bold py-3.5 px-4 rounded-lg shadow-lg shadow-primary/30 transition-all hover:scale-[1.02] flex items-center justify-center gap-2"
                 >
                   <span>Proceder al Pago</span>
                   <span className="material-symbols-outlined text-lg">arrow_forward</span>
@@ -443,7 +445,7 @@ export default function CartPage() {
                 <button 
                   onClick={handleCheckout}
                   disabled={isSubmitting}
-                  className={`w-full bg-primary hover:bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-primary/25 transition-all flex items-center justify-center gap-2 ${isSubmitting ? 'opacity-70 cursor-wait' : ''}`}
+                  className={`w-full bg-primary hover:bg-primary-dark text-white font-bold py-4 rounded-xl shadow-lg shadow-primary/25 transition-all flex items-center justify-center gap-2 ${isSubmitting ? 'opacity-70 cursor-wait' : ''}`}
                 >
                   {isSubmitting ? (
                     <span className="size-6 border-2 border-white border-t-transparent animate-spin rounded-full"></span>

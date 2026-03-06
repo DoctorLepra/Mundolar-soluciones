@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import Image from 'next/image';
+import { usePageTitle } from '@/hooks/usePageTitle';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { notifyAdmins } from '@/lib/notifications';
@@ -866,7 +867,7 @@ function AdminOrdersPageContent() {
             });
             setIsCreateModalOpen(true);
           }}
-          className="flex items-center justify-center gap-2 bg-primary hover:bg-blue-600 text-white px-5 py-2.5 rounded-lg font-bold text-sm transition-colors shadow-sm shadow-primary/30 font-display"
+          className="flex items-center justify-center gap-2 bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-lg font-bold text-sm transition-colors shadow-sm shadow-primary/30 font-display"
         >
           <span className="material-symbols-outlined text-[20px]">add</span>
           <span>Crear Pedido</span>
@@ -1291,7 +1292,7 @@ function AdminOrdersPageContent() {
                             else alert('No hay correo registrado');
                             setIsContactMenuOpen(false);
                           }}
-                          className="w-full text-left px-4 py-3 text-sm font-bold text-blue-600 hover:bg-blue-50 flex items-center gap-3 transition-colors"
+                          className="w-full text-left px-4 py-3 text-sm font-bold text-primary hover:bg-primary/5 flex items-center gap-3 transition-colors"
                         >
                           <span className="material-symbols-outlined text-[20px]">mail</span>
                           Correo ({selectedOrder.clients?.email || 'Sin correo'})
@@ -1484,7 +1485,7 @@ function AdminOrdersPageContent() {
                       fetchProducts();
                       setIsProductSearchModalOpen(true);
                     }}
-                    className="px-4 py-2 bg-primary hover:bg-blue-600 text-white rounded-lg font-bold transition-colors font-display flex items-center gap-2"
+                    className="px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-lg font-bold transition-colors font-display flex items-center gap-2"
                   >
                     <span className="material-symbols-outlined text-[18px]">add</span>
                     Agregar Productos
@@ -1610,7 +1611,7 @@ function AdminOrdersPageContent() {
                 <button
                   onClick={handleSubmitOrder}
                   disabled={!selectedClient || selectedProducts.length === 0 || isSubmitting}
-                  className="px-6 py-2.5 bg-primary hover:bg-blue-600 text-white rounded-lg font-bold transition-all font-display disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  className="px-6 py-2.5 bg-primary hover:bg-primary-dark text-white rounded-lg font-bold transition-all font-display disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   {isSubmitting && (
                     <div className="size-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
@@ -1793,6 +1794,7 @@ function AdminOrdersPageContent() {
 
 // Exported Page with Suspense
 export default function AdminOrdersPage() {
+  usePageTitle('Pedidos');
   return (
     <React.Suspense fallback={
       <div className="flex items-center justify-center min-h-screen">

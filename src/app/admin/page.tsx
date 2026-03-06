@@ -10,6 +10,7 @@ import {
   PieChart, Pie, Cell, BarChart, Bar, Legend
 } from 'recharts';
 import { AlertTriangle, TrendingUp, Package, MapPin, CheckCircle2, Clock, ClipboardList, FileText, Warehouse } from 'lucide-react';
+import { usePageTitle } from '@/hooks/usePageTitle';
 
 /*
 - [ ] Sistema de Autenticación y Gestión de Usuarios <!-- id: 50 -->
@@ -22,6 +23,7 @@ import { AlertTriangle, TrendingUp, Package, MapPin, CheckCircle2, Clock, Clipbo
   - [ ] Verificar políticas de acceso por roles <!-- id: 56 -->
 */
 export default function AdminDashboard() {
+  usePageTitle('Dashboard');
   const [metrics, setMetrics] = useState({
     totalSales: 0,
     activeOrders: 0,
@@ -223,7 +225,7 @@ export default function AdminDashboard() {
     }
   };
 
-  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+  const COLORS = ['#db1923', '#0d0d0d', '#10b981', '#f59e0b', '#8b5cf6'];
   const isAdmin = userProfile?.role === 'Admin';
 
   if (loading) {
@@ -256,7 +258,7 @@ export default function AdminDashboard() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all group">
             <div className="flex justify-between items-center mb-4">
-              <div className="p-3 bg-blue-50 rounded-2xl text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+              <div className="p-3 bg-red-50 rounded-2xl text-red-600 group-hover:bg-red-600 group-hover:text-white transition-colors">
                 <TrendingUp size={24} />
               </div>
               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Ingresos</span>
@@ -292,7 +294,7 @@ export default function AdminDashboard() {
         <div className={`grid grid-cols-1 md:grid-cols-${isAdmin ? '3' : '2'} gap-6`}>
           <Link href="/admin/clientes" className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all group">
             <div className="flex justify-between items-center mb-4">
-              <div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+              <div className="p-3 bg-slate-100 rounded-2xl text-slate-600 group-hover:bg-slate-900 group-hover:text-white transition-colors">
                 <ClipboardList size={24} />
               </div>
               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Tareas CRM</span>
@@ -332,15 +334,15 @@ export default function AdminDashboard() {
           <div className="lg:col-span-2 bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-lg font-black text-slate-900 font-display">Tendencia de Ventas (7D)</h3>
-              <span className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full">Automático</span>
+              <span className="text-xs font-bold text-red-600 bg-red-50 px-3 py-1 rounded-full">Automático</span>
             </div>
             <div className="h-[280px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={salesTrend}>
                   <defs>
                     <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1}/>
-                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="#db1923" stopOpacity={0.1}/>
+                      <stop offset="95%" stopColor="#db1923" stopOpacity={0}/>
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
@@ -350,7 +352,7 @@ export default function AdminDashboard() {
                     contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
                     labelStyle={{fontWeight: 900, marginBottom: '4px'}}
                   />
-                  <Area type="monotone" dataKey="total" stroke="#3b82f6" strokeWidth={4} fillOpacity={1} fill="url(#colorSales)" />
+                  <Area type="monotone" dataKey="total" stroke="#db1923" strokeWidth={4} fillOpacity={1} fill="url(#colorSales)" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>

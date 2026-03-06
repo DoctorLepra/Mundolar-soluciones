@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
+import { usePageTitle } from '@/hooks/usePageTitle';
 import { formatCurrency } from '@/lib/utils';
 import { convertToWebP } from '@/lib/image-utils';
 import * as XLSX from 'xlsx';
@@ -58,6 +59,7 @@ interface UserProfile {
 }
 
 export default function AdminProductsPage() {
+  usePageTitle('Productos');
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1031,7 +1033,7 @@ export default function AdminProductsPage() {
 
                 <button 
                   onClick={handleOpenCreateModal}
-                  className="flex items-center justify-center gap-2 bg-primary text-white px-6 py-2.5 rounded-2xl font-bold hover:bg-primary/90 transition-all shadow-lg shadow-primary/25 active:scale-95 shrink-0 text-sm"
+                  className="flex items-center justify-center gap-2 bg-primary text-white px-6 py-2.5 rounded-2xl font-bold hover:bg-primary-dark transition-all shadow-lg shadow-primary/25 active:scale-95 shrink-0 text-sm"
                 >
                   <span className="material-symbols-outlined text-[20px]">add</span>
                   Nuevo Producto
@@ -1644,7 +1646,7 @@ export default function AdminProductsPage() {
                       <td className="px-6 py-4">
                         <div className="flex flex-wrap gap-1">
                           {p._errorFields.map((f: string, i: number) => (
-                            <span key={i} className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase border ${f === 'Agregar imagen' ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-red-50 text-red-600 border-red-200'}`}>{f}</span>
+                            <span key={i} className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase border ${f === 'Agregar imagen' ? 'bg-primary/5 text-primary border-primary/20' : 'bg-red-50 text-red-600 border-red-200'}`}>{f}</span>
                           ))}
                         </div>
                       </td>
@@ -1675,7 +1677,7 @@ export default function AdminProductsPage() {
                   onClick={async () => {
                     await finalizeImport(processedBulkData);
                   }}
-                  className="flex-[2] px-6 py-4 bg-primary text-white rounded-2xl text-base font-bold hover:bg-blue-600 transition-all shadow-xl shadow-primary/30 font-display flex items-center justify-center gap-2"
+                  className="flex-[2] px-6 py-4 bg-primary text-white rounded-2xl text-base font-bold hover:bg-primary-dark transition-all shadow-xl shadow-primary/30 font-display flex items-center justify-center gap-2"
                 >
                   <span className="material-symbols-outlined text-2xl">publish</span>
                   Confirmar y Subir {processedBulkData.length} Productos

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { usePageTitle } from '@/hooks/usePageTitle';
 import RoleGuard from '@/components/admin/RoleGuard';
 import { 
   UserPlus, 
@@ -27,6 +28,7 @@ interface Profile {
 }
 
 export default function UsuariosPage() {
+  usePageTitle('Usuarios');
   return (
     <RoleGuard allowedRoles={['Admin']}>
       <UsuariosPageContent />
@@ -170,7 +172,7 @@ function UsuariosPageContent() {
           </div>
           <button 
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center justify-center gap-2 bg-primary text-white px-6 py-3 rounded-2xl font-bold hover:bg-primary/90 transition-all shadow-lg shadow-primary/25 active:scale-95"
+            className="flex items-center justify-center gap-2 bg-primary text-white px-6 py-3 rounded-2xl font-bold hover:bg-primary-dark transition-all shadow-lg shadow-primary/25 active:scale-95"
           >
             <UserPlus size={20} />
             Nuevo Usuario

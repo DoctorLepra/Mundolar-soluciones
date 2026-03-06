@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
 import { 
   Lock, 
@@ -12,8 +13,10 @@ import {
   Eye,
   EyeOff
 } from 'lucide-react';
+import { usePageTitle } from '@/hooks/usePageTitle';
 
 export default function LoginPage() {
+  usePageTitle('Iniciar Sesión');
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -89,8 +92,8 @@ export default function LoginPage() {
       <div className="w-full max-w-[440px] z-10">
         {/* Logo Section */}
         <div className="flex flex-col items-center mb-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
-          <div className="size-16 bg-white rounded-[24px] shadow-xl shadow-primary/10 flex items-center justify-center mb-4 border border-slate-100 translate-y-0 hover:translate-y-[-4px] transition-transform duration-300">
-             <Router size={32} className="text-primary font-bold" />
+          <div className="bg-white rounded-[24px] shadow-xl shadow-primary/10 flex items-center justify-center mb-4 border border-slate-100 translate-y-0 hover:translate-y-[-4px] transition-transform duration-300 p-4">
+             <Image src="/img/logo-rojo-negro.png" alt="Mundolar" width={200} height={50} className="h-12 w-auto object-contain" />
           </div>
           <h1 className="text-3xl font-black text-slate-900 font-display tracking-tight text-center">Mundolar Admin</h1>
           <p className="text-slate-500 font-medium mt-1">

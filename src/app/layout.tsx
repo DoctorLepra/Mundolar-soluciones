@@ -1,21 +1,12 @@
 import type { Metadata } from "next";
-import { Space_Grotesk, Noto_Sans } from "next/font/google";
 import "./globals.css";
 
-const spaceGrotesk = Space_Grotesk({
-  variable: "--font-space-grotesk",
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
-});
-
-const notoSans = Noto_Sans({
-  variable: "--font-noto-sans",
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
-});
 
 export const metadata: Metadata = {
-  title: "Mundolar Soluciones",
+  title: {
+    default: "Inicio | Mundolar Soluciones",
+    template: "%s | Mundolar Soluciones",
+  },
   description: "Telecomunicaciones Profesionales",
 };
 
@@ -32,14 +23,18 @@ export default function RootLayout({
     <html lang="es">
       <head>
         <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Imperial+Script&family=Rethink+Sans:ital,wght@0,400..800;1,400..800&family=Unbounded:wght@200..900&display=swap" rel="stylesheet" />
+        <link rel="icon" href="/img/logo-rojo-blanco.png" type="image/png" />
         <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content="#2563eb" />
+        <meta name="theme-color" content="#db1923" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="Mundolar" />
       </head>
       <body
-        className={`${spaceGrotesk.variable} ${notoSans.variable} antialiased bg-background-light text-slate-900 font-body`}
+        className="antialiased bg-background-light text-slate-900 font-body"
       >
         <CartProvider>
           <Navbar />

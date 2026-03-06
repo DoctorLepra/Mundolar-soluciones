@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import Image from 'next/image';
+import { usePageTitle } from '@/hooks/usePageTitle';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { notifyAdmins } from '@/lib/notifications';
@@ -527,7 +528,7 @@ function AdminQuotesPageContent() {
         </div>
         <button 
           onClick={() => setIsCreateModalOpen(true)}
-          className="bg-primary hover:bg-blue-600 text-white px-5 py-2.5 rounded-lg font-bold text-sm transition-colors shadow-lg shadow-primary/20 flex items-center gap-2"
+          className="bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-lg font-bold text-sm transition-colors shadow-lg shadow-primary/20 flex items-center gap-2"
         >
           <span className="material-symbols-outlined text-[20px]">add</span>
           Crear Cotización
@@ -546,7 +547,7 @@ function AdminQuotesPageContent() {
             ].map((card) => {
               const count = quotes.filter(q => q.status === card.status).length;
               const colorClasses: any = {
-                blue: { bg: 'bg-blue-50', text: 'text-blue-600' },
+                blue: { bg: 'bg-primary/5', text: 'text-primary' },
                 emerald: { bg: 'bg-emerald-50', text: 'text-emerald-600' },
                 amber: { bg: 'bg-amber-50', text: 'text-amber-600' },
                 red: { bg: 'bg-red-50', text: 'text-red-600' }
@@ -773,7 +774,7 @@ function AdminQuotesPageContent() {
 
                     {/* Atribución */}
                     <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 flex items-center gap-3">
-                      <div className="size-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+                      <div className="size-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
                         <span className="material-symbols-outlined text-xl">person_edit</span>
                       </div>
                       <div>
@@ -888,7 +889,7 @@ function AdminQuotesPageContent() {
                                 else alert('No hay correo registrado');
                                 setIsContactMenuOpen(false);
                               }}
-                              className="w-full text-left px-4 py-3 text-sm font-bold text-blue-600 hover:bg-blue-50 flex items-center gap-3 transition-colors"
+                              className="w-full text-left px-4 py-3 text-sm font-bold text-primary hover:bg-primary/5 flex items-center gap-3 transition-colors"
                             >
                               <span className="material-symbols-outlined text-[20px]">mail</span>
                               Correo ({quotes.find(q => q.id === selectedQuoteId)?.clients?.email || 'Sin correo'})
@@ -952,7 +953,7 @@ function AdminQuotesPageContent() {
 
                       <button 
                         onClick={() => window.location.href = `/admin/pedidos?create=true&fromQuote=${selectedQuoteId}`}
-                        className="col-span-2 w-full flex items-center justify-center gap-2 px-3 py-3.5 bg-primary hover:bg-blue-600 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-primary/20 font-display mt-2"
+                        className="col-span-2 w-full flex items-center justify-center gap-2 px-3 py-3.5 bg-primary hover:bg-primary-dark text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-primary/20 font-display mt-2"
                       >
                         <span className="material-symbols-outlined text-[20px]">shopping_cart_checkout</span>
                         Convertir a Pedido
@@ -1066,7 +1067,7 @@ function AdminQuotesPageContent() {
                       fetchProducts();
                       setIsProductSearchModalOpen(true);
                     }}
-                    className="bg-primary hover:bg-blue-600 text-white px-4 py-2 rounded-xl font-bold text-xs transition-all shadow-lg shadow-primary/20 flex items-center gap-1.5"
+                    className="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-xl font-bold text-xs transition-all shadow-lg shadow-primary/20 flex items-center gap-1.5"
                   >
                     <span className="material-symbols-outlined text-[18px]">add</span>
                     Agregar Productos
@@ -1213,7 +1214,7 @@ function AdminQuotesPageContent() {
               </button>
               <button 
                 onClick={handleSubmitQuote}
-                className="flex-1 px-4 py-3 bg-primary text-white rounded-xl font-bold hover:bg-blue-600 shadow-lg shadow-primary/20 transition-all disabled:opacity-50"
+                className="flex-1 px-4 py-3 bg-primary text-white rounded-xl font-bold hover:bg-primary-dark shadow-lg shadow-primary/20 transition-all disabled:opacity-50"
                 disabled={isSubmitting}
               >
                 {isSubmitting ? 'Guardando...' : 'Generar Cotización'}
@@ -1384,6 +1385,7 @@ function AdminQuotesPageContent() {
 }
 
 export default function AdminQuotesPage() {
+  usePageTitle('Cotizaciones');
   return (
     <Suspense fallback={<div>Cargando...</div>}>
       <AdminQuotesPageContent />

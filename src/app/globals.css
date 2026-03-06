@@ -1,5 +1,6 @@
 @import "tailwindcss";
 
+
 html {
   scroll-behavior: smooth;
 }
@@ -8,9 +9,9 @@ html {
   --background: #ffffff;
   --foreground: #171717;
 
-  /* Custom Colors from index.html */
-  --color-primary: #137fec;
-  --color-primary-dark: #0b5cb5;
+  /* Custom Colors from Mundolar Brand */
+  --color-primary: #db1923;
+  --color-primary-dark: #b0141c;
   --color-background-light: #f6f7f8;
   --color-surface-light: #ffffff;
 }
@@ -24,22 +25,19 @@ html {
   --color-background-light: var(--color-background-light);
   --color-surface-light: var(--color-surface-light);
 
-  --font-display: var(--font-space-grotesk);
-  --font-body: var(--font-noto-sans);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    /* Keeping light mode defaults for now as original app seems predominantly light mode or managed manually */
-    /* --background: #0a0a0a; */
-    /* --foreground: #ededed; */
-  }
+  --font-display: "Rethink Sans", sans-serif;
+  --font-body: "Geist", sans-serif;
+  --font-sans: "Geist", sans-serif;
 }
 
 body {
   background: var(--color-background-light);
   color: var(--foreground);
   font-family: var(--font-body);
+}
+
+h1, h2, h3, h4, h5, h6, .font-display, button {
+  font-family: var(--font-display) !important;
 }
 
 /* Material Symbols Utilities */

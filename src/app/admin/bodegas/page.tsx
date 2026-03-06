@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
+import { usePageTitle } from '@/hooks/usePageTitle';
 import RoleGuard from '@/components/admin/RoleGuard';
 import { formatCurrency } from '@/lib/utils';
 import * as XLSX from 'xlsx';
@@ -18,6 +19,7 @@ interface Warehouse {
 }
 
 export default function AdminWarehousesPage() {
+  usePageTitle('Bodegas');
   return (
     <RoleGuard allowedRoles={['Admin']}>
       <AdminWarehousesPageContent />
@@ -280,7 +282,7 @@ function AdminWarehousesPageContent() {
             </button>
             <button 
               onClick={handleOpenCreateModal}
-              className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2.5 rounded-lg font-bold shadow-lg shadow-primary/20 transition-all text-sm"
+              className="flex items-center gap-2 bg-primary hover:bg-primary-dark text-white px-4 py-2.5 rounded-lg font-bold shadow-lg shadow-primary/20 transition-all text-sm"
             >
               <span className="material-symbols-outlined text-[20px]">add</span>
               Nueva Bodega
@@ -493,7 +495,7 @@ function AdminWarehousesPageContent() {
                 <button 
                   type="submit" 
                   disabled={isSubmitting}
-                  className="flex-1 px-4 py-3 bg-primary text-white rounded-xl font-bold hover:bg-primary/90 shadow-lg shadow-primary/25 disabled:opacity-50 transition-all text-sm"
+                  className="flex-1 px-4 py-3 bg-primary text-white rounded-xl font-bold hover:bg-primary-dark shadow-lg shadow-primary/25 disabled:opacity-50 transition-all text-sm"
                 >
                   {isSubmitting ? 'Guardando...' : (warehouseToEdit ? 'Actualizar' : 'Crear Bodega')}
                 </button>

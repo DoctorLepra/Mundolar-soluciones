@@ -5,17 +5,166 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useCart } from '@/context/CartContext';
 import { formatCurrency } from '@/lib/utils';
+import { supabase } from '@/lib/supabase';
+import { colombiaData, departments } from '@/lib/colombia-data';
 
 export default function CartPage() {
-  const { cart, removeFromCart, updateQuantity, cartTotal, cartCount } = useCart();
+  const { cart, removeFromCart, updateQuantity, cartTotal, cartCount, clearCart } = useCart();
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [isModalOpen, setIsModalOpen] = React.useState(false);
 
-  const taxes = cartTotal * 0.19; // Example tax calculation if total doesn't include it, 
-  // but our cartTotal already uses price_with_iva. 
-  // Let's assume the price_with_iva IS the final price.
-  // The HTML showed "Impuestos (Estimado)" separate.
-  // If cartTotal is with IVA, then Subtotal = Total / 1.19
+  // Form states
+  const [formData, setFormData] = React.useState({
+    full_name: '',
+    document_type: '',
+    document_number: '',
+    phone: '',
+    email: '',
+    department: '',
+    municipality: '',
+    address: ''
+  });
+
   const subtotal = cartTotal / 1.19;
   const estimatedTax = cartTotal - subtotal;
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => {
+      const newData = { ...prev, [name]: value };
+      if (name === 'department') {
+        newData.municipality = '';
+      }
+      return newData;
+    });
+  };
+
+  const handleCheckout = async () => {
+    // Validation
+    const requiredFields = ['full_name', 'document_type', 'document_number', 'phone', 'email', 'department', 'municipality', 'address'];
+    for (const field of requiredFields) {
+      if (!formData[field as keyof typeof formData]) {
+        alert(`Por favor complete el campo: ${field.replace('_', ' ')}`);
+        return;
+      }
+    }
+
+    setIsSubmitting(true);
+    try {
+      // 1. Create or Update Client
+      // Check if client exists by document_number
+      let clientId: string;
+      const { data: existingClient } = await supabase
+        .from('clients')
+        .select('id')
+        .eq('document_number', formData.document_number)
+        .maybeSingle();
+
+      if (existingClient) {
+        clientId = existingClient.id;
+        // Update existing client data if needed
+        await supabase.from('clients').update({
+          full_name: formData.full_name,
+          phone: formData.phone,
+          email: formData.email,
+          department: formData.department,
+          municipality: formData.municipality,
+          address: formData.address,
+          document_type: formData.document_type
+        }).eq('id', clientId);
+      } else {
+        const { data: newClient, error: clientError } = await supabase
+          .from('clients')
+          .insert({
+            full_name: formData.full_name,
+            document_type: formData.document_type,
+            document_number: formData.document_number,
+            phone: formData.phone,
+            email: formData.email,
+            department: formData.department,
+            municipality: formData.municipality,
+            address: formData.address,
+            client_type: 'Natural',
+            source: 'Nuevo',
+            source_type: 'Nuevo',
+            status: 'Activo'
+          })
+          .select()
+          .maybeSingle();
+
+        if (clientError) throw clientError;
+        
+        // If select() returned nothing (RLS), try to get the ID by searching again
+        if (!newClient) {
+          const { data: reFetchedClient } = await supabase
+            .from('clients')
+            .select('id')
+            .eq('document_number', formData.document_number)
+            .maybeSingle();
+          
+          if (!reFetchedClient) throw new Error('Error al confirmar la creación del cliente.');
+          clientId = reFetchedClient.id;
+        } else {
+          clientId = newClient.id;
+        }
+      }
+
+      // 2. Create Order
+      const { data: order, error: orderError } = await supabase
+        .from('orders')
+        .insert({
+          client_id: clientId,
+          total_amount: cartTotal,
+          subtotal: subtotal,
+          discount_percentage: 0,
+          status: 'Pendiente',
+          shipping_address: {
+            department: formData.department,
+            municipality: formData.municipality,
+            address: formData.address,
+            phone: formData.phone,
+            email: formData.email
+          }
+        })
+        .select()
+        .maybeSingle();
+
+      if (orderError) throw orderError;
+      if (!order) throw new Error('No se pudo crear el pedido.');
+
+      // 3. Create Order Items
+      const orderItems = cart.map(item => ({
+        order_id: order.id,
+        product_id: item.id,
+        quantity: item.quantity,
+        price_at_purchase: item.price_with_iva || (item.price * 1.19)
+      }));
+
+      const { error: itemsError } = await supabase
+        .from('order_items')
+        .insert(orderItems);
+
+      if (itemsError) throw itemsError;
+
+      // 4. WhatsApp Redirection
+      const productList = cart.map(item => `- ${item.name} (x${item.quantity})`).join('%0A');
+      const orderLink = `${window.location.origin}/pedido/${btoa('ML-' + order.id)}`;
+      const message = `Hola quiero realizar la compra de los siguientes productos:%0A${productList}%0A%0AFactura/Pedido: ${orderLink}`;
+      
+      const whatsappUrl = `https://api.whatsapp.com/send?phone=573052200300&text=${message}`;
+      
+      clearCart();
+      window.open(whatsappUrl, '_blank');
+      
+    } catch (error: any) {
+      console.error('Error in checkout details:', error);
+      // Use Object.getOwnPropertyNames to get non-enumerable properties like 'message' or 'details'
+      const errorDetail = error?.message || error?.details || JSON.stringify(error, Object.getOwnPropertyNames(error));
+      alert(`Hubo un error procesando su pedido: ${errorDetail}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   if (cart.length === 0) {
     return (
@@ -38,12 +187,6 @@ export default function CartPage() {
   return (
     <div className="bg-background-light min-h-screen">
       <main className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex flex-wrap items-center gap-2 mb-6 text-sm">
-          <Link href="/" className="text-slate-500 hover:text-primary transition-colors">Inicio</Link>
-          <span className="text-slate-300">/</span>
-          <span className="text-slate-900 font-medium">Carrito</span>
-        </div>
-
         <div className="mb-8">
           <h1 className="text-3xl md:text-4xl font-bold text-slate-900 tracking-tight">
             Tu Carrito ({cartCount} {cartCount === 1 ? 'Artículo' : 'Artículos'})
@@ -51,7 +194,8 @@ export default function CartPage() {
         </div>
 
         <div className="flex flex-col lg:flex-row gap-8">
-          <div className="flex-1 w-full">
+          <div className="flex-1 w-full space-y-8">
+            {/* Products List */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
               <div className="hidden md:grid grid-cols-12 gap-4 px-6 py-4 bg-slate-50 border-b border-slate-200 text-xs font-semibold uppercase tracking-wider text-slate-500">
                 <div className="col-span-6">Producto</div>
@@ -136,12 +280,6 @@ export default function CartPage() {
                 })}
               </div>
             </div>
-            
-            <div className="mt-6 flex justify-between items-center">
-              <Link href="/catalogo" className="flex items-center gap-2 text-primary hover:text-blue-700 font-medium text-sm transition-colors">
-                <span className="material-symbols-outlined text-lg">arrow_back</span> Continuar Comprando
-              </Link>
-            </div>
           </div>
 
           <div className="w-full lg:w-96 shrink-0">
@@ -170,14 +308,10 @@ export default function CartPage() {
                   </div>
                 </div>
                 
-                <div className="mb-6">
-                  <div className="relative flex items-center">
-                    <input className="w-full rounded-lg border-slate-300 bg-slate-50 text-sm text-slate-900 focus:ring-primary focus:border-primary pr-20 py-2.5" placeholder="Código promocional" type="text"/>
-                    <button className="absolute right-1 top-1 bottom-1 px-3 text-xs font-bold text-primary hover:bg-primary/10 rounded transition-colors uppercase">Aplicar</button>
-                  </div>
-                </div>
-                
-                <button className="w-full bg-primary hover:bg-blue-600 text-white font-bold py-3.5 px-4 rounded-lg shadow-lg shadow-blue-500/30 transition-all hover:scale-[1.02] flex items-center justify-center gap-2">
+                <button 
+                  onClick={() => setIsModalOpen(true)}
+                  className="w-full bg-primary hover:bg-blue-600 text-white font-bold py-3.5 px-4 rounded-lg shadow-lg shadow-blue-500/30 transition-all hover:scale-[1.02] flex items-center justify-center gap-2"
+                >
                   <span>Proceder al Pago</span>
                   <span className="material-symbols-outlined text-lg">arrow_forward</span>
                 </button>
@@ -185,12 +319,7 @@ export default function CartPage() {
                 <div className="mt-6 pt-6 border-t border-slate-100 flex flex-col items-center gap-3">
                   <div className="flex items-center gap-1 text-xs text-slate-500">
                     <span className="material-symbols-outlined text-sm text-green-600">lock</span>
-                    Pago Seguro Encriptado SSL
-                  </div>
-                  <div className="flex gap-3 opacity-60">
-                    <span className="material-symbols-outlined text-2xl">credit_card</span>
-                    <span className="material-symbols-outlined text-2xl">account_balance</span>
-                    <span className="material-symbols-outlined text-2xl">payments</span>
+                    Procesamiento de Pedido Seguro
                   </div>
                 </div>
               </div>
@@ -198,6 +327,141 @@ export default function CartPage() {
           </div>
         </div>
       </main>
+
+      {/* Checkout Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 md:p-8 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white z-10">
+              <h2 className="text-2xl font-bold text-slate-900">Finalizar Pedido</h2>
+              <button 
+                onClick={() => setIsModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            
+            <div className="p-6 md:p-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <div className="md:col-span-2 flex flex-col gap-2">
+                  <span className="text-slate-700 text-sm font-semibold">Nombre Completo</span>
+                  <input 
+                    name="full_name"
+                    value={formData.full_name}
+                    onChange={handleInputChange}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
+                    placeholder="Nombre completo" 
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <span className="text-slate-700 text-sm font-semibold">Tipo de documento</span>
+                  <select 
+                    name="document_type"
+                    value={formData.document_type}
+                    onChange={handleInputChange}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
+                  >
+                    <option value="">Seleccione...</option>
+                    <option value="CC">Cédula de Ciudadanía</option>
+                    <option value="NIT">NIT</option>
+                    <option value="CE">Cédula de Extranjería</option>
+                  </select>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <span className="text-slate-700 text-sm font-semibold">Número de documento</span>
+                  <input 
+                    name="document_number"
+                    value={formData.document_number}
+                    onChange={handleInputChange}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
+                    placeholder="Número de identificación" 
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <span className="text-slate-700 text-sm font-semibold">Teléfono de contacto</span>
+                  <input 
+                    name="phone"
+                    value={formData.phone}
+                    onChange={handleInputChange}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
+                    placeholder="Ej: 300 123 4567" 
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <span className="text-slate-700 text-sm font-semibold">Correo electrónico</span>
+                  <input 
+                    name="email"
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
+                    placeholder="ejemplo@correo.com" 
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <span className="text-slate-700 text-sm font-semibold">Departamento</span>
+                  <select 
+                    name="department"
+                    value={formData.department}
+                    onChange={handleInputChange}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
+                  >
+                    <option value="">Seleccione departamento...</option>
+                    {departments.map((dept) => (
+                      <option key={dept} value={dept}>{dept}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <span className="text-slate-700 text-sm font-semibold">Municipio</span>
+                  <select 
+                    name="municipality"
+                    value={formData.municipality}
+                    onChange={handleInputChange}
+                    disabled={!formData.department}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all disabled:opacity-50"
+                  >
+                    <option value="">Seleccione municipio...</option>
+                    {formData.department && colombiaData[formData.department]?.map((mun) => (
+                      <option key={mun} value={mun}>{mun}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="md:col-span-2 flex flex-col gap-2">
+                  <span className="text-slate-700 text-sm font-semibold">Dirección de residencia</span>
+                  <input 
+                    name="address"
+                    value={formData.address}
+                    onChange={handleInputChange}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
+                    placeholder="Ej: Calle 123 #45-67" 
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-4">
+                <button 
+                  onClick={handleCheckout}
+                  disabled={isSubmitting}
+                  className={`w-full bg-primary hover:bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-primary/25 transition-all flex items-center justify-center gap-2 ${isSubmitting ? 'opacity-70 cursor-wait' : ''}`}
+                >
+                  {isSubmitting ? (
+                    <span className="size-6 border-2 border-white border-t-transparent animate-spin rounded-full"></span>
+                  ) : (
+                    <>
+                      <span>Confirmar y Enviar a WhatsApp</span>
+                      <span className="material-symbols-outlined">send</span>
+                    </>
+                  )}
+                </button>
+                <p className="text-center text-xs text-slate-400">
+                  Al confirmar, sus datos serán procesados para generar el pedido y enviarlo directamente a uno de nuestros asesores por WhatsApp.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

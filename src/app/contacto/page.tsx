@@ -78,7 +78,7 @@ export default function ContactPage() {
                   </div>
                   <div>
                     <h3 className="text-base font-bold text-[#0d141b]">Nuestra Oficina</h3>
-                    <p className="mt-1 text-sm text-[#4c739a]">Av. Providencia 1234, Of. 601<br/>Providencia, Santiago, Chile</p>
+                    <p className="mt-1 text-sm text-[#4c739a]">Carrera 7 #156 - 68 Ed. North Point III<br/>Bogotá D.C., Colombia</p>
                   </div>
                 </div>
                 <div className="group flex items-start gap-4 p-5 bg-white rounded-xl border border-[#e7edf3] hover:border-primary/30 transition-colors shadow-sm">
@@ -87,8 +87,8 @@ export default function ContactPage() {
                   </div>
                   <div>
                     <h3 className="text-base font-bold text-[#0d141b]">Llámanos</h3>
-                    <p className="mt-1 text-sm text-[#4c739a]">Lun-Vie de 9am a 6pm</p>
-                    <a className="text-sm font-medium text-[#0d141b] hover:text-primary mt-1 block" href="tel:+56912345678">+56 9 1234 5678</a>
+                    <p className="mt-1 text-sm text-[#4c739a]">Lun-Vie de 8am a 6pm</p>
+                    <a className="text-sm font-medium text-[#0d141b] hover:text-primary mt-1 block" href="tel:+573052200300">+57 305 220 0300</a>
                   </div>
                 </div>
                 <div className="group flex items-start gap-4 p-5 bg-white rounded-xl border border-[#e7edf3] hover:border-primary/30 transition-colors shadow-sm">
@@ -98,44 +98,25 @@ export default function ContactPage() {
                   <div>
                     <h3 className="text-base font-bold text-[#0d141b]">Escríbenos</h3>
                     <p className="mt-1 text-sm text-[#4c739a]">Respondemos en menos de 24 hrs</p>
-                    <a className="text-sm font-medium text-[#0d141b] hover:text-primary mt-1 block" href="mailto:ventas@mundolarsoluciones.cl">ventas@mundolarsoluciones.cl</a>
+                    <a className="text-sm font-medium text-[#0d141b] hover:text-primary mt-1 block" href="mailto:ventas@mundolarsoluciones.com">ventas@mundolarsoluciones.com</a>
                   </div>
                 </div>
               </div>
-              <div className="relative h-[300px] w-full overflow-hidden rounded-xl border border-[#e7edf3] shadow-sm group">
-                <div className="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105" style={{backgroundImage: "url('https://picsum.photos/600/400?grayscale&random=99')"}}>
-                </div>
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
-                  <span className="material-symbols-outlined text-4xl text-primary drop-shadow-md">location_on</span>
-                  <div className="mt-1 rounded-md bg-white px-2 py-1 text-xs font-bold text-[#0d141b] shadow-lg">Mundolar</div>
-                </div>
-                <a className="absolute bottom-4 right-4 flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-xs font-bold text-[#0d141b] shadow-md hover:bg-slate-50" href="#">
-                  <span>Ver en Google Maps</span>
-                  <span className="material-symbols-outlined text-[16px]">open_in_new</span>
-                </a>
+              <div className="relative h-[400px] w-full overflow-hidden rounded-xl border border-[#e7edf3] shadow-sm">
+                <iframe 
+                  src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3976.2241417870996!2d-74.0238588!3d4.731087099999999!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x8e3f8f8ec5a66bd1%3A0x935ce56e5e7590e2!2zQWsgNyAjMTU2LTY4LCBVc2FxdcOpbiwgQm9nb3TDoQ!5e0!3m2!1ses-419!2sco!4v1772770342479!5m2!1ses-419!2sco" 
+                  className="w-full h-full border-0" 
+                  allowFullScreen={true}
+                  loading="lazy" 
+                  referrerPolicy="no-referrer-when-downgrade"
+                  title="Ubicación Mundolar - North Point III"
+                ></iframe>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="bg-white py-12 border-t border-[#e7edf3]">
-        <div className="max-w-7xl mx-auto flex justify-center px-4 md:px-10">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-8 max-w-[960px] w-full bg-slate-100 rounded-2xl p-8 md:p-10">
-            <div className="flex flex-col gap-3 text-center md:text-left">
-              <div className="flex items-center justify-center md:justify-start gap-2 text-primary">
-                <span className="material-symbols-outlined">help</span>
-                <span className="text-sm font-bold uppercase tracking-wide">Preguntas Frecuentes</span>
-              </div>
-              <h3 className="text-2xl font-bold text-[#0d141b]">¿Tienes dudas rápidas?</h3>
-              <p className="text-[#4c739a] max-w-md">Antes de escribirnos, revisa nuestra sección de ayuda. Es posible que encuentres la respuesta que buscas inmediatamente.</p>
-            </div>
-            <Link href="/servicios" className="shrink-0 rounded-lg bg-slate-200 hover:bg-slate-300 px-6 py-3 text-base font-bold text-[#0d141b] transition-colors">
-              Ver Centro de Ayuda
-            </Link>
-          </div>
-        </div>
-      </section>
     </div>
   );
 }

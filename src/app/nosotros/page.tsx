@@ -74,33 +74,61 @@ export default function AboutPage() {
             En Mundolar Soluciones, no solo vendemos radios; construimos las líneas vitales de comunicación para empresas en toda la región.
           </p>
         </div>
-        <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-8 md:grid-cols-2 xl:grid-cols-4">
           <div className="group relative overflow-hidden rounded-xl bg-white p-8 shadow-sm transition-all hover:shadow-md border border-slate-100">
             <div className="mb-6 inline-flex size-12 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-white transition-colors">
               <span className="material-symbols-outlined text-3xl">flag</span>
             </div>
-            <h3 className="mb-3 text-xl font-bold text-slate-900">Nuestra Misión</h3>
-            <p className="text-slate-600 leading-relaxed">
-              Proporcionar soluciones de comunicación confiables y de vanguardia que permitan a los equipos coordinarse de manera efectiva y segura.
+            <h3 className="mb-3 text-xl font-bold text-slate-900">Misión</h3>
+            <p className="text-slate-600 leading-relaxed text-sm">
+              Ser su mejor aliado, distribuir soluciones confiables con productos de última tecnología y servicios profesionales. Establecemos relaciones de largo plazo con nuestros clientes, equipo de trabajo, proveedores y el medio ambiente.
             </p>
           </div>
           <div className="group relative overflow-hidden rounded-xl bg-white p-8 shadow-sm transition-all hover:shadow-md border border-slate-100">
             <div className="mb-6 inline-flex size-12 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-white transition-colors">
               <span className="material-symbols-outlined text-3xl">visibility</span>
             </div>
-            <h3 className="mb-3 text-xl font-bold text-slate-900">Nuestra Visión</h3>
-            <p className="text-slate-600 leading-relaxed">
-              Ser el referente líder en tecnología de radio y servicio técnico, conocidos por la innovación y un compromiso inquebrantable con la calidad.
+            <h3 className="mb-3 text-xl font-bold text-slate-900">Visión</h3>
+            <p className="text-slate-600 leading-relaxed text-sm">
+              Ser un integrador fuerte en soluciones, expandirnos a nivel empresarial para llegar a ser la empresa con mayor tecnología en la industria a través de la innovación y talento de las personas que trabajan dentro de la organización.
             </p>
           </div>
           <div className="group relative overflow-hidden rounded-xl bg-white p-8 shadow-sm transition-all hover:shadow-md border border-slate-100">
             <div className="mb-6 inline-flex size-12 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-white transition-colors">
               <span className="material-symbols-outlined text-3xl">handshake</span>
             </div>
-            <h3 className="mb-3 text-xl font-bold text-slate-900">Valores Centrales</h3>
-            <p className="text-slate-600 leading-relaxed">
-              Integridad en cada trato, excelencia técnica en cada reparación y un enfoque en el cliente que define nuestras operaciones diarias.
-            </p>
+            <h3 className="mb-3 text-xl font-bold text-slate-900">Valores</h3>
+            <ul className="text-slate-600 leading-snug text-sm space-y-1">
+              <li>• Brindamos soluciones</li>
+              <li>• Transmitimos calidad</li>
+              <li>• Garantizamos seguridad</li>
+              <li>• Siempre comprometidos</li>
+              <li>• Trabajo en equipo</li>
+              <li>• Innovación tecnológica</li>
+              <li>• Responsables con el medio ambiente</li>
+            </ul>
+          </div>
+          <div className="group relative overflow-hidden rounded-xl bg-white p-8 shadow-sm transition-all hover:shadow-md border border-slate-100">
+            <div className="mb-6 inline-flex size-12 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-white transition-colors">
+              <span className="material-symbols-outlined text-3xl">domain</span>
+            </div>
+            <h3 className="mb-3 text-xl font-bold text-slate-900">Sectores</h3>
+            <div className="grid grid-cols-2 gap-x-2 text-slate-600 text-[11px] leading-tight">
+              <ul className="space-y-1">
+                <li>• Comercial</li>
+                <li>• Educación</li>
+                <li>• Hotelería</li>
+                <li>• Banca</li>
+                <li>• Salud</li>
+              </ul>
+              <ul className="space-y-1">
+                <li>• Manufactura</li>
+                <li>• Seguridad Privada</li>
+                <li>• Transporte Logística</li>
+                <li>• Construcción</li>
+                <li>• Minero – Energético</li>
+              </ul>
+            </div>
           </div>
         </div>
       </section>
@@ -139,46 +167,46 @@ export default function AboutPage() {
         </div>
       </section>
 
-      <section className="py-20 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="mb-12 text-center">
-          <h2 className="text-3xl font-bold text-slate-900 sm:text-4xl">Conoce a los Expertos</h2>
-          <p className="mt-4 text-lg text-slate-600 max-w-2xl mx-auto">
-            Las personas detrás de la tecnología. Nuestro equipo de ingenieros y especialistas certificados.
-          </p>
+      <section className="w-full bg-white py-12">
+        <div className="w-full mb-12">
+          <Image 
+              alt="Mundolar - Responsabilidad Ambiental" 
+              src="/img/planeta.png"
+              width={1920}
+              height={600}
+              className="w-full h-auto"
+              priority
+          />
         </div>
-        <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
-          {teamMembers.map(member => (
-            <div key={member.name} className="group flex flex-col items-center text-center">
-              <div className="relative mb-4 size-40 overflow-hidden rounded-full border-4 border-slate-100 group-hover:border-primary transition-colors">
-                <Image 
-                    alt={`Retrato de ${member.name}`} 
-                    className="object-cover transition-transform duration-500 group-hover:scale-110" 
-                    src={member.img}
-                    fill
-                    sizes="160px"
-                />
-              </div>
-              <h3 className="text-lg font-bold text-slate-900">{member.name}</h3>
-              <p className="text-sm text-primary font-medium">{member.role}</p>
-              <p className="mt-2 text-sm text-slate-500">{member.desc}</p>
-            </div>
-          ))}
+        <div className="flex justify-center">
+          <Link 
+            href="https://api.whatsapp.com/send?phone=573052200300&text=Hola,%20quiero%20entregar%20mis%20bater%C3%ADas%20usadas" 
+            target="_blank"
+            className="inline-flex items-center justify-center rounded-lg bg-[#25D366] px-8 py-4 text-lg font-bold text-white transition-all hover:scale-105 shadow-lg"
+          >
+            <span className="material-symbols-outlined mr-2">battery_charging_full</span>
+            Entregar Baterías
+          </Link>
         </div>
       </section>
 
-      <section className="relative overflow-hidden bg-primary py-16">
-        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10"></div>
-        <div className="relative mx-auto max-w-7xl px-4 text-center sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">¿Listo para mejorar tu comunicación?</h2>
-          <p className="mx-auto mt-4 max-w-2xl text-lg text-blue-100">
+      {/* Footer Call to Action */}
+      <section className="bg-primary rounded-2xl overflow-hidden relative max-w-[1440px] mx-auto mb-16 shadow-2xl">
+        <div className="absolute inset-0 opacity-10" style={{backgroundImage: 'url("https://www.transparenttextures.com/patterns/carbon-fibre.png")'}}></div>
+        <div className="relative z-10 p-8 md:p-16 text-center text-white flex flex-col items-center gap-6">
+          <h2 className="text-3xl md:text-4xl font-bold">¿Listo para mejorar tu comunicación?</h2>
+          <p className="max-w-2xl opacity-90 text-lg">
             Explora nuestro catálogo de radios portátiles y móviles de primer nivel o contacta a nuestro equipo para una cotización personalizada.
           </p>
           <div className="mt-8 flex justify-center gap-4 flex-wrap">
-            <Link href="/catalogo" className="inline-flex items-center justify-center rounded-lg bg-white px-6 py-3 text-base font-bold text-primary transition-all hover:bg-slate-50 shadow-lg">
-              <span className="material-symbols-outlined mr-2">shopping_bag</span>
+            <Link href="/catalogo" className="bg-white hover:bg-slate-50 text-primary font-bold py-4 px-10 rounded-xl transition-all hover:scale-105 shadow-xl whitespace-nowrap">
               Comprar Ahora
             </Link>
-            <Link href="/contacto" className="inline-flex items-center justify-center rounded-lg border-2 border-white px-6 py-3 text-base font-bold text-white transition-all hover:bg-white/10">
+            <Link 
+              href="https://api.whatsapp.com/send?phone=573052200300&text=Hola,%20necesito%20soporte%20t%C3%A9cnico%20para%20mis%20equipos" 
+              target="_blank"
+              className="inline-flex items-center justify-center rounded-xl border-2 border-white px-8 py-4 text-base font-bold text-white transition-all hover:bg-white/10"
+            >
               Contactar Soporte
             </Link>
           </div>

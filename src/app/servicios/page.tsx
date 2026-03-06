@@ -1,98 +1,176 @@
 
+import React from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { supabase } from '@/lib/supabase';
+import ServicesHeroActions from '@/components/services/ServicesHeroActions';
 
-export default function ServicesPage() {
+interface Brand {
+  id: number;
+  name: string;
+  image_url: string | null;
+}
+
+async function getBrands() {
+  const { data, error } = await supabase
+    .from('brands')
+    .select('id, name, image_url')
+    .eq('status', 'Activo')
+    .order('position', { ascending: true, nullsFirst: false });
+
+  if (error) {
+    console.error('Error fetching brands:', error);
+    return [];
+  }
+  return data as Brand[];
+}
+
+export default async function ServicesPage() {
+  const brands = await getBrands();
+  const whatsappNumber = "573052200300";
+
+  const services = [
+    {
+      title: "Venta de Equipos",
+      desc: "Radios análogos, digitales, portátiles, móviles, repetidores, controladores, gateways, equipos poc, antenas, duplexer, fuentes, baterías de respaldo, seguridad y redes.",
+      icon: "shopping_cart",
+      bgIcon: "bg-red-50",
+      textColor: "text-red-600"
+    },
+    {
+      title: "Mantenimiento",
+      desc: "Servicios de soporte, mantenimiento, asesorías técnica y acompañamiento, aseguramos el correcto funcionamiento de sus radios de comunicación.",
+      icon: "check_circle",
+      bgIcon: "bg-red-50",
+      textColor: "text-red-600"
+    },
+    {
+      title: "Alquiler",
+      desc: "Disponemos de una gran variedad de equipos en las bandas UHF y VHF, cumpliendo con los requisitos legales, técnicos y de calidad para su uso.",
+      icon: "handshake",
+      bgIcon: "bg-red-50",
+      textColor: "text-red-600"
+    },
+    {
+      title: "Pruebas en Sitio",
+      desc: "Pruebas en sitio en cuanto a cobertura, con diferentes opciones con la finalidad de suministrar el mejor equipo que se ajuste a las necesidades de nuestro cliente.",
+      icon: "public",
+      bgIcon: "bg-red-50",
+      textColor: "text-red-600"
+    },
+    {
+      title: "Programaciones",
+      desc: "Programación de sus radios de comunicaciones, optimizando las funcionalidades de los equipos al momento de efectuar las operaciones.",
+      icon: "settings_suggest",
+      bgIcon: "bg-red-50",
+      textColor: "text-red-600"
+    },
+    {
+      title: "Instalaciones",
+      desc: "Servicio con los debidos protocolos y requisitos de seguridad y salud en el trabajo, con personal capacitado para brindar la mejor estabilidad en sus comunicaciones.",
+      icon: "local_offer",
+      bgIcon: "bg-red-50",
+      textColor: "text-red-600"
+    }
+  ];
+
   return (
     <div className="w-full">
-      <div className="w-full bg-white px-6 py-4 lg:px-20 border-b border-[#e7edf3]">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2">
-          <Link className="text-[#4c739a] text-sm font-medium hover:underline" href="/">Inicio</Link>
-          <span className="text-[#4c739a] text-sm">/</span>
-          <span className="text-[#0d141b] text-sm font-semibold">Servicios</span>
+      {/* Hero Section */}
+      <section className="relative w-full overflow-hidden bg-slate-900 min-h-[500px] flex flex-col justify-center">
+        <div className="absolute inset-0 z-0">
+          <Image 
+            alt="Taller de electrónica Mundolar" 
+            className="object-cover opacity-40" 
+            src="https://images.unsplash.com/photo-1581092160607-ee22621dd758?q=80&w=2070&auto=format&fit=crop" 
+            fill
+            sizes="100vw"
+            priority
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/50 to-transparent"></div>
         </div>
-      </div>
+        <div className="relative z-10 mx-auto flex max-w-7xl flex-col items-center justify-center px-4 py-20 text-center sm:px-6 lg:px-8">
+          <div className="mb-6 flex items-center gap-2">
+            <span className="flex h-2 w-2 rounded-full bg-primary"></span>
+            <span className="text-xs font-bold uppercase tracking-wider text-primary">Centro de Servicio Autorizado</span>
+          </div>
+          <h1 className="font-display text-4xl font-extrabold tracking-tight text-white sm:text-5xl md:text-6xl max-w-4xl leading-tight">
+            Soluciones Expertas en <span className="text-primary">Radiocomunicación</span>
+          </h1>
+          <p className="mt-6 max-w-2xl text-lg text-slate-300 sm:text-xl">
+            Mantenemos a su equipo conectado. Desde el mantenimiento de radios portátiles y móviles hasta la instalación de infraestructura compleja.
+          </p>
+          <ServicesHeroActions />
+        </div>
+      </section>
 
-      <div className="w-full px-6 py-8 lg:px-20 lg:py-12">
-        <div className="mx-auto max-w-7xl">
-          <div className="relative overflow-hidden rounded-2xl bg-[#101922] min-h-[500px] flex items-center">
-            <div className="absolute inset-0 z-0">
-              <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/50 to-transparent z-10"></div>
-              <Image 
-                alt="Taller de electrónica" 
-                className="object-cover opacity-60" 
-                src="https://images.unsplash.com/photo-1581092160607-ee22621dd758?q=80&w=2070&auto=format&fit=crop" 
-                fill
-                sizes="100vw"
-                priority
-              />
-            </div>
-            <div className="relative z-10 flex flex-col gap-6 px-6 py-16 md:px-12 md:py-24 lg:max-w-2xl">
-              <div className="flex items-center gap-2">
-                <span className="flex h-2 w-2 rounded-full bg-primary"></span>
-                <span className="text-xs font-bold uppercase tracking-wider text-primary">Centro de Servicio Autorizado</span>
-              </div>
-              <h1 className="text-4xl font-black leading-tight tracking-tight text-white sm:text-5xl lg:text-6xl">
-                Soluciones Expertas en Radiocomunicación
-              </h1>
-              <p className="text-lg font-light leading-relaxed text-gray-200">
-                Mantenemos a su equipo conectado. Desde el mantenimiento de radios portátiles y móviles hasta la instalación de infraestructura compleja.
-              </p>
-              <div className="flex flex-wrap gap-4 pt-4">
-                <Link href="/contacto" className="flex items-center justify-center rounded-lg bg-primary px-8 py-3 text-base font-bold text-white shadow-lg transition-transform hover:scale-105 hover:bg-blue-600">
-                  Solicitar Cotización
-                </Link>
-                <Link href="/catalogo" className="flex items-center justify-center rounded-lg border border-white/20 bg-white/10 px-8 py-3 text-base font-bold text-white backdrop-blur-sm transition-colors hover:bg-white/20">
-                  Ver Productos
-                </Link>
-              </div>
+      {/* Brands Logo Loop */}
+      <section className="border-y border-slate-200 py-12 overflow-hidden bg-white">
+        <div className="max-w-[1440px] mx-auto px-4 md:px-10">
+          <p className="text-center text-sm font-medium text-slate-500 mb-8 uppercase tracking-wider">Distribuidor Autorizado De</p>
+          
+          <div className="relative">
+            <div className="logo-loop-container gap-12 md:gap-24 opacity-60 grayscale hover:grayscale-0 transition-all duration-500">
+              {brands.length > 0 ? (
+                [...brands, ...brands, ...brands].map((brand, idx) => (
+                  <div key={`${brand.id}-${idx}`} className="relative h-12 w-32 md:w-40 flex items-center justify-center shrink-0">
+                    {brand.image_url ? (
+                      <Image 
+                        src={brand.image_url} 
+                        alt={brand.name} 
+                        fill 
+                        className="object-contain"
+                      />
+                    ) : (
+                      <h3 className="text-xl font-bold text-slate-800 uppercase tracking-tight">{brand.name}</h3>
+                    )}
+                  </div>
+                ))
+              ) : (
+                [1, 2, 3].map((i) => (
+                  <React.Fragment key={i}>
+                    <h3 className="text-2xl font-bold font-sans italic text-slate-800 shrink-0">MOTOROLA</h3>
+                    <h3 className="text-2xl font-bold font-serif text-slate-800 shrink-0">KENWOOD</h3>
+                    <h3 className="text-2xl font-black tracking-tighter text-slate-800 shrink-0">Hytera</h3>
+                    <h3 className="text-2xl font-bold tracking-widest text-slate-800 shrink-0">ICOM</h3>
+                  </React.Fragment>
+                ))
+              )}
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      <div className="w-full border-b border-[#e7edf3] bg-white px-6 py-8 lg:px-20">
-        <div className="mx-auto max-w-7xl text-center">
-          <p className="mb-6 text-sm font-semibold uppercase tracking-wider text-[#4c739a]">Con la confianza de los principales fabricantes</p>
-          <div className="flex flex-wrap justify-center gap-8 md:gap-16 opacity-60 grayscale transition-all hover:grayscale-0">
-            <div className="flex items-center gap-2 text-xl font-bold text-[#0d141b]"><span className="material-symbols-outlined">radio_button_checked</span> MOTOROLA</div>
-            <div className="flex items-center gap-2 text-xl font-bold text-[#0d141b]"><span className="material-symbols-outlined">wifi_tethering</span> KENWOOD</div>
-            <div className="flex items-center gap-2 text-xl font-bold text-[#0d141b]"><span className="material-symbols-outlined">satellite_alt</span> ICOM</div>
-            <div className="flex items-center gap-2 text-xl font-bold text-[#0d141b]"><span className="material-symbols-outlined">router</span> HYTERA</div>
-          </div>
-        </div>
-      </div>
-
-      <div className="w-full bg-[#f6f7f8] px-6 py-16 lg:px-20">
+      {/* Services Grid */}
+      <div id="servicios-grid" className="w-full bg-[#f6f7f8] px-6 py-16 lg:px-20 scroll-mt-10">
         <div className="mx-auto max-w-7xl">
           <div className="mb-12 flex flex-col gap-4 md:text-center md:items-center">
-            <h2 className="max-w-2xl text-3xl font-black leading-tight tracking-tight text-[#0d141b] sm:text-4xl">
+            <h2 className="max-w-2xl text-4xl font-black leading-tight tracking-tight text-[#0d141b] sm:text-5xl">
               Servicios Integrales de Comunicación
             </h2>
             <p className="max-w-2xl text-base text-[#4c739a]">
               Soporte técnico a medida para mantener sus operaciones en marcha, desde unidades individuales hasta gestión completa de flotas.
             </p>
           </div>
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {[
-              { icon: 'build', title: 'Mantenimiento y Reparación', desc: 'Diagnóstico completo y reparación a nivel de componente. Utilizamos repuestos originales para garantizar estándares de fábrica.' },
-              { icon: 'settings_input_antenna', title: 'Programación y Configuración', desc: 'Configuración experta de frecuencias, gestión de flotas, actualizaciones de firmware y servicios de migración digital.' },
-              { icon: 'cell_tower', title: 'Instalación de Infraestructura', desc: 'Estudios de sitio completos e instalación de estaciones base, repetidores y sistemas de antenas para áreas de cobertura robustas.' },
-              { icon: 'support_agent', title: 'Soporte Técnico 24/7', desc: 'Soporte remoto y en sitio para fallos críticos de comunicación. Nos aseguramos de que su equipo nunca esté desconectado.' },
-              { icon: 'shopping_cart', title: 'Venta de Repuestos', desc: 'Acceso directo a baterías, antenas, clips y carcasas genuinas para todas las principales marcas de radio a precios competitivos.' },
-              { icon: 'handshake', title: 'Consultoría de Sistemas', desc: '¿Necesita una solución personalizada? Nuestros ingenieros diseñan redes de comunicación escalables adaptadas a su industria.' }
-            ].map((s, i) => (
-              <div key={i} className="group relative flex flex-col gap-4 rounded-xl border border-[#e7edf3] bg-white p-6 shadow-sm transition-all hover:-translate-y-1 hover:border-primary/50 hover:shadow-md">
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 text-primary group-hover:bg-primary group-hover:text-white transition-colors">
-                  <span className="material-symbols-outlined text-[28px]">{s.icon}</span>
+          
+          <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+            {services.map((s, i) => (
+              <div key={i} className="flex flex-col gap-6 rounded-2xl bg-white p-8 shadow-sm transition-all hover:-translate-y-1 hover:shadow-xl border border-transparent hover:border-slate-100">
+                <div className={`flex h-14 w-14 items-center justify-center rounded-full ${s.bgIcon} ${s.textColor}`}>
+                  <span className="material-symbols-outlined text-[32px] font-bold">{s.icon}</span>
                 </div>
-                <div>
-                  <h3 className="mb-2 text-xl font-bold text-[#0d141b]">{s.title}</h3>
-                  <p className="text-sm leading-relaxed text-[#4c739a]">{s.desc}</p>
+                <div className="space-y-3">
+                  <h3 className="text-2xl font-extrabold text-[#0d141b]">{s.title}</h3>
+                  <p className="text-base leading-relaxed text-[#4c739a] font-medium">{s.desc}</p>
                 </div>
                 <div className="mt-auto pt-4">
-                  <Link className="inline-flex items-center text-sm font-bold text-primary hover:underline" href="/contacto">
-                    Más información <span className="material-symbols-outlined ml-1 text-base">arrow_forward</span>
+                  <Link 
+                    target="_blank"
+                    className="inline-flex items-center gap-2 text-primary font-bold hover:gap-3 transition-all group" 
+                    href={`https://api.whatsapp.com/send?phone=${whatsappNumber}&text=Hola%20estoy%20interesado%20en%20el%20servicio%20de%20${encodeURIComponent(s.title)}`}
+                  >
+                    <span>Más información</span>
+                    <span className="material-symbols-outlined text-xl transition-transform group-hover:translate-x-1">arrow_forward</span>
                   </Link>
                 </div>
               </div>
@@ -101,51 +179,24 @@ export default function ServicesPage() {
         </div>
       </div>
       
-      <div className="w-full bg-white px-6 py-16 lg:px-20">
-        <div className="mx-auto max-w-5xl">
-          <div className="mb-12 text-center">
-            <h2 className="text-3xl font-black text-[#0d141b] sm:text-4xl">Nuestro Proceso de Reparación</h2>
-            <p className="mt-2 text-[#4c739a]">Transparente y eficiente de principio a fin.</p>
-          </div>
-          <div className="relative">
-            <div className="hidden md:block absolute left-0 top-[26px] h-0.5 w-full bg-[#e7edf3]"></div>
-            <div className="grid grid-cols-1 gap-8 md:grid-cols-4 md:gap-4">
-              {[
-                {icon: 'stethoscope', title: 'Diagnóstico', desc: 'Análisis completo en 24h'},
-                {icon: 'description', title: 'Cotización', desc: 'Costo detallado y repuestos'},
-                {icon: 'build_circle', title: 'Reparación', desc: 'Servicio experto y calibración'},
-                {icon: 'local_shipping', title: 'Entrega', desc: 'Retorno seguro a su oficina'}
-              ].map((step, i) => (
-                <div key={i} className="relative flex flex-row items-center gap-4 md:flex-col md:text-center">
-                  <div className={`relative z-10 flex h-14 w-14 shrink-0 items-center justify-center rounded-full border-2 shadow-sm ${i === 0 ? 'border-primary text-primary bg-white' : 'border-gray-200 text-[#0d141b] bg-white'}`}>
-                    <span className="material-symbols-outlined">{step.icon}</span>
-                  </div>
-                  <div className="flex flex-col">
-                    <h3 className="text-lg font-bold text-[#0d141b]">{step.title}</h3>
-                    <p className="text-sm text-[#4c739a]">{step.desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
+      {/* Footer Call to Action */}
+      <section className="bg-primary rounded-2xl overflow-hidden relative max-w-[1440px] mx-auto mb-16 shadow-2xl">
+        <div className="absolute inset-0 opacity-10" style={{backgroundImage: 'url("https://www.transparenttextures.com/patterns/carbon-fibre.png")'}}></div>
+        <div className="relative z-10 p-8 md:p-16 text-center text-white flex flex-col items-center gap-6">
+          <h2 className="text-3xl md:text-4xl font-bold">¿Listo para optimizar su flota?</h2>
+          <p className="max-w-2xl opacity-90 text-lg">
+            Contacte a nuestro equipo de ingeniería hoy para una consulta gratuita o para programar una recolección de mantenimiento.
+          </p>
+          <div className="flex w-full max-w-lg gap-3 justify-center">
+            <Link 
+              href="/contacto" 
+              className="bg-white hover:bg-slate-50 text-primary font-bold py-4 px-10 rounded-xl transition-all hover:scale-105 shadow-lg whitespace-nowrap"
+            >
+              Contáctenos
+            </Link>
           </div>
         </div>
-      </div>
-
-      <div className="w-full px-6 py-12 lg:px-20">
-        <div className="mx-auto max-w-7xl overflow-hidden rounded-2xl bg-primary text-white shadow-xl">
-          <div className="flex flex-col items-center justify-between gap-8 px-8 py-12 md:flex-row md:px-16 md:py-16">
-            <div className="flex flex-col gap-4 max-w-2xl text-center md:text-left">
-              <h2 className="text-3xl font-black leading-tight sm:text-4xl">¿Listo para optimizar su flota?</h2>
-              <p className="text-lg font-medium text-blue-100">Contacte a nuestro equipo de ingeniería hoy para una consulta gratuita o para programar una recolección de mantenimiento.</p>
-            </div>
-            <div className="flex shrink-0 flex-col gap-3 sm:flex-row">
-              <Link href="/contacto" className="whitespace-nowrap rounded-lg bg-white px-8 py-3.5 text-base font-bold text-primary shadow-sm hover:bg-gray-50 transition-colors">
-                Contáctenos
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
+      </section>
     </div>
   );
 }

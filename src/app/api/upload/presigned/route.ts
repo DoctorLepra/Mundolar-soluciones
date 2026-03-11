@@ -2,14 +2,34 @@ import { NextRequest, NextResponse } from 'next/server';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
-const s3Client = new S3Client({
-  region: 'auto',
-  endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-  credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
-  },
-});
+let s3ClientInstance: S3Client | null = null;
+
+function getS3Client() {
+  if (s3ClientInstance) return s3ClientInstance;
+
+  const accountId = process.env.R2_ACCOUNT_ID;
+  const accessKeyId = process.env.R2_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+
+  if (!accountId || !accessKeyId || !secretAccessKey) {
+    const missing = [];
+    if (!accountId) missing.push('R2_ACCOUNT_ID');
+    if (!accessKeyId) missing.push('R2_ACCESS_KEY_ID');
+    if (!secretAccessKey) missing.push('R2_SECRET_ACCESS_KEY');
+    throw new Error(`Missing required R2 environment variables: ${missing.join(', ')}`);
+  }
+
+  s3ClientInstance = new S3Client({
+    region: 'auto',
+    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: accessKeyId,
+      secretAccessKey: secretAccessKey,
+    },
+  });
+
+  return s3ClientInstance;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,6 +47,7 @@ export async function POST(request: NextRequest) {
 
     const key = `${folder}/${fileName}`;
 
+    const client = getS3Client();
     const command = new PutObjectCommand({
       Bucket: process.env.R2_BUCKET_NAME,
       Key: key,
@@ -34,7 +55,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Generate signed URL valid for 5 minutes
-    const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 });
+    const signedUrl = await getSignedUrl(client, command, { expiresIn: 300 });
 
     const publicUrl = `${process.env.NEXT_PUBLIC_R2_PUBLIC_URL}/${key}`;
 
@@ -58,12 +79,13 @@ export async function DELETE(request: NextRequest) {
     const url = new URL(publicUrl);
     const key = url.pathname.startsWith('/') ? url.pathname.substring(1) : url.pathname;
 
+    const client = getS3Client();
     const command = new DeleteObjectCommand({
       Bucket: process.env.R2_BUCKET_NAME,
       Key: key,
     });
 
-    await s3Client.send(command);
+    await client.send(command);
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

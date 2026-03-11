@@ -249,8 +249,8 @@ export default function AdminDashboard() {
             <h2 className="text-3xl font-black text-slate-900 font-display tracking-tight text-balance">Panel de Control</h2>
             <p className="text-slate-500 font-medium">Análisis en tiempo real de telecomunicaciones profesionales.</p>
           </div>
-          <Link href="/admin/pedidos" className="hidden md:flex items-center gap-2 bg-white border border-slate-200 px-4 py-2 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 transition-all shadow-sm">
-            <Clock size={18} /> Ver Actividad
+          <Link href="/admin/pedidos" className="hidden md:flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-700 px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95 hover:bg-slate-50">
+            <Clock size={20} /> Ver Actividad
           </Link>
         </div>
 
@@ -261,10 +261,10 @@ export default function AdminDashboard() {
               <div className="p-3 bg-red-50 rounded-2xl text-red-600 group-hover:bg-red-600 group-hover:text-white transition-colors">
                 <TrendingUp size={24} />
               </div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Ingresos</span>
+              <span className="text-xs font-medium text-slate-400 font-sans">Total ingresos</span>
             </div>
             <h3 className="text-3xl font-black text-slate-900 font-display">${formatCurrency(metrics.totalSales)}</h3>
-            <p className="text-slate-400 text-xs mt-1 font-bold">HISTÓRICO ACUMULADO</p>
+            <p className="text-slate-400 text-[11px] mt-1 font-medium font-sans">Histórico acumulado</p>
           </div>
 
           <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all group">
@@ -272,10 +272,10 @@ export default function AdminDashboard() {
               <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
                 <Package size={24} />
               </div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Pedidos Activos</span>
+              <span className="text-xs font-medium text-slate-400 font-sans">Pedidos activos</span>
             </div>
             <h3 className="text-3xl font-black text-slate-900 font-display">{metrics.activeOrders}</h3>
-            <p className="text-slate-400 text-xs mt-1 font-bold">GESTIÓN EN CURSO</p>
+            <p className="text-slate-400 text-[11px] mt-1 font-medium font-sans">Gestión en curso</p>
           </div>
 
           <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all group">
@@ -283,10 +283,10 @@ export default function AdminDashboard() {
               <div className="p-3 bg-purple-50 rounded-2xl text-purple-600 group-hover:bg-purple-600 group-hover:text-white transition-colors">
                 <MapPin size={24} />
               </div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Nuevos Clientes 30D</span>
+              <span className="text-xs font-medium text-slate-400 font-sans">Nuevos clientes 30d</span>
             </div>
             <h3 className="text-3xl font-black text-slate-900 font-display">{metrics.newClients}</h3>
-            <p className="text-slate-400 text-xs mt-1 font-bold">CRECIMIENTO MENSUAL</p>
+            <p className="text-slate-400 text-[11px] mt-1 font-medium font-sans">Crecimiento mensual</p>
           </div>
         </div>
 
@@ -297,10 +297,10 @@ export default function AdminDashboard() {
               <div className="p-3 bg-slate-100 rounded-2xl text-slate-600 group-hover:bg-slate-900 group-hover:text-white transition-colors">
                 <ClipboardList size={24} />
               </div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Tareas CRM</span>
+              <span className="text-xs font-medium text-slate-400 font-sans">Tareas CRM</span>
             </div>
             <h3 className="text-3xl font-black text-slate-900 font-display">{metrics.pendingTasks}</h3>
-            <p className="text-slate-400 text-xs mt-1 font-bold">TAREAS POR REALIZAR</p>
+            <p className="text-slate-400 text-[11px] mt-1 font-medium font-sans">Tareas por realizar</p>
           </Link>
 
           <Link href="/admin/cotizaciones" className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all group">
@@ -308,10 +308,10 @@ export default function AdminDashboard() {
               <div className="p-3 bg-pink-50 rounded-2xl text-pink-600 group-hover:bg-pink-600 group-hover:text-white transition-colors">
                 <FileText size={24} />
               </div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Cotizaciones</span>
+              <span className="text-xs font-medium text-slate-400 font-sans">Cotizaciones</span>
             </div>
             <h3 className="text-3xl font-black text-slate-900 font-display">{metrics.pendingQuotes}</h3>
-            <p className="text-slate-400 text-xs mt-1 font-bold">POR APROBAR</p>
+            <p className="text-slate-400 text-[11px] mt-1 font-medium font-sans">Por aprobar</p>
           </Link>
 
           {isAdmin && (
@@ -320,10 +320,10 @@ export default function AdminDashboard() {
                 <div className="p-3 bg-orange-50 rounded-2xl text-orange-600 group-hover:bg-orange-600 group-hover:text-white transition-colors">
                   <Warehouse size={24} />
                 </div>
-                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Bodegas</span>
+                <span className="text-xs font-medium text-slate-400 font-sans">Bodegas</span>
               </div>
               <h3 className="text-3xl font-black text-slate-900 font-display">{metrics.totalWarehouses}</h3>
-              <p className="text-slate-400 text-xs mt-1 font-bold">BODEGAS ACTIVAS</p>
+              <p className="text-slate-400 text-[11px] mt-1 font-medium font-sans">Bodegas activas</p>
             </Link>
           )}
         </div>
@@ -333,7 +333,7 @@ export default function AdminDashboard() {
           {/* Sales Trend Graph */}
           <div className="lg:col-span-2 bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-lg font-black text-slate-900 font-display">Tendencia de Ventas (7D)</h3>
+              <h3 className="text-lg font-black text-slate-900 font-display">Tendencia de ventas (7d)</h3>
               <span className="text-xs font-bold text-red-600 bg-red-50 px-3 py-1 rounded-full">Automático</span>
             </div>
             <div className="h-[280px] w-full">
@@ -360,9 +360,17 @@ export default function AdminDashboard() {
 
           {/* Status Distribution Donut */}
           <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex flex-col">
-            <h3 className="text-lg font-black text-slate-900 font-display mb-6">Distribución de Pedidos</h3>
-            <div className="flex-1 relative">
-              <ResponsiveContainer width="100%" height={220}>
+            <h3 className="text-lg font-black text-slate-900 font-display mb-6">Distribución de pedidos</h3>
+            <div className="flex flex-wrap gap-2 mb-6 pb-4 border-b border-slate-50">
+              {statusDistribution.slice(0, 4).map((s, i) => (
+                <div key={s.name} className="flex items-center gap-2 bg-slate-50 px-2 py-1 rounded-lg">
+                  <div className="size-2 rounded-full" style={{backgroundColor: COLORS[i % COLORS.length]}}></div>
+                  <span className="text-[10px] font-bold text-slate-600 truncate">{s.name}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex-1 relative flex items-center justify-center min-h-[220px]">
+              <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
                     data={statusDistribution}
@@ -371,25 +379,29 @@ export default function AdminDashboard() {
                     paddingAngle={8}
                     dataKey="value"
                     cornerRadius={10}
+                    stroke="none"
                   >
                     {statusDistribution.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip />
+                  <Tooltip 
+                    contentStyle={{
+                      borderRadius: '12px', 
+                      border: 'none', 
+                      boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                      fontSize: '11px',
+                      fontWeight: '800'
+                    }}
+                  />
                 </PieChart>
               </ResponsiveContainer>
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none mb-6">
-                <span className="text-xs font-black text-slate-400 uppercase tracking-tighter">Estados</span>
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Total</span>
+                <span className="text-2xl font-black text-slate-900 leading-none">
+                  {statusDistribution.reduce((acc, curr) => acc + curr.value, 0)}
+                </span>
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-slate-50">
-              {statusDistribution.slice(0, 4).map((s, i) => (
-                <div key={s.name} className="flex items-center gap-2">
-                  <div className="size-2 rounded-full" style={{backgroundColor: COLORS[i]}}></div>
-                  <span className="text-[10px] font-bold text-slate-600 truncate">{s.name}</span>
-                </div>
-              ))}
             </div>
           </div>
         </div>
@@ -401,7 +413,7 @@ export default function AdminDashboard() {
           <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
             <div className="flex items-center gap-2 mb-6">
               <div className="p-2 bg-amber-50 text-amber-600 rounded-lg"><TrendingUp size={16}/></div>
-              <h3 className="text-md font-black text-slate-900 font-display uppercase tracking-tight">Top Ventas</h3>
+              <h3 className="text-lg font-black text-slate-900 font-display">Top ventas</h3>
             </div>
             <div className="space-y-4">
               {topProducts.map((p, i) => (
@@ -410,7 +422,7 @@ export default function AdminDashboard() {
                     <span className="text-xs font-black text-slate-300 w-4">#0{i+1}</span>
                     <span className="text-sm font-bold text-slate-700 group-hover:text-primary transition-colors truncate max-w-[140px]">{p.name}</span>
                   </div>
-                  <span className="text-xs font-black bg-slate-50 text-slate-500 px-2 py-1 rounded-lg">{p.qty} unid.</span>
+                  <span className="text-[11px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-lg border border-amber-100">{p.qty} unid.</span>
                 </div>
               ))}
               {topProducts.length === 0 && <p className="text-xs text-slate-400 font-display text-center py-4">Sin datos de ventas.</p>}
@@ -421,7 +433,7 @@ export default function AdminDashboard() {
           <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
             <div className="flex items-center gap-2 mb-6">
               <div className="p-2 bg-red-50 text-red-600 rounded-lg"><AlertTriangle size={16}/></div>
-              <h3 className="text-md font-black text-slate-900 font-display uppercase tracking-tight">Stock Crítico</h3>
+              <h3 className="text-lg font-black text-slate-900 font-display">Stock crítico</h3>
             </div>
             <div className="space-y-4">
               {lowStockProducts.map(p => (
@@ -431,8 +443,8 @@ export default function AdminDashboard() {
                     <span className="text-sm font-bold text-slate-700 truncate max-w-[180px] font-display">{p.name}</span>
                   </div>
                   <div className="text-right">
-                    <span className="text-[12px] font-black text-red-600 bg-red-50 px-2 py-1 rounded-lg uppercase tracking-tighter border border-red-100">
-                      {p.stock_quantity} UNID.
+                    <span className="text-[11px] font-bold text-red-600 bg-red-50 px-2 py-1 rounded-lg border border-red-100">
+                      {p.stock_quantity} unid.
                     </span>
                   </div>
                 </div>
@@ -445,7 +457,7 @@ export default function AdminDashboard() {
           <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
             <div className="flex items-center gap-2 mb-6">
               <div className="p-2 bg-slate-900 text-white rounded-lg"><MapPin size={16}/></div>
-              <h3 className="text-md font-black text-slate-900 font-display uppercase tracking-tight">Geografía de Pedidos</h3>
+              <h3 className="text-lg font-black text-slate-900 font-display">Geografía de pedidos</h3>
             </div>
             <div className="space-y-4">
               {geoData.map(g => (
@@ -471,24 +483,24 @@ export default function AdminDashboard() {
           {/* Recent Orders - Occupies 2 columns now */}
           <div className="lg:col-span-2 flex flex-col gap-4 bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
             <div className="p-6 pb-0 flex justify-between items-center">
-              <h3 className="text-lg font-black text-slate-900 font-display">Pedidos Recientes</h3>
+              <h3 className="text-lg font-black text-slate-900 font-display">Pedidos recientes</h3>
               <Link href="/admin/pedidos" className="text-xs font-bold text-primary hover:underline">Ver Historial Completo</Link>
             </div>
             <div className="overflow-x-auto p-4 pt-2">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50/50">
-                    <th className="py-3 px-4 text-[10px] font-black uppercase tracking-widest text-slate-400 font-display">Pedido</th>
-                    <th className="py-3 px-4 text-[10px] font-black uppercase tracking-widest text-slate-400 font-display">Cliente</th>
-                    <th className="py-3 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400 font-display text-right">Total</th>
-                    <th className="py-3 px-4 text-[10px] font-black uppercase tracking-widest text-slate-400 font-display text-center">Estado</th>
+                    <th className="py-3 px-4 text-xs font-semibold text-slate-500 font-sans">Pedido</th>
+                    <th className="py-3 px-4 text-xs font-semibold text-slate-500 font-sans">Cliente</th>
+                    <th className="py-3 px-6 text-xs font-semibold text-slate-500 font-sans text-right">Total</th>
+                    <th className="py-3 px-4 text-xs font-semibold text-slate-500 font-sans text-center">Estado</th>
                     <th className="py-3 px-4"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {recentOrders.map(o => (
                     <tr key={o.id} className="group hover:bg-slate-50/50 transition-colors">
-                      <td className="py-4 px-4 text-[11px] font-black text-primary font-mono tracking-tighter">#{o.id.toString().padStart(5, '0')}</td>
+                      <td className="py-4 px-4 text-sm font-black text-primary font-mono tracking-tighter">#{o.id.toString().padStart(5, '0')}</td>
                       <td className="py-4 px-4 font-display">
                         <div className="flex items-center gap-2">
                           <div className="size-6 rounded-full bg-slate-100 flex items-center justify-center text-[8px] font-black text-slate-500 border border-slate-200">
@@ -499,7 +511,7 @@ export default function AdminDashboard() {
                       </td>
                       <td className="py-4 px-6 text-sm font-black text-slate-900 font-display text-right">${formatCurrency(o.total_amount)}</td>
                       <td className="py-4 px-4 text-center">
-                        <span className={`px-2.5 py-1 rounded-xl text-[9px] font-black uppercase tracking-widest ${
+                        <span className={`px-2.5 py-1 rounded-xl text-[10px] font-bold ${
                           o.status === 'Completado' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'
                         }`}>
                           {o.status}
@@ -520,7 +532,7 @@ export default function AdminDashboard() {
           {/* Quick Inventory / Recently Added */}
           <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
             <div className="p-6 pb-2">
-              <h3 className="text-lg font-black text-slate-900 font-display">Inventario Reciente</h3>
+              <h3 className="text-lg font-black text-slate-900 font-display">Inventario reciente</h3>
             </div>
             <div className="flex-1 space-y-2 p-4 pt-2">
               {recentInventory.map(p => (
@@ -534,18 +546,18 @@ export default function AdminDashboard() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-bold text-slate-900 truncate font-display">{p.name}</p>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono">{p.sku}</p>
+                    <p className="text-[11px] font-medium text-slate-400 font-sans">{p.sku}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-xs font-black text-primary font-display">${formatCurrency(p.price)}</p>
-                    <p className={`text-[9px] font-black ${p.stock_quantity <= 5 ? 'text-red-500' : 'text-emerald-500'}`}>STOCK: {p.stock_quantity}</p>
+                    <p className={`text-[10px] font-bold ${p.stock_quantity <= 5 ? 'text-red-500' : 'text-emerald-500'}`}>Stock: {p.stock_quantity}</p>
                   </div>
                 </div>
               ))}
             </div>
             <div className="p-4 border-t border-slate-50 bg-slate-50/50">
-              <Link href="/admin/productos" className="flex items-center justify-center gap-2 text-xs font-black text-slate-500 hover:text-primary transition-colors uppercase tracking-widest">
-                Gestionar Todo <TrendingUp size={12}/>
+              <Link href="/admin/productos" className="flex items-center justify-center gap-2 text-xs font-bold text-slate-500 hover:text-primary transition-colors font-sans">
+                Gestionar todo <TrendingUp size={12}/>
               </Link>
             </div>
           </div>

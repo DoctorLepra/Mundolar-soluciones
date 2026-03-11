@@ -852,26 +852,26 @@ function AdminOrdersPageContent() {
           <h2 className="text-2xl font-bold text-slate-900 tracking-tight font-display">Gestión de Pedidos</h2>
           <p className="text-slate-500 text-sm font-display">Administra y rastrea pedidos de equipos de telecomunicaciones.</p>
         </div>
-        <button 
-          onClick={() => {
-            setIsEditMode(false);
-            setSelectedClient(null);
-            setSelectedProducts([]);
-            setOrderForm({
-              contact_phone: '',
-              contact_email: '',
-              shipping_department: '',
-              shipping_municipality: '',
-              shipping_address: '',
-              discount_percentage: '0'
-            });
-            setIsCreateModalOpen(true);
-          }}
-          className="flex items-center justify-center gap-2 bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-lg font-bold text-sm transition-colors shadow-sm shadow-primary/30 font-display"
-        >
-          <span className="material-symbols-outlined text-[20px]">add</span>
-          <span>Crear Pedido</span>
-        </button>
+          <button 
+            onClick={() => {
+              setIsEditMode(false);
+              setSelectedClient(null);
+              setSelectedProducts([]);
+              setOrderForm({
+                contact_phone: '',
+                contact_email: '',
+                shipping_department: '',
+                shipping_municipality: '',
+                shipping_address: '',
+                discount_percentage: '0'
+              });
+              setIsCreateModalOpen(true);
+            }}
+            className="flex items-center justify-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95 hover:bg-primary-dark shadow-primary/20 font-display"
+          >
+            <span className="material-symbols-outlined text-[20px]">add</span>
+            <span>Crear Pedido</span>
+          </button>
       </header>
       
       <div className="flex flex-1 overflow-hidden">

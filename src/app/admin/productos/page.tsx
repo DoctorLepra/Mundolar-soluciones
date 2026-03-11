@@ -991,7 +991,7 @@ export default function AdminProductsPage() {
                 <div className="relative" ref={cargaMasivaRef}>
                   <button
                     onClick={() => setIsCargaMasivaDropdownOpen(!isCargaMasivaDropdownOpen)}
-                    className="flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-700 px-5 py-2.5 rounded-2xl font-bold hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-sm"
+                    className="flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-700 px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95 hover:bg-slate-50"
                   >
                     <span className="material-symbols-outlined text-[20px]">cloud_upload</span>
                     Importar
@@ -1033,7 +1033,7 @@ export default function AdminProductsPage() {
 
                 <button 
                   onClick={handleOpenCreateModal}
-                  className="flex items-center justify-center gap-2 bg-primary text-white px-6 py-2.5 rounded-2xl font-bold hover:bg-primary-dark transition-all shadow-lg shadow-primary/25 active:scale-95 shrink-0 text-sm"
+                  className="flex items-center justify-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95 hover:bg-primary-dark shadow-primary/20 shrink-0"
                 >
                   <span className="material-symbols-outlined text-[20px]">add</span>
                   Nuevo Producto

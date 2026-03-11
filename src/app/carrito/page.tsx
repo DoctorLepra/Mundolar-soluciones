@@ -295,7 +295,7 @@ export default function CartPage() {
                   </div>
                   <div className="flex justify-between items-center">
                     <p className="text-slate-500 text-sm">Estimación de Envío</p>
-                    <p className="text-green-600 font-medium text-sm">Gratis</p>
+                    <p className="text-slate-600 font-medium text-sm">Por validar</p>
                   </div>
                   <div className="flex justify-between items-center">
                     <p className="text-slate-500 text-sm">Impuestos (19%)</p>

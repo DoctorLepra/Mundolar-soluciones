@@ -275,14 +275,14 @@ function AdminWarehousesPageContent() {
           <div className="flex items-center gap-3">
             <button 
               onClick={handleExport}
-              className="flex items-center gap-2 bg-white border border-slate-200 text-slate-700 px-4 py-2.5 rounded-lg font-medium hover:bg-slate-50 transition-all text-sm"
+              className="flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-700 px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95 hover:bg-slate-50"
             >
               <span className="material-symbols-outlined text-[20px]">file_upload</span>
               Exportar
             </button>
             <button 
               onClick={handleOpenCreateModal}
-              className="flex items-center gap-2 bg-primary hover:bg-primary-dark text-white px-4 py-2.5 rounded-lg font-bold shadow-lg shadow-primary/20 transition-all text-sm"
+              className="flex items-center justify-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95 hover:bg-primary-dark shadow-primary/20"
             >
               <span className="material-symbols-outlined text-[20px]">add</span>
               Nueva Bodega

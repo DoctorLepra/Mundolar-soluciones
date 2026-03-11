@@ -1,12 +1,12 @@
-
 import React from 'react';
 import type { Metadata } from 'next';
-export const metadata: Metadata = { title: 'Inicio' };
+export const metadata: Metadata = { title: 'Inicio | Mundolar Soluciones' };
 import { supabase } from '@/lib/supabase';
 import Hero from '@/components/home/Hero';
 import ProductCarousel from '@/components/home/ProductCarousel';
 import Link from 'next/link';
 import Image from 'next/image';
+import Newsletter from '@/components/Newsletter';
 
 // Types
 interface Category {
@@ -36,7 +36,6 @@ interface Product {
 
 // Data Fetching Functions
 async function getFeaturedProducts() {
-  // Fetch top 5 best selling products based on order_items quantity
   const { data: salesData } = await supabase
     .from('order_items')
     .select('product_id, quantity');
@@ -126,7 +125,6 @@ export default async function Home() {
           <div className="relative">
             <div className="logo-loop-container gap-12 md:gap-24 opacity-60 grayscale hover:grayscale-0 transition-all duration-500">
               {brands.length > 0 ? (
-                // Repeat brands 3 times to ensure the loop is always full
                 [...brands, ...brands, ...brands].map((brand, idx) => (
                   <div key={`${brand.id}-${idx}`} className="relative h-12 w-32 md:w-40 flex items-center justify-center shrink-0">
                     {brand.image_url ? (
@@ -142,7 +140,6 @@ export default async function Home() {
                   </div>
                 ))
               ) : (
-                // Static Fallback repeated for the loop
                 [1, 2, 3].map((i) => (
                   <React.Fragment key={i}>
                     <h3 className="text-2xl font-bold font-sans italic text-slate-800 shrink-0">MOTOROLA</h3>
@@ -220,26 +217,7 @@ export default async function Home() {
         </div>
       </section>
 
-      <section className="bg-primary rounded-2xl overflow-hidden relative max-w-[1440px] mx-auto mb-16">
-        <div className="absolute inset-0 opacity-10" style={{backgroundImage: 'url("https://www.transparenttextures.com/patterns/carbon-fibre.png")'}}></div>
-        <div className="relative z-10 p-8 md:p-16 text-center text-white flex flex-col items-center gap-6">
-          <h2 className="text-3xl md:text-4xl font-bold">Mantente Conectado</h2>
-          <p className="max-w-2xl opacity-90 text-lg">
-            Suscríbete a nuestro boletín para recibir las últimas actualizaciones sobre tecnología de radio, ofertas exclusivas y noticias de la industria.
-          </p>
-          <form className="flex w-full max-w-lg gap-3 flex-col sm:flex-row">
-            <input 
-              className="flex-1 rounded-xl border-none px-6 py-4 text-slate-900 bg-white placeholder:text-slate-400 focus:ring-2 focus:ring-white/50 outline-none shadow-sm" 
-              placeholder="Ingresa tu correo electrónico" 
-              required 
-              type="email"
-            />
-            <button className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-4 px-8 rounded-xl transition-colors shadow-lg">
-              Suscribirse
-            </button>
-          </form>
-        </div>
-      </section>
+      <Newsletter />
     </div>
   );
 }

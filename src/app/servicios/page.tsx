@@ -92,8 +92,8 @@ export default async function ServicesPage() {
           <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/50 to-transparent"></div>
         </div>
         <div className="relative z-10 mx-auto flex max-w-7xl flex-col items-center justify-center px-4 py-20 text-center sm:px-6 lg:px-8">
-          <div className="mb-6 flex items-center gap-2">
-            <span className="flex h-2 w-2 rounded-full bg-primary"></span>
+          <div className="mb-6 inline-flex items-center gap-2 bg-white/50 backdrop-blur-md px-4 py-2 rounded-full border border-white/50 shadow-lg">
+            <span className="flex h-2 w-2 rounded-full bg-primary animate-pulse"></span>
             <span className="text-xs font-bold uppercase tracking-wider text-primary">Centro de Servicio Autorizado</span>
           </div>
           <h1 className="font-display text-4xl font-extrabold tracking-tight text-white sm:text-5xl md:text-6xl max-w-4xl leading-tight">

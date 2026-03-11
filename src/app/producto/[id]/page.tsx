@@ -49,7 +49,7 @@ async function getRelatedProducts(currentId: number, categoryId: number | null) 
   if (categoryId) {
     const { data: categoryProducts } = await supabase
       .from('products')
-      .select('id, name, price, price_with_iva, original_price, image_urls, brands(name), categories(name)')
+      .select('id, name, description, price, price_with_iva, original_price, image_urls, brands(name), categories(name)')
       .eq('status', 'Activo')
       .eq('category_id', categoryId)
       .neq('id', currentId)
@@ -63,7 +63,7 @@ async function getRelatedProducts(currentId: number, categoryId: number | null) 
   // Fallback: any active products (excluding current)
   const { data: fallbackProducts } = await supabase
     .from('products')
-    .select('id, name, price, price_with_iva, original_price, image_urls, brands(name), categories(name)')
+    .select('id, name, description, price, price_with_iva, original_price, image_urls, brands(name), categories(name)')
     .eq('status', 'Activo')
     .neq('id', currentId)
     .limit(4);
@@ -172,14 +172,40 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
           <ProductActions product={product} />
 
           {/* Shipping info */}
-          <div className="mt-6 bg-slate-50 rounded-xl p-5 border border-slate-200">
-            <div className="flex items-start gap-3">
-              <div className="p-2 bg-white rounded-full text-primary shrink-0 shadow-sm border border-slate-100">
-                <span className="material-symbols-outlined text-xl">local_shipping</span>
+          <div className="mt-6 flex flex-col gap-3">
+            <div className="bg-slate-50 rounded-xl p-5 border border-slate-200">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-white rounded-full text-primary shrink-0 shadow-sm border border-slate-100">
+                  <span className="material-symbols-outlined text-xl">local_shipping</span>
+                </div>
+                <div>
+                  <h4 className="font-bold text-slate-900 text-sm">Envío a todo el país</h4>
+                  <p className="text-xs text-slate-500 mt-0.5">Envia, Interrapidisimo, Servientrega, Coordinadora.</p>
+                </div>
               </div>
-              <div>
-                <h4 className="font-bold text-slate-900 text-sm">Envío a todo el país</h4>
-                <p className="text-xs text-slate-500 mt-0.5">Despachos vía Starken, Chilexpress o Bluexpress.</p>
+            </div>
+
+            <div className="bg-slate-50 rounded-xl p-5 border border-slate-200">
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-white rounded-full text-primary shrink-0 shadow-sm border border-slate-100">
+                    <span className="material-symbols-outlined text-xl">payments</span>
+                  </div>
+                  <h4 className="font-bold text-slate-900 text-sm">Métodos de Pago</h4>
+                </div>
+                <div className="grid grid-cols-4 gap-2 pt-1">
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                    <div key={i} className="bg-white rounded-lg p-1 border border-slate-100 flex items-center justify-center h-10 shadow-xs">
+                      <Image 
+                        src={`/img/pago${i}.png`} 
+                        alt={`Pago ${i}`} 
+                        width={60} 
+                        height={30} 
+                        className="object-contain max-h-full"
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>

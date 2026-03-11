@@ -1,10 +1,37 @@
+'use client';
 
 import React from 'react';
-import type { Metadata } from 'next';
-export const metadata: Metadata = { title: 'Contacto' };
+import { useForm, ValidationError } from '@formspree/react';
+import { usePageTitle } from '@/hooks/usePageTitle';
 import Link from 'next/link';
 
 export default function ContactPage() {
+  usePageTitle('Contacto');
+  const [state, handleSubmit] = useForm("mjgayzab");
+
+  if (state.succeeded) {
+    return (
+      <div className="w-full bg-slate-50 min-h-[calc(100vh-80px)] flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center border border-[#e7edf3] animate-in fade-in zoom-in duration-500">
+          <div className="size-20 bg-green-50 text-green-500 rounded-full flex items-center justify-center mx-auto mb-6">
+            <span className="material-symbols-outlined text-4xl font-bold">check_circle</span>
+          </div>
+          <h2 className="text-3xl font-black text-[#0d141b] mb-4">¡Mensaje Enviado!</h2>
+          <p className="text-[#4c739a] mb-8 font-medium text-lg">
+            Gracias por contactarnos. Hemos recibido tu mensaje y nos pondremos en contacto contigo lo antes posible.
+          </p>
+          <Link 
+            href="/" 
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-8 py-4 text-white font-bold shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all hover:scale-[1.02] active:scale-[0.98]"
+          >
+            <span className="material-symbols-outlined">home</span>
+            <span>Volver al Inicio</span>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full bg-slate-50">
       <section className="relative bg-white py-12 md:py-20 border-b border-[#e7edf3]">
@@ -27,26 +54,54 @@ export default function ContactPage() {
             <div className="lg:col-span-7 flex flex-col gap-8">
               <div className="bg-white rounded-xl shadow-sm border border-[#e7edf3] p-6 md:p-8">
                 <h2 className="text-2xl font-bold text-[#0d141b] mb-6">Envíanos un mensaje</h2>
-                <form className="flex flex-col gap-5">
+                <form onSubmit={handleSubmit} className="flex flex-col gap-5">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <label className="flex flex-col gap-2">
                       <span className="text-[#0d141b] text-sm font-medium">Nombre Completo</span>
-                      <input className="w-full rounded-lg border border-[#cfdbe7] bg-slate-50 px-4 py-3 text-base text-[#0d141b] placeholder-[#94a3b8] focus:border-primary focus:ring-1 focus:ring-primary transition-all outline-none" placeholder="Tu nombre" type="text"/>
+                      <input 
+                        name="name"
+                        id="name"
+                        required
+                        className="w-full rounded-lg border border-[#cfdbe7] bg-slate-50 px-4 py-3 text-base text-[#0d141b] placeholder-[#94a3b8] focus:border-primary focus:ring-1 focus:ring-primary transition-all outline-none" 
+                        placeholder="Tu nombre" 
+                        type="text"
+                      />
+                      <ValidationError prefix="Name" field="name" errors={state.errors} className="text-xs text-red-500 font-medium" />
                     </label>
                     <label className="flex flex-col gap-2">
                       <span className="text-[#0d141b] text-sm font-medium">Correo Electrónico</span>
-                      <input className="w-full rounded-lg border border-[#cfdbe7] bg-slate-50 px-4 py-3 text-base text-[#0d141b] placeholder-[#94a3b8] focus:border-primary focus:ring-1 focus:ring-primary transition-all outline-none" placeholder="ejemplo@correo.com" type="email"/>
+                      <input 
+                        name="email"
+                        id="email"
+                        required
+                        className="w-full rounded-lg border border-[#cfdbe7] bg-slate-50 px-4 py-3 text-base text-[#0d141b] placeholder-[#94a3b8] focus:border-primary focus:ring-1 focus:ring-primary transition-all outline-none" 
+                        placeholder="ejemplo@correo.com" 
+                        type="email"
+                      />
+                      <ValidationError prefix="Email" field="email" errors={state.errors} className="text-xs text-red-500 font-medium" />
                     </label>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <label className="flex flex-col gap-2">
                       <span className="text-[#0d141b] text-sm font-medium">Teléfono (Opcional)</span>
-                      <input className="w-full rounded-lg border border-[#cfdbe7] bg-slate-50 px-4 py-3 text-base text-[#0d141b] placeholder-[#94a3b8] focus:border-primary focus:ring-1 focus:ring-primary transition-all outline-none" placeholder="+56 9 1234 5678" type="tel"/>
+                      <input 
+                        name="phone"
+                        id="phone"
+                        className="w-full rounded-lg border border-[#cfdbe7] bg-slate-50 px-4 py-3 text-base text-[#0d141b] placeholder-[#94a3b8] focus:border-primary focus:ring-1 focus:ring-primary transition-all outline-none" 
+                        placeholder="+57 305 220 0300" 
+                        type="tel"
+                      />
+                      <ValidationError prefix="Phone" field="phone" errors={state.errors} className="text-xs text-red-500 font-medium" />
                     </label>
                     <label className="flex flex-col gap-2">
                       <span className="text-[#0d141b] text-sm font-medium">Tipo de consulta</span>
                       <div className="relative">
-                        <select className="w-full appearance-none rounded-lg border border-[#cfdbe7] bg-slate-50 px-4 py-3 text-base text-[#0d141b] focus:border-primary focus:ring-1 focus:ring-primary transition-all outline-none" defaultValue="">
+                        <select 
+                          name="subject"
+                          id="subject"
+                          className="w-full appearance-none rounded-lg border border-[#cfdbe7] bg-slate-50 px-4 py-3 text-base text-[#0d141b] focus:border-primary focus:ring-1 focus:ring-primary transition-all outline-none" 
+                          defaultValue=""
+                        >
                           <option disabled value="">Selecciona una opción</option>
                           <option value="ventas">Ventas y Cotizaciones</option>
                           <option value="tecnico">Servicio Técnico</option>
@@ -57,17 +112,44 @@ export default function ContactPage() {
                           <span className="material-symbols-outlined">expand_more</span>
                         </div>
                       </div>
+                      <ValidationError prefix="Subject" field="subject" errors={state.errors} className="text-xs text-red-500 font-medium" />
                     </label>
                   </div>
                   <label className="flex flex-col gap-2">
                     <span className="text-[#0d141b] text-sm font-medium">Mensaje</span>
-                    <textarea className="w-full resize-none rounded-lg border border-[#cfdbe7] bg-slate-50 px-4 py-3 text-base text-[#0d141b] placeholder-[#94a3b8] focus:border-primary focus:ring-1 focus:ring-primary transition-all outline-none" placeholder="Describe cómo podemos ayudarte..." rows={5}></textarea>
+                    <textarea 
+                      name="message"
+                      id="message"
+                      required
+                      className="w-full resize-none rounded-lg border border-[#cfdbe7] bg-slate-50 px-4 py-3 text-base text-[#0d141b] placeholder-[#94a3b8] focus:border-primary focus:ring-1 focus:ring-primary transition-all outline-none" 
+                      placeholder="Describe cómo podemos ayudarte..." 
+                      rows={5}
+                    ></textarea>
+                    <ValidationError prefix="Message" field="message" errors={state.errors} className="text-xs text-red-500 font-medium" />
                   </label>
                   <div className="pt-2">
-                    <button className="w-full md:w-auto min-w-[200px] flex items-center justify-center gap-2 rounded-lg bg-primary px-6 py-3.5 text-base font-bold text-white shadow-md hover:bg-primary-dark transition-colors" type="submit">
-                      <span>Enviar Mensaje</span>
-                      <span className="material-symbols-outlined text-[20px]">send</span>
+                    <button 
+                      type="submit" 
+                      disabled={state.submitting}
+                      className="w-full md:w-auto min-w-[200px] flex items-center justify-center gap-2 rounded-lg bg-primary px-6 py-4 text-base font-bold text-white shadow-md hover:bg-primary-dark transition-all disabled:opacity-70 disabled:cursor-not-allowed transform active:scale-95"
+                    >
+                      {state.submitting ? (
+                        <>
+                          <span className="animate-spin material-symbols-outlined">progress_activity</span>
+                          <span>Enviando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Enviar Mensaje</span>
+                          <span className="material-symbols-outlined text-[20px]">send</span>
+                        </>
+                      )}
                     </button>
+                    {state.errors && state.errors.getFormErrors().length > 0 && (
+                      <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm font-medium">
+                        Hubo un error al enviar el formulario. Por favor intenta de nuevo.
+                      </div>
+                    )}
                   </div>
                 </form>
               </div>

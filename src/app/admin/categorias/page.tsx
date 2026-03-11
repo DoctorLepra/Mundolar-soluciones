@@ -518,7 +518,7 @@ function AdminCategoriesPageContent() {
             <h1 className="text-3xl font-bold text-slate-900 tracking-tight font-display">Gestión de Categorías</h1>
             <p className="text-slate-500 mt-1 font-display">Organiza la jerarquía de productos para el e-commerce.</p>
           </div>
-          <button onClick={handleOpenModal} className="flex items-center justify-center gap-2 bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-lg font-bold shadow-lg shadow-primary/20 transition-all text-sm font-display">
+          <button onClick={handleOpenModal} className="flex items-center justify-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95 hover:bg-primary-dark shadow-primary/20 font-display">
             <span className="material-symbols-outlined text-[20px]">add</span>
             Nueva Categoría
           </button>

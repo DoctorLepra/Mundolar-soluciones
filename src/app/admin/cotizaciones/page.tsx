@@ -528,7 +528,7 @@ function AdminQuotesPageContent() {
         </div>
         <button 
           onClick={() => setIsCreateModalOpen(true)}
-          className="bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-lg font-bold text-sm transition-colors shadow-lg shadow-primary/20 flex items-center gap-2"
+          className="flex items-center justify-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95 hover:bg-primary-dark shadow-primary/20"
         >
           <span className="material-symbols-outlined text-[20px]">add</span>
           Crear Cotización

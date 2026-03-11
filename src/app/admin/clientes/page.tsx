@@ -1328,33 +1328,33 @@ const AdminClientsPageContent = () => {
         </div>
         <div className="flex items-center gap-3">
           {viewTab === "Tareas" && (
-            <button
-              onClick={() => {
-                setIsEditingTask(false);
-                setTaskFormData({
-                  title: "",
-                  description: "",
-                  due_date: new Date().toISOString().split("T")[0],
-                  assigned_to: "",
-                  assigned_to_id: "",
-                  client_id: "",
-                  status: "Pendiente",
-                  created_by_id: currentUserProfile?.id || "",
-                });
-                setIsTaskModalOpen(true);
-              }}
-              className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-lg font-bold text-sm transition-colors shadow-sm shadow-emerald-500/30 font-display"
-            >
-              <span className="material-symbols-outlined text-[20px]">
-                add_task
-              </span>
-              <span>Nueva Tarea</span>
-            </button>
+              <button
+                onClick={() => {
+                  setIsEditingTask(false);
+                  setTaskFormData({
+                    title: "",
+                    description: "",
+                    due_date: new Date().toISOString().split("T")[0],
+                    assigned_to: "",
+                    assigned_to_id: "",
+                    client_id: "",
+                    status: "Pendiente",
+                    created_by_id: currentUserProfile?.id || "",
+                  });
+                  setIsTaskModalOpen(true);
+                }}
+                className="flex items-center justify-center gap-2 bg-emerald-600 text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95 hover:bg-emerald-700 shadow-emerald-500/20 font-display"
+              >
+                <span className="material-symbols-outlined text-[20px]">
+                  add_task
+                </span>
+                <span>Nueva Tarea</span>
+              </button>
           )}
           {viewTab === "Clientes" && (
             <button
               onClick={handleOpenNewModal}
-              className="flex items-center justify-center gap-2 bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-lg font-bold text-sm transition-colors shadow-sm shadow-primary/30 font-display"
+              className="flex items-center justify-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95 hover:bg-primary-dark shadow-primary/20 font-display"
             >
               <span className="material-symbols-outlined text-[20px]">
                 person_add

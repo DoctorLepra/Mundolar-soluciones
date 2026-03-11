@@ -404,11 +404,7 @@ function AdminBrandsPageContent() {
             <p className="text-slate-500 mt-1 font-display">Administra los fabricantes y marcas de productos.</p>
           </div>
           <div className="flex gap-3">
-            <button className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 text-sm font-bold hover:bg-slate-50 transition-all font-display">
-                <span className="material-symbols-outlined text-[20px]">file_upload</span>
-                <span>Importar</span>
-            </button>
-            <button onClick={handleOpenModal} className="flex items-center justify-center gap-2 bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-lg font-bold shadow-lg shadow-primary/20 transition-all text-sm font-display">
+            <button onClick={handleOpenModal} className="flex items-center justify-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95 hover:bg-primary-dark shadow-primary/20 font-display">
                 <span className="material-symbols-outlined text-[20px]">add</span>
                 Crear Marca
             </button>

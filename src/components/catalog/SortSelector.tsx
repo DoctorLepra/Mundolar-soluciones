@@ -16,14 +16,14 @@ const SortSelector: React.FC<{ initialSort?: string }> = ({ initialSort }) => {
   return (
     <div className="relative">
       <select 
-        defaultValue={initialSort || 'relevance'} 
+        defaultValue={initialSort || 'newest'} 
         onChange={handleSortChange}
         className="appearance-none bg-white border border-slate-200 text-slate-900 text-sm rounded-lg focus:ring-primary focus:border-primary block w-40 p-2.5 pr-8 cursor-pointer font-medium"
       >
-        <option value="relevance">Relevancia</option>
+        <option value="newest">Más nuevos</option>
         <option value="price_asc">Precio: Bajo a Alto</option>
         <option value="price_desc">Precio: Alto a Bajo</option>
-        <option value="newest">Más nuevos</option>
+        <option value="relevance">A - Z (Nombre)</option>
       </select>
       <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
         <span className="material-symbols-outlined text-sm">expand_more</span>

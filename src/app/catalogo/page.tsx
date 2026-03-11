@@ -63,7 +63,7 @@ async function getProducts(params: {
       query = query.order('created_at', { ascending: false });
       break;
     default:
-      query = query.order('name', { ascending: true });
+      query = query.order('created_at', { ascending: false });
   }
 
   // Pagination

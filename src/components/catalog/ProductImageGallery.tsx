@@ -35,7 +35,7 @@ export default function ProductImageGallery({ images, productName, isOffer }: Pr
   return (
     <div className="flex flex-col gap-4">
       {/* Main image */}
-      <div className="bg-white rounded-2xl border border-slate-200 relative overflow-hidden aspect-[4/3]">
+      <div className="bg-white rounded-2xl border border-slate-200 relative overflow-hidden aspect-square">
         {isOffer && (
           <span className="absolute top-4 left-4 bg-red-500 text-white text-xs font-bold px-3 py-1.5 rounded uppercase tracking-wider z-10">
             Oferta

@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Security check: validate folder name to prevent arbitrary path traversal
-    const allowedFolders = ['productos', 'categorias', 'marcas'];
+    const allowedFolders = ['productos', 'categorias', 'marcas', 'cms'];
     if (!allowedFolders.includes(folder)) {
       return NextResponse.json({ error: 'Invalid folder' }, { status: 400 });
     }

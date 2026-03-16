@@ -27,54 +27,30 @@ async function getBrands() {
   return data as Brand[];
 }
 
+async function getPageContent(page: string) {
+  const { data, error } = await supabase
+    .from('site_content')
+    .select('*')
+    .eq('page', page);
+  
+  if (error) {
+    console.error(`Error fetching CMS content for ${page}:`, error);
+    return [];
+  }
+  return data;
+}
+
 export default async function ServicesPage() {
   const brands = await getBrands();
+  const cmsContent = await getPageContent('servicios');
   const whatsappNumber = "573052200300";
 
-  const services = [
-    {
-      title: "Venta de Equipos",
-      desc: "Radios análogos, digitales, portátiles, móviles, repetidores, controladores, gateways, equipos poc, antenas, duplexer, fuentes, baterías de respaldo, seguridad y redes.",
-      icon: "shopping_cart",
-      bgIcon: "bg-red-50",
-      textColor: "text-red-600"
-    },
-    {
-      title: "Mantenimiento",
-      desc: "Servicios de soporte, mantenimiento, asesorías técnica y acompañamiento, aseguramos el correcto funcionamiento de sus radios de comunicación.",
-      icon: "check_circle",
-      bgIcon: "bg-red-50",
-      textColor: "text-red-600"
-    },
-    {
-      title: "Alquiler",
-      desc: "Disponemos de una gran variedad de equipos en las bandas UHF y VHF, cumpliendo con los requisitos legales, técnicos y de calidad para su uso.",
-      icon: "handshake",
-      bgIcon: "bg-red-50",
-      textColor: "text-red-600"
-    },
-    {
-      title: "Pruebas en Sitio",
-      desc: "Pruebas en sitio en cuanto a cobertura, con diferentes opciones con la finalidad de suministrar el mejor equipo que se ajuste a las necesidades de nuestro cliente.",
-      icon: "public",
-      bgIcon: "bg-red-50",
-      textColor: "text-red-600"
-    },
-    {
-      title: "Programaciones",
-      desc: "Programación de sus radios de comunicaciones, optimizando las funcionalidades de los equipos al momento de efectuar las operaciones.",
-      icon: "settings_suggest",
-      bgIcon: "bg-red-50",
-      textColor: "text-red-600"
-    },
-    {
-      title: "Instalaciones",
-      desc: "Servicio con los debidos protocolos y requisitos de seguridad y salud en el trabajo, con personal capacitado para brindar la mejor estabilidad en sus comunicaciones.",
-      icon: "local_offer",
-      bgIcon: "bg-red-50",
-      textColor: "text-red-600"
-    }
-  ];
+  const heroData = cmsContent.find(c => c.section === 'hero' && c.key === 'main')?.content || {
+    title: 'Soluciones Expertas en Radiocomunicación',
+    subtitle: 'Mantenemos a su equipo conectado. Desde el mantenimiento de radios portátiles y móviles hasta la instalación de infraestructura compleja.'
+  };
+
+  const services = cmsContent.find(c => c.section === 'services' && c.key === 'list')?.content || [];
 
   return (
     <div className="w-full">
@@ -82,9 +58,9 @@ export default async function ServicesPage() {
       <section className="relative w-full overflow-hidden bg-slate-900 min-h-[500px] flex flex-col justify-center">
         <div className="absolute inset-0 z-0">
           <Image 
-            alt="Taller de electrónica Mundolar" 
+            alt={heroData.title}
             className="object-cover opacity-40" 
-            src="https://images.unsplash.com/photo-1581092160607-ee22621dd758?q=80&w=2070&auto=format&fit=crop" 
+            src={heroData.image || "https://images.unsplash.com/photo-1581092160607-ee22621dd758?q=80&w=2070&auto=format&fit=crop"} 
             fill
             sizes="100vw"
             priority
@@ -97,10 +73,12 @@ export default async function ServicesPage() {
             <span className="text-xs font-bold uppercase tracking-wider text-primary">Centro de Servicio Autorizado</span>
           </div>
           <h1 className="font-display text-4xl font-extrabold tracking-tight text-white sm:text-5xl md:text-6xl max-w-4xl leading-tight">
-            Soluciones Expertas en <span className="text-primary">Radiocomunicación</span>
+             {heroData.title.includes('Radiocomunicación') ? (
+               <>{heroData.title.split('Radiocomunicación')[0]} <span className="text-primary">Radiocomunicación</span></>
+             ) : heroData.title}
           </h1>
           <p className="mt-6 max-w-2xl text-lg text-slate-300 sm:text-xl">
-            Mantenemos a su equipo conectado. Desde el mantenimiento de radios portátiles y móviles hasta la instalación de infraestructura compleja.
+            {heroData.subtitle}
           </p>
           <ServicesHeroActions />
         </div>
@@ -156,14 +134,14 @@ export default async function ServicesPage() {
           </div>
           
           <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
-            {services.map((s, i) => (
+            {services.map((s: any, i: number) => (
               <div key={i} className="flex flex-col gap-6 rounded-2xl bg-white p-8 shadow-sm transition-all hover:-translate-y-1 hover:shadow-xl border border-transparent hover:border-slate-100">
-                <div className={`flex h-14 w-14 items-center justify-center rounded-full ${s.bgIcon} ${s.textColor}`}>
-                  <span className="material-symbols-outlined text-[32px] font-bold">{s.icon}</span>
+                <div className={`flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary`}>
+                  <span className="material-symbols-outlined text-[32px] font-bold">{s.icon || 'settings'}</span>
                 </div>
                 <div className="space-y-3">
                   <h3 className="text-2xl font-extrabold text-[#0d141b]">{s.title}</h3>
-                  <p className="text-base leading-relaxed text-[#4c739a] font-medium">{s.desc}</p>
+                  <p className="text-base leading-relaxed text-[#4c739a] font-medium">{s.description}</p>
                 </div>
                 <div className="mt-auto pt-4">
                   <Link 

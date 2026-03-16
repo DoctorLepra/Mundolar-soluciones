@@ -4,10 +4,40 @@ import React from 'react';
 import { useForm, ValidationError } from '@formspree/react';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import Link from 'next/link';
+import { supabase } from '@/lib/supabase';
+
+async function getPageContent(page: string) {
+  const { data, error } = await supabase
+    .from('site_content')
+    .select('*')
+    .eq('page', page);
+  
+  if (error) {
+    console.error(`Error fetching CMS content for ${page}:`, error);
+    return [];
+  }
+  return data;
+}
 
 export default function ContactPage() {
   usePageTitle('Contacto');
   const [state, handleSubmit] = useForm("mjgayzab");
+  const [cmsData, setCmsData] = React.useState<any>(null);
+
+  React.useEffect(() => {
+    getPageContent('contacto').then(data => {
+      const mainInfo = data.find((c: any) => c.section === 'main' && c.key === 'info')?.content;
+      if (mainInfo) setCmsData(mainInfo);
+    });
+  }, []);
+
+  const contactInfo = cmsData || {
+    title: 'Hablemos de Soluciones',
+    description: 'Expertos en radios portátiles, móviles y repuestos. Estamos aquí para responder tus consultas técnicas y comerciales.',
+    email: 'ventas@mundolarsoluciones.com',
+    phone: '+57 305 220 0300',
+    address: 'Carrera 7 #156 - 68 Ed. North Point III, Bogotá D.C., Colombia'
+  };
 
   if (state.succeeded) {
     return (
@@ -39,10 +69,10 @@ export default function ContactPage() {
           <div className="flex flex-col items-center max-w-[800px] text-center gap-4">
             <span className="text-primary font-bold text-sm uppercase tracking-wider">Servicio al Cliente</span>
             <h1 className="text-[#0d141b] text-4xl md:text-5xl font-black leading-tight">
-              Hablemos de Soluciones
+              {contactInfo.title}
             </h1>
             <p className="text-[#4c739a] text-lg md:text-xl font-normal leading-relaxed max-w-2xl">
-              Expertos en radios portátiles, móviles y repuestos. Estamos aquí para responder tus consultas técnicas y comerciales.
+              {contactInfo.description}
             </p>
           </div>
         </div>

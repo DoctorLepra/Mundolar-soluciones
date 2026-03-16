@@ -5,13 +5,42 @@ export const metadata: Metadata = { title: 'Nosotros' };
 import Link from 'next/link';
 import Image from 'next/image';
 
-export default function AboutPage() {
+import { supabase } from '@/lib/supabase';
 
-  const teamMembers = [
-    { name: 'Carlos Méndez', role: 'CEO y Fundador', desc: '15+ años en ingeniería de telecomunicaciones.', img: 'https://picsum.photos/200/200?random=50' },
-    { name: 'Sarah Johnson', role: 'Directora de Ventas', desc: 'Experta en estrategias de comunicación empresarial.', img: 'https://picsum.photos/200/200?random=51' },
-    { name: 'David Chen', role: 'Técnico Líder', desc: 'Especialista certificado en Motorola Solutions.', img: 'https://picsum.photos/200/200?random=52' },
-    { name: 'Elena Rodríguez', role: 'Gerente de Soporte', desc: 'Asegurando la satisfacción del cliente desde 2015.', img: 'https://picsum.photos/200/200?random=53' }
+async function getPageContent(page: string) {
+  const { data, error } = await supabase
+    .from('site_content')
+    .select('*')
+    .eq('page', page);
+  
+  if (error) {
+    console.error(`Error fetching CMS content for ${page}:`, error);
+    return [];
+  }
+  return data;
+}
+
+export default async function AboutPage() {
+  const cmsContent = await getPageContent('nosotros');
+
+  const metrics = cmsContent.find(c => c.section === 'main' && c.key === 'metrics')?.content || [
+    { label: 'Años de Experiencia', value: '15+' },
+    { label: 'Productos Vendidos', value: '5k+' },
+    { label: 'Clientes Felices', value: '1.2k+' },
+    { label: 'Soporte Disponible', value: '24/7' },
+  ];
+
+  const heroData = cmsContent.find(c => c.section === 'hero' && c.key === 'main')?.content || {
+    title: 'Conectándote en Todo Lugar',
+    description: 'Somos expertos en soluciones de radiocomunicación portátil y móvil, asegurando que tu equipo permanezca conectado cuando más importa.',
+    image: 'https://images.unsplash.com/photo-1573164713714-d95e436ab8d6?q=80&w=2069&auto=format&fit=crop'
+  };
+
+  const history = cmsContent.find(c => c.section === 'main' && c.key === 'history')?.content || [
+    { year: '2008', title: 'Inicios', description: 'Mundolar Soluciones comenzó como una pequeña tienda local proporcionando reparaciones básicas de radios a empresas de seguridad locales.', icon: 'storefront' },
+    { year: '2012', title: 'Expansión Regional', description: 'Expandimos nuestros servicios para cubrir toda la región, asegurando alianzas con importantes empresas de construcción y logística.', icon: 'map' },
+    { year: '2018', title: 'Transformación Digital', description: 'Lanzamiento de nuestra plataforma de comercio electrónico, haciendo accesible el equipo de radio profesional a una audiencia nacional.', icon: 'public' },
+    { year: '2023', title: 'Excelencia en Servicio', description: 'Inauguración de nuestro laboratorio de reparaciones de última generación, certificado por marcas importantes como Motorola y Kenwood.', icon: 'build_circle' }
   ];
 
   return (
@@ -19,9 +48,9 @@ export default function AboutPage() {
       <section className="relative w-full overflow-hidden bg-slate-900 min-h-[500px] flex flex-col justify-center">
         <div className="absolute inset-0 z-0">
           <Image 
-            src="https://images.unsplash.com/photo-1573164713714-d95e436ab8d6?q=80&w=2069&auto=format&fit=crop" 
+            src={heroData.image || "https://images.unsplash.com/photo-1573164713714-d95e436ab8d6?q=80&w=2069&auto=format&fit=crop"} 
             className="object-cover opacity-40" 
-            alt="Equipo de Mundolar Soluciones en una reunión" 
+            alt={heroData.title} 
             fill
             sizes="100vw"
             priority
@@ -30,10 +59,12 @@ export default function AboutPage() {
         </div>
         <div className="relative z-10 mx-auto flex max-w-7xl flex-col items-center justify-center px-4 py-20 text-center sm:px-6 lg:px-8">
           <h1 className="font-display text-4xl font-extrabold tracking-tight text-white sm:text-5xl md:text-6xl max-w-4xl leading-tight">
-            Conectándote en <span className="text-primary">Todo Lugar</span>
+             {heroData.title.includes('Todo Lugar') ? (
+               <>{heroData.title.split('Todo Lugar')[0]} <span className="text-primary">Todo Lugar</span></>
+             ) : heroData.title}
           </h1>
           <p className="mt-6 max-w-2xl text-lg text-slate-300 sm:text-xl">
-            Somos expertos en soluciones de radiocomunicación portátil y móvil, asegurando que tu equipo permanezca conectado cuando más importa.
+            {heroData.description}
           </p>
           <div className="mt-10 flex flex-wrap justify-center gap-4">
             <Link href="/catalogo" className="inline-flex items-center justify-center rounded-lg bg-primary px-6 py-3 text-base font-bold text-white transition-all hover:bg-primary-dark hover:scale-105">
@@ -49,22 +80,12 @@ export default function AboutPage() {
       <section className="w-full bg-white border-b border-slate-200">
         <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
           <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
-            <div className="flex flex-col items-center justify-center gap-1 text-center">
-              <span className="text-3xl font-bold text-primary sm:text-4xl">15+</span>
-              <span className="text-sm font-medium text-slate-500">Años de Experiencia</span>
-            </div>
-            <div className="flex flex-col items-center justify-center gap-1 text-center">
-              <span className="text-3xl font-bold text-primary sm:text-4xl">5k+</span>
-              <span className="text-sm font-medium text-slate-500">Productos Vendidos</span>
-            </div>
-            <div className="flex flex-col items-center justify-center gap-1 text-center">
-              <span className="text-3xl font-bold text-primary sm:text-4xl">1.2k+</span>
-              <span className="text-sm font-medium text-slate-500">Clientes Felices</span>
-            </div>
-            <div className="flex flex-col items-center justify-center gap-1 text-center">
-              <span className="text-3xl font-bold text-primary sm:text-4xl">24/7</span>
-              <span className="text-sm font-medium text-slate-500">Soporte Disponible</span>
-            </div>
+            {metrics.map((metric: any, idx: number) => (
+              <div key={idx} className="flex flex-col items-center justify-center gap-1 text-center">
+                <span className="text-3xl font-bold text-primary sm:text-4xl">{metric.value}</span>
+                <span className="text-sm font-medium text-slate-500">{metric.label}</span>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -142,16 +163,11 @@ export default function AboutPage() {
           </div>
           <div className="relative">
             <div className="grid grid-cols-[60px_1fr] gap-x-6 sm:gap-x-12">
-              {[
-                { year: '2008', title: 'Inicios', desc: 'Mundolar Soluciones comenzó como una pequeña tienda local proporcionando reparaciones básicas de radios a empresas de seguridad locales.', icon: 'storefront' },
-                { year: '2012', title: 'Expansión Regional', desc: 'Expandimos nuestros servicios para cubrir toda la región, asegurando alianzas con importantes empresas de construcción y logística.', icon: 'map' },
-                { year: '2018', title: 'Transformación Digital', desc: 'Lanzamiento de nuestra plataforma de comercio electrónico, haciendo accesible el equipo de radio profesional a una audiencia nacional.', icon: 'public' },
-                { year: '2023', title: 'Excelencia en Servicio', desc: 'Inauguración de nuestro laboratorio de reparaciones de última generación, certificado por marcas importantes como Motorola y Kenwood.', icon: 'build_circle' }
-              ].map((item, index, arr) => (
+              {history.map((item: any, index: number, arr: any[]) => (
                 <React.Fragment key={index}>
                   <div className="flex flex-col items-center">
                     <div className={`flex size-12 shrink-0 items-center justify-center rounded-full border-2 z-10 shadow-sm ${index === 0 ? 'bg-white border-primary text-primary' : 'bg-white border-slate-300 text-slate-500'}`}>
-                      <span className="material-symbols-outlined">{item.icon}</span>
+                      <span className="material-symbols-outlined">{item.icon || 'star'}</span>
                     </div>
                     {index < arr.length - 1 && <div className="h-full w-0.5 bg-slate-300 -my-2"></div>}
                   </div>
@@ -160,7 +176,7 @@ export default function AboutPage() {
                       <h3 className="text-xl font-bold text-slate-900">{item.title}</h3>
                       <span className={`text-sm font-bold px-3 py-1 rounded-full w-fit ${index === 0 ? 'bg-primary/10 text-primary' : 'bg-slate-200 text-slate-500'}`}>{item.year}</span>
                     </div>
-                    <p className="text-slate-600">{item.desc}</p>
+                    <p className="text-slate-600">{item.description}</p>
                   </div>
                 </React.Fragment>
               ))}

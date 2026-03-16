@@ -1555,7 +1555,7 @@ export default function AdminProductsPage() {
                 <span className="text-xs text-slate-500">{imagePreviewUrls.length} / 5</span>
               </div>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                <span className="font-bold">Recomendado:</span> 1200 x 900 px (Relación 4:3) &bull; <span className="font-bold">Mínimo:</span> 800 x 600 px &bull; <span className="font-bold">Formato:</span> WebP o JPG.
+                <span className="font-bold">Recomendado:</span> 1200 x 1200 px (Relación 1:1) &bull; <span className="font-bold">Mínimo:</span> 800 x 800 px &bull; <span className="font-bold">Formato:</span> WebP o JPG.
               </p>
             </div>
             

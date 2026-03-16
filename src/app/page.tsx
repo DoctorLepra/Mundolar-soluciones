@@ -109,14 +109,30 @@ async function getBrands() {
   return data as Brand[];
 }
 
+async function getPageContent(page: string) {
+  const { data, error } = await supabase
+    .from('site_content')
+    .select('*')
+    .eq('page', page);
+  
+  if (error) {
+    console.error(`Error fetching CMS content for ${page}:`, error);
+    return [];
+  }
+  return data;
+}
+
 export default async function Home() {
   const featuredProducts = await getFeaturedProducts();
   const categories = await getCategories();
   const brands = await getBrands();
+  const cmsContent = await getPageContent('inicio');
+
+  const heroData = cmsContent.find(c => c.section === 'hero' && c.key === 'main')?.content;
 
   return (
     <div className="space-y-16 py-6 md:py-10">
-      <Hero />
+      <Hero data={heroData} />
 
       <section className="border-y border-slate-200 py-10 overflow-hidden">
         <div className="max-w-[1440px] mx-auto px-4 md:px-10">

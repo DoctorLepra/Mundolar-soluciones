@@ -46,7 +46,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
 
   return (
     <div className="group bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-xl hover:shadow-primary/5 hover:border-primary/30 transition-all duration-300 flex flex-col h-full">
-      <Link href={`/producto/${product.id}`} className="relative aspect-[4/3] bg-slate-100 overflow-hidden cursor-pointer flex items-center justify-center">
+      <Link href={`/producto/${product.id}`} className="relative aspect-square bg-slate-100 overflow-hidden cursor-pointer flex items-center justify-center">
         {hasOffer && (
           <span className="absolute top-3 left-3 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider z-10 animate-pulse">
             Oferta

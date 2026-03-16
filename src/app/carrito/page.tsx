@@ -149,11 +149,18 @@ export default function CartPage() {
       if (itemsError) throw itemsError;
 
       // 4. WhatsApp Redirection
-      const productList = cart.map(item => `- ${item.name} (x${item.quantity})`).join('%0A');
-      const orderLink = `${window.location.origin}/pedido/${btoa('ML-' + order.id)}`;
-      const message = `Hola quiero realizar la compra de los siguientes productos:%0A${productList}%0A%0AFactura/Pedido: ${orderLink}`;
+      const productLines = cart.map(item => {
+        const unitPrice = item.price_with_iva || (item.price * 1.19);
+        const totalPrice = unitPrice * item.quantity;
+        const sku = item.sku || 'N/A';
+        return `- ${sku} ${item.name} (${item.quantity}) $${formatCurrency(unitPrice)} $${formatCurrency(totalPrice)}`;
+      }).join('\n');
       
-      const whatsappUrl = `https://api.whatsapp.com/send?phone=573052200300&text=${message}`;
+      const orderLink = `${window.location.origin}/pedido/${btoa('ML-' + order.id)}`;
+      
+      const messageText = `Hola quiero realizar la compra de los siguientes productos:\n${productLines}\n\n-TOTAL VALOR DEL PEDIDO: $${formatCurrency(cartTotal)}\n\nFactura/Pedido: ${orderLink}`;
+      
+      const whatsappUrl = `https://api.whatsapp.com/send?phone=573052200300&text=${encodeURIComponent(messageText)}`;
       
       clearCart();
       window.open(whatsappUrl, '_blank');

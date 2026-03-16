@@ -55,7 +55,7 @@ interface UserProfile {
   id: string;
   email: string | null;
   full_name: string | null;
-  role: 'Admin' | 'Vendedor' | null;
+  role: 'Admin' | 'Asesor Comercial' | null;
 }
 
 export default function AdminProductsPage() {
@@ -99,6 +99,7 @@ export default function AdminProductsPage() {
     auxiliary_warehouse_stock: '',
     offer_start_date: '',
     offer_end_date: '',
+    offer_discount_percentage: '',
     status: 'Activo', // Default status
   });
 
@@ -340,6 +341,7 @@ export default function AdminProductsPage() {
       auxiliary_warehouse_stock: '0',
       offer_start_date: '', 
       offer_end_date: '', 
+      offer_discount_percentage: '',
       status: 'Activo' 
     });
     setImagePreviewUrls([]);
@@ -392,6 +394,9 @@ export default function AdminProductsPage() {
         auxiliary_warehouse_stock: product.auxiliary_warehouse_stock?.toString() || '0',
         offer_start_date: formatDateTimeLocal(product.offer_start_date),
         offer_end_date: formatDateTimeLocal(product.offer_end_date),
+        offer_discount_percentage: isOffer 
+            ? ((1 - Number(product.price) / Number(product.original_price)) * 100).toFixed(2) 
+            : '',
         status: product.status === 'Archivado' ? 'Inactivo' : (product.status || 'Activo'),
     });
     
@@ -440,7 +445,32 @@ export default function AdminProductsPage() {
 
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setProductForm(prev => ({ ...prev, [name]: value }));
+    
+    setProductForm(prev => {
+        const newState = { ...prev, [name]: value };
+        
+        // Bidirectional Offer Calculation
+        if (name === 'price' && isOfferActive && prev.original_price) {
+            const original = parseFloat(prev.original_price);
+            const offer = parseFloat(value);
+            if (original > 0 && !isNaN(offer)) {
+                newState.offer_discount_percentage = ((1 - offer / original) * 100).toFixed(2);
+            } else {
+                newState.offer_discount_percentage = '';
+            }
+        } else if (name === 'offer_discount_percentage' && isOfferActive && prev.original_price) {
+            const original = parseFloat(prev.original_price);
+            const discount = parseFloat(value);
+            if (original > 0 && !isNaN(discount)) {
+                newState.price = Math.round(original * (1 - discount / 100)).toString();
+            } else {
+                newState.price = '';
+            }
+        }
+        
+        return newState;
+    });
+    
     if (formError) setFormError(null);
   };
 
@@ -726,7 +756,7 @@ export default function AdminProductsPage() {
   };
 
   const toggleStatus = async (product: Product) => {
-    const newStatus = product.status === 'Activo' ? 'Inactivo' : 'Activo';
+    const newStatus = product.status === 'Activo' ? 'Archivado' : 'Activo';
     
     // Incomplete products cannot be activated
     if (newStatus === 'Activo') {
@@ -1141,7 +1171,9 @@ export default function AdminProductsPage() {
                               )}
                             </div>
                             <div>
-                                <p className="text-sm font-semibold text-slate-900 group-hover:text-primary transition-colors">{p.name}</p>
+                                <p className="text-sm font-semibold text-slate-900 group-hover:text-primary transition-colors">
+                                  {p.name.length > 25 ? `${p.name.substring(0, 25)}...` : p.name}
+                                </p>
                                 <p className="text-xs text-slate-500">{p.brands?.name || 'Sin marca'}</p>
                             </div>
                         </div>
@@ -1200,11 +1232,11 @@ export default function AdminProductsPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              if (currentUserProfile?.role === 'Admin') {
+                              if (currentUserProfile && (currentUserProfile.role === 'Admin' || currentUserProfile.role === 'Asesor Comercial')) {
                                 toggleStatus(p);
                               }
                             }}
-                            className={`relative inline-flex h-5 w-9 flex-shrink-0 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 ${p.status === 'Activo' ? 'bg-primary' : 'bg-slate-200'} ${currentUserProfile?.role !== 'Admin' ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
+                            className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 ${p.status === 'Activo' ? 'bg-primary' : 'bg-slate-200'} ${currentUserProfile?.role !== 'Admin' ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
                             disabled={currentUserProfile?.role !== 'Admin'}
                           >
                             <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${p.status === 'Activo' ? 'translate-x-4' : 'translate-x-0'}`} />
@@ -1277,7 +1309,7 @@ export default function AdminProductsPage() {
               <div className="flex items-center gap-3 h-[38px]">
                 <button
                   type="button"
-                  onClick={() => setProductForm(prev => ({ ...prev, status: prev.status === 'Activo' ? 'Inactivo' : 'Activo' }))}
+                  onClick={() => setProductForm(prev => ({ ...prev, status: prev.status === 'Activo' ? 'Archivado' : 'Activo' }))}
                   className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${productForm.status === 'Activo' ? 'bg-primary' : 'bg-slate-200'}`}
                 >
                   <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${productForm.status === 'Activo' ? 'translate-x-5' : 'translate-x-0'}`} />
@@ -1454,9 +1486,18 @@ export default function AdminProductsPage() {
                           const gainPct = ((ventaNum / costNum) - 1) * 100;
                           newState.profit_percentage = gainPct.toFixed(2);
                         }
+
+                        // Sync Offer if active
+                        if (isOfferActive && prev.price) {
+                          const offerPrice = parseFloat(prev.price);
+                          if (ventaNum > 0 && !isNaN(offerPrice)) {
+                            newState.offer_discount_percentage = ((1 - offerPrice / ventaNum) * 100).toFixed(2);
+                          }
+                        }
                       } else {
                         newState.price_with_iva = '';
                         newState.profit_percentage = '';
+                        if (isOfferActive) newState.offer_discount_percentage = '';
                       }
                       return newState;
                     });
@@ -1481,9 +1522,18 @@ export default function AdminProductsPage() {
           </div>
           {isOfferActive && (
             <div className="space-y-6 p-4 border border-slate-200 rounded-lg bg-slate-50">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Precio de Oferta <span className="text-red-500">*</span></label>
-                <input type="number" name="price" value={productForm.price} onChange={handleFormChange} required={isOfferActive} placeholder="Ej: 249.00" className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm" step="0.01" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Precio de Oferta <span className="text-red-500">*</span></label>
+                  <input type="number" name="price" value={productForm.price} onChange={handleFormChange} required={isOfferActive} placeholder="Ej: 249000" className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Porcentaje de Descuento (%)</label>
+                  <div className="relative">
+                    <input type="number" name="offer_discount_percentage" value={productForm.offer_discount_percentage} onChange={handleFormChange} placeholder="Ej: 20" className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm pr-10" step="0.01" />
+                    <span className="absolute inset-y-0 right-3 flex items-center text-slate-400 font-bold">%</span>
+                  </div>
+                </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>

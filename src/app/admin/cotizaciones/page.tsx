@@ -425,13 +425,13 @@ function AdminQuotesPageContent() {
       if (itemsError) throw itemsError;
 
       // Notification Logic
-      if (currentUserProfile?.role === 'Vendedor') {
+      if (currentUserProfile?.role === 'Asesor Comercial') {
         const quoteNumber = isEditMode ? 'Existente' : (typeof quoteId === 'string' ? 'Nueva' : '');
         await notifyAdmins({
           title: isEditMode ? 'Cotización Actualizada' : 'Nueva Cotización Generada',
           message: isEditMode 
-            ? `El vendedor ${currentUserProfile.full_name} ha actualizado una cotización.`
-            : `El vendedor ${currentUserProfile.full_name} ha generado una nueva cotización.`,
+            ? `El asesor comercial ${currentUserProfile.full_name} ha actualizado una cotización.`
+            : `El asesor comercial ${currentUserProfile.full_name} ha generado una nueva cotización.`,
           type: 'quote',
           related_id: quoteId || undefined
         });
@@ -523,8 +523,8 @@ function AdminQuotesPageContent() {
     <div className="flex flex-col h-full bg-slate-50">
       <header className="bg-white border-b border-slate-200 px-6 py-5 flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900 font-display">Cotizaciones</h2>
-          <p className="text-slate-500 text-sm font-display">Genera y administra presupuestos para clientes.</p>
+          <h2 className="text-2xl font-black text-slate-900 font-display tracking-tight">Cotizaciones</h2>
+          <p className="text-slate-500 text-sm font-medium">Genera y administra presupuestos para clientes.</p>
         </div>
         <button 
           onClick={() => setIsCreateModalOpen(true)}
@@ -575,12 +575,14 @@ function AdminQuotesPageContent() {
           {/* Filters (Sync con Pedidos) */}
           <div className="flex flex-col gap-4 mb-6">
             <div className="flex flex-col md:flex-row gap-3">
-              <div className="flex-1 relative">
-                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+              <div className="relative w-full lg:max-w-md">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <span className="material-symbols-outlined text-slate-400 text-[20px]">search</span>
+                </div>
                 <input 
                   type="text" 
                   placeholder="Buscar por número o cliente..."
-                  className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-slate-900 placeholder-slate-400 shadow-[0_4px_12px_rgba(0,0,0,0.15)] font-display"
+                  className="block w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-sm font-display shadow-[0_4px_12px_rgba(0,0,0,0.15)] outline-none"
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
                 />
@@ -939,24 +941,43 @@ function AdminQuotesPageContent() {
                         if (!canModify) return null;
 
                         return (
-                          <button 
-                            onClick={() => {
-                              const q = quotes.find(q => q.id === selectedQuoteId);
-                              if (q) handleEditQuote(q);
-                            }}
-                            className="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 p-3.5 rounded-xl font-bold text-sm transition-all shadow-sm font-display"
-                          >
-                            <span className="material-symbols-outlined text-[20px]">edit</span>
-                          </button>
+                          <>
+                            <button 
+                              onClick={() => {
+                                const q = quotes.find(q => q.id === selectedQuoteId);
+                                if (q) handleEditQuote(q);
+                              }}
+                              className="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 p-3.5 rounded-xl font-bold text-sm transition-all shadow-sm font-display"
+                            >
+                              <span className="material-symbols-outlined text-[20px]">edit</span>
+                            </button>
+                            <button 
+                              onClick={() => window.location.href = `/admin/pedidos?create=true&fromQuote=${selectedQuoteId}`}
+                              className="col-span-2 w-full flex items-center justify-center gap-2 px-3 py-3.5 bg-primary hover:bg-primary-dark text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-primary/20 font-display mt-2"
+                            >
+                              <span className="material-symbols-outlined text-[20px]">shopping_cart_checkout</span>
+                              Convertir a Pedido
+                            </button>
+                          </>
                         );
                       })()}
 
                       <button 
-                        onClick={() => window.location.href = `/admin/pedidos?create=true&fromQuote=${selectedQuoteId}`}
-                        className="col-span-2 w-full flex items-center justify-center gap-2 px-3 py-3.5 bg-primary hover:bg-primary-dark text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-primary/20 font-display mt-2"
+                        onClick={async () => {
+                          const quote = quotes.find(q => q.id === selectedQuoteId);
+                          if (quote) {
+                            const { generateQuotePDF } = await import('@/lib/pdf-generator');
+                            await generateQuotePDF({
+                              quote,
+                              items: selectedQuoteItems,
+                              advisor: currentUserProfile
+                            });
+                          }
+                        }}
+                        className="col-span-2 w-full flex items-center justify-center gap-2 px-3 py-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-sm font-bold transition-all shadow-sm font-display mt-2"
                       >
-                        <span className="material-symbols-outlined text-[20px]">shopping_cart_checkout</span>
-                        Convertir a Pedido
+                        <span className="material-symbols-outlined text-[20px]">picture_as_pdf</span>
+                        Descargar PDF
                       </button>
 
                       {(() => {

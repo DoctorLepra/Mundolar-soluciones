@@ -50,7 +50,7 @@ function UsuariosPageContent() {
   const [formData, setFormData] = useState({
     full_name: '',
     email: '',
-    role: 'Vendedor'
+    role: 'Asesor Comercial'
   });
 
   useEffect(() => {
@@ -87,7 +87,7 @@ function UsuariosPageContent() {
     setFormData({
       full_name: profile.full_name || '',
       email: profile.email || '',
-      role: profile.role || 'Vendedor'
+      role: profile.role || 'Asesor Comercial'
     });
     setEditingUserId(profile.id);
     setIsEditMode(true);
@@ -133,7 +133,7 @@ function UsuariosPageContent() {
   };
 
   const resetForm = () => {
-    setFormData({ full_name: '', email: '', role: 'Vendedor' });
+    setFormData({ full_name: '', email: '', role: 'Asesor Comercial' });
     setIsEditMode(false);
     setEditingUserId(null);
   };
@@ -161,25 +161,40 @@ function UsuariosPageContent() {
   );
 
   return (
-    <main className="flex-1 p-4 md:p-8 bg-[#F8FAFC] min-h-screen">
-      <div className="max-w-7xl mx-auto space-y-6">
-        
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+    <main className="flex-1 overflow-y-auto custom-scrollbar bg-slate-50 min-h-screen">
+      <header className="bg-white border-b border-slate-200 px-8 py-6 relative z-30 space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h2 className="text-2xl font-black text-slate-900 font-display tracking-tight">Gestión de Usuarios</h2>
             <p className="text-slate-500 text-sm font-medium">Administra el acceso y roles de tu equipo.</p>
           </div>
           <button 
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center justify-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95 hover:bg-primary-dark shadow-primary/20"
+            className="flex items-center justify-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95 hover:bg-primary-dark shadow-primary/20 shrink-0"
           >
-            <UserPlus size={20} />
+            <span className="material-symbols-outlined text-[20px]">add</span>
             Nuevo Usuario
           </button>
         </div>
 
-        {/* Notifications */}
+        <div className="flex flex-col lg:flex-row items-center justify-between gap-4 mt-6">
+          <div className="relative w-full lg:max-w-md">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <span className="material-symbols-outlined text-slate-400 text-[20px]">search</span>
+            </div>
+            <input 
+              type="text" 
+              placeholder="Buscar por nombre o email..." 
+              className="block w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-sm font-display shadow-[0_4px_12px_rgba(0,0,0,0.15)] outline-none"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+        </div>
+      </header>
+
+      <div className="p-8">
+
         {notification && (
           <div className={`p-4 rounded-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300 ${
             notification.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-rose-50 text-rose-700 border border-rose-100'
@@ -192,30 +207,17 @@ function UsuariosPageContent() {
           </div>
         )}
 
-        {/* Filters and Table */}
-        <div className="bg-white rounded-3xl border border-slate-100 shadow-xl overflow-hidden">
-          <div className="p-6 border-b border-slate-50 bg-slate-50/30">
-            <div className="relative max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <input 
-                type="text" 
-                placeholder="Buscar por nombre o email..." 
-                className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-          </div>
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
 
           <div className="overflow-x-auto">
             <table className="w-full text-left">
-              <thead>
-                <tr className="bg-slate-50/50">
-                  <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Usuario</th>
-                  <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Rol</th>
-                  <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Estado</th>
-                  <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Fecha Registro</th>
-                  <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Acciones</th>
+              <thead className="sticky top-0 z-20 bg-slate-50">
+                <tr className="bg-slate-50 border-b border-slate-200">
+                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Usuario</th>
+                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Rol</th>
+                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Estado</th>
+                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Fecha Registro</th>
+                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -240,11 +242,11 @@ function UsuariosPageContent() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold ${
-                          profile.role === 'Admin' ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-blue-50 text-blue-700 border border-blue-100'
+                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-bold ${
+                          profile.role === 'Admin' ? 'bg-amber-50 text-amber-100 border border-amber-200' : 'bg-blue-50 text-blue-100 border border-blue-200'
                         }`}>
-                          <Shield size={12} />
-                          {profile.role}
+                          <span className="material-symbols-outlined text-[14px]">{profile.role === 'Admin' ? 'admin_panel_settings' : 'person'}</span>
+                          <span className={`${profile.role === 'Admin' ? 'text-amber-700' : 'text-blue-700'}`}>{profile.role}</span>
                         </span>
                       </td>
                       <td className="px-6 py-4">
@@ -259,20 +261,20 @@ function UsuariosPageContent() {
                         {new Date(profile.created_at).toLocaleDateString()}
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <div className="flex justify-end gap-2">
+                        <div className="flex justify-end gap-2 text-right">
                           <button 
                             onClick={() => handleEditClick(profile)}
-                            className="p-2 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-xl transition-all"
+                            className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-all"
                             title="Editar usuario"
                           >
-                            <Edit size={18} />
+                            <span className="material-symbols-outlined text-[20px]">edit</span>
                           </button>
                           <button 
                             onClick={() => handleDeleteUser(profile.id)}
-                            className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
+                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
                             title="Eliminar usuario"
                           >
-                            <Trash2 size={18} />
+                            <span className="material-symbols-outlined text-[20px]">delete</span>
                           </button>
                         </div>
                       </td>
@@ -294,10 +296,9 @@ function UsuariosPageContent() {
         </div>
       </div>
 
-      {/* Invitation Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-md rounded-[32px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 border border-slate-100">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-md rounded-xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 border border-slate-200">
             <div className="p-8">
               <div className="flex justify-between items-start mb-6">
                 <div>
@@ -308,21 +309,21 @@ function UsuariosPageContent() {
                     {isEditMode ? 'Actualiza los datos del perfil.' : 'Se enviará una invitación por correo.'}
                   </p>
                 </div>
-                <button onClick={() => { setIsModalOpen(false); resetForm(); }} className="size-8 flex items-center justify-center rounded-xl bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all">
-                  <X size={20} />
+                <button onClick={() => { setIsModalOpen(false); resetForm(); }} className="p-2 rounded-full hover:bg-slate-100 text-slate-400">
+                  <span className="material-symbols-outlined">close</span>
                 </button>
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Nombre Completo</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Nombre Completo <span className="text-red-500">*</span></label>
                   <div className="relative">
-                    <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-slate-400 text-[20px]">person</span>
                     <input 
                       type="text" 
                       required
                       placeholder="Ej: Juan Pérez"
-                      className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all font-medium"
+                      className="block w-full pl-12 pr-4 py-2.5 bg-white border border-slate-600 rounded-lg text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm outline-none"
                       value={formData.full_name}
                       onChange={(e) => setFormData({...formData, full_name: e.target.value})}
                     />
@@ -330,15 +331,15 @@ function UsuariosPageContent() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Correo Electrónico</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Correo Electrónico <span className="text-red-500">*</span></label>
                   <div className="relative">
-                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-slate-400 text-[20px]">mail</span>
                     <input 
                       type="email" 
                       required
                       disabled={isEditMode}
                       placeholder="correo@mundolar.com"
-                      className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all font-medium disabled:opacity-50"
+                      className="block w-full pl-12 pr-4 py-2.5 bg-white border border-slate-600 rounded-lg text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm outline-none disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed"
                       value={formData.email}
                       onChange={(e) => setFormData({...formData, email: e.target.value})}
                     />
@@ -347,16 +348,16 @@ function UsuariosPageContent() {
 
                 {/* Role and Submit */}
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Rol de Acceso</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-3">Rol de Acceso <span className="text-red-500">*</span></label>
                   <div className="grid grid-cols-2 gap-3">
-                    {['Vendedor', 'Admin'].map((role) => (
+                    {['Asesor Comercial', 'Admin'].map((role) => (
                       <button
                         key={role}
                         type="button"
                         onClick={() => setFormData({...formData, role})}
-                        className={`py-3 rounded-2xl text-sm font-bold border transition-all ${
+                        className={`py-2.5 rounded-lg text-sm font-bold border transition-all ${
                           formData.role === role 
-                            ? 'bg-primary border-primary text-white shadow-lg shadow-primary/25' 
+                            ? 'bg-primary border-primary text-white shadow-md' 
                             : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
                         }`}
                       >
@@ -366,13 +367,14 @@ function UsuariosPageContent() {
                   </div>
                 </div>
 
-                <div className="pt-4">
+                <div className="pt-6 flex justify-end gap-3">
+                  <button onClick={() => { setIsModalOpen(false); resetForm(); }} type="button" className="px-5 py-2.5 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm font-bold shadow-sm hover:bg-slate-50">Cancelar</button>
                   <button 
                     type="submit"
                     disabled={isSubmitting}
-                    className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-sm hover:bg-slate-800 transition-all active:scale-[0.98] disabled:opacity-50 shadow-xl"
+                    className="px-5 py-2.5 rounded-lg bg-primary hover:bg-primary-dark text-white text-sm font-bold shadow-md disabled:bg-primary/50 disabled:cursor-not-allowed transition-all"
                   >
-                    {isSubmitting ? 'Guardando...' : (isEditMode ? 'Guardar Cambios' : 'Enviar Invitación')}
+                    {isSubmitting ? 'Guardando...' : (isEditMode ? 'Guardar Cambios' : 'Invitar Usuario')}
                   </button>
                 </div>
               </form>

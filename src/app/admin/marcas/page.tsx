@@ -34,7 +34,6 @@ function AdminBrandsPageContent() {
 
     // UI State
     const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null);
-    const [searchTerm, setSearchTerm] = useState('');
     
     // Edit Form State
     const [editForm, setEditForm] = useState({
@@ -384,24 +383,14 @@ function AdminBrandsPageContent() {
         }
     };
 
-    const filteredBrands = allBrands.filter(b => 
-        b.name.toLowerCase().includes(searchTerm.toLowerCase())
-    );
 
   return (
     <div className="flex-1 flex flex-col h-full bg-slate-50 overflow-hidden">
       <header className="bg-white border-b border-slate-200 px-8 py-6 shrink-0 z-10">
-        <div className="flex items-center gap-2 text-sm text-slate-500 mb-4 font-body">
-            <span className="hover:text-primary cursor-pointer">Inicio</span>
-            <span className="material-symbols-outlined text-[16px]">chevron_right</span>
-            <span className="hover:text-primary cursor-pointer">Catálogo</span>
-            <span className="material-symbols-outlined text-[16px]">chevron_right</span>
-            <span className="text-slate-900 font-medium">Marcas</span>
-        </div>
         <div className="flex flex-col md:flex-row justify-between gap-4 md:items-center">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900 tracking-tight font-display">Gestión de Marcas</h1>
-            <p className="text-slate-500 mt-1 font-display">Administra los fabricantes y marcas de productos.</p>
+            <h2 className="text-2xl font-black text-slate-900 tracking-tight font-display">Gestión de Marcas</h2>
+            <p className="text-slate-500 text-sm font-medium">Administra los fabricantes y marcas de productos.</p>
           </div>
           <div className="flex gap-3">
             <button onClick={handleOpenModal} className="flex items-center justify-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95 hover:bg-primary-dark shadow-primary/20 font-display">
@@ -411,20 +400,6 @@ function AdminBrandsPageContent() {
           </div>
         </div>
         
-        <div className="w-full max-w-2xl mt-6">
-            <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <span className="material-symbols-outlined text-slate-400 group-focus-within:text-primary transition-colors">search</span>
-                </div>
-                <input 
-                    type="text" 
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="block w-full pl-10 pr-3 py-2.5 border border-slate-200 rounded-lg bg-white text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-primary shadow-sm font-body" 
-                    placeholder="Buscar marca por nombre..." 
-                />
-            </div>
-        </div>
       </header>
 
       <div className="flex-1 overflow-hidden p-8 pt-4 flex flex-col lg:flex-row gap-8">
@@ -440,19 +415,13 @@ function AdminBrandsPageContent() {
                     <div className="size-8 border-2 border-primary border-t-transparent animate-spin rounded-full mx-auto"></div>
                     <p className="text-xs text-slate-400 font-medium font-display">Cargando marcas...</p>
                 </div>
-            ) : error ? (
-                <div className="p-6 text-center bg-red-50 rounded-lg border border-red-100">
-                    <p className="text-sm text-red-600 font-medium font-display">{error}</p>
-                </div>
-            ) : filteredBrands.length === 0 ? (
+            ) : allBrands.length === 0 ? (
                 <div className="p-10 text-center space-y-2">
-                    <span className="material-symbols-outlined text-slate-300 text-4xl">{searchTerm ? 'search_off' : 'verified'}</span>
-                    <p className="text-sm text-slate-500 font-medium font-display">
-                        {searchTerm ? 'No se encontraron resultados' : 'No hay marcas aun'}
-                    </p>
+                    <span className="material-symbols-outlined text-slate-300 text-4xl">verified</span>
+                    <p className="text-sm text-slate-500 font-medium font-display">No hay marcas aun</p>
                 </div>
             ) : (
-                filteredBrands.map(node => (
+                allBrands.map(node => (
                     <div key={node.id} className="relative">
                         {dropIndicator?.targetId === node.id && dropIndicator.position === 'top' && (
                             <div className="absolute top-0 left-0 right-0 h-0.5 bg-primary z-10 rounded"></div>

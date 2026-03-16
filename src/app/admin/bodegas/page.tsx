@@ -269,8 +269,8 @@ function AdminWarehousesPageContent() {
       <header className="bg-white border-b border-slate-200 px-8 py-6 relative z-30">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-bold text-slate-900 font-display">Gestión de Bodegas</h2>
-            <p className="text-slate-500 mt-1">Administra los puntos físicos de almacenamiento</p>
+            <h2 className="text-2xl font-black text-slate-900 font-display tracking-tight">Gestión de Bodegas</h2>
+            <p className="text-slate-500 text-sm font-medium">Administra los puntos físicos de almacenamiento</p>
           </div>
           <div className="flex items-center gap-3">
             <button 
@@ -293,12 +293,12 @@ function AdminWarehousesPageContent() {
         <div className="mt-8 flex flex-col lg:flex-row gap-4 justify-between items-start lg:items-center">
           <div className="relative w-full lg:max-w-md">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <span className="material-symbols-outlined text-slate-400">search</span>
+              <span className="material-symbols-outlined text-slate-400 text-[20px]">search</span>
             </div>
             <input 
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              className="block w-full pl-10 pr-3 py-2.5 border border-slate-200 rounded-lg leading-5 bg-white shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary sm:text-sm transition-all"
+              className="block w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-sm font-display shadow-[0_4px_12px_rgba(0,0,0,0.15)] outline-none"
               placeholder="Buscar por ID, nombre, ubicación..."
               type="text"
             />

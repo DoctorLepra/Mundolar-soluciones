@@ -10,6 +10,7 @@ export interface CartItem {
   image_url: string;
   quantity: number;
   brand_name?: string;
+  sku: string | null;
 }
 
 interface CartContextType {
@@ -80,7 +81,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         price_with_iva: product.price_with_iva,
         image_url: imageUrls.length > 0 ? imageUrls[0] : `https://picsum.photos/400/300?random=${product.id}`,
         quantity: 1,
-        brand_name: product.brands?.name || (Array.isArray(product.brands) ? product.brands[0]?.name : 'Marca')
+        brand_name: product.brands?.name || (Array.isArray(product.brands) ? product.brands[0]?.name : 'Marca'),
+        sku: product.sku || null
       };
       
       return [...prevCart, newEntry];

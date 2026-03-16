@@ -328,7 +328,7 @@ function AdminOrdersPageContent() {
           profiles:created_by_id (full_name, role)
         `);
 
-      if (profile && profile.role === 'Vendedor') {
+      if (profile && profile.role === 'Asesor Comercial') {
         query = query.eq('created_by_id', user!.id);
       }
 
@@ -756,11 +756,11 @@ function AdminOrdersPageContent() {
       if (itemsError) throw itemsError;
 
       // Notification Logic
-      if (currentUserProfile?.role === 'Vendedor') {
+      if (currentUserProfile?.role === 'Asesor Comercial') {
         const { data: { user } } = await supabase.auth.getUser();
         await notifyAdmins({
           title: 'Nuevo Pedido Registrado',
-          message: `El vendedor ${currentUserProfile.full_name} ha creado un nuevo pedido.`,
+          message: `El asesor comercial ${currentUserProfile.full_name} ha creado un nuevo pedido.`,
           type: 'order',
           related_id: orderId.toString()
         });
@@ -849,8 +849,8 @@ function AdminOrdersPageContent() {
     <div className="flex flex-col h-full bg-slate-50">
       <header className="bg-white border-b border-slate-200 px-6 py-5 shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex flex-col gap-1">
-          <h2 className="text-2xl font-bold text-slate-900 tracking-tight font-display">Gestión de Pedidos</h2>
-          <p className="text-slate-500 text-sm font-display">Administra y rastrea pedidos de equipos de telecomunicaciones.</p>
+          <h2 className="text-2xl font-black text-slate-900 tracking-tight font-display">Gestión de Pedidos</h2>
+          <p className="text-slate-500 text-sm font-medium">Administra y rastrea pedidos de equipos de telecomunicaciones.</p>
         </div>
           <button 
             onClick={() => {
@@ -911,12 +911,14 @@ function AdminOrdersPageContent() {
             {/* SEARCH & FILTERS */}
             <div className="flex flex-col gap-4 mb-6">
               <div className="flex flex-col md:flex-row gap-3">
-                <div className="flex-1 relative">
-                  <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+                <div className="relative w-full lg:max-w-md">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <span className="material-symbols-outlined text-slate-400 text-[20px]">search</span>
+                  </div>
                   <input 
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-slate-900 placeholder-slate-400 shadow-[0_4px_12px_rgba(0,0,0,0.15)] font-display" 
+                    className="block w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-sm font-display shadow-[0_4px_12px_rgba(0,0,0,0.15)] outline-none" 
                     placeholder="Buscar por ID, cliente o email..." 
                     type="text"
                   />
@@ -1087,7 +1089,7 @@ function AdminOrdersPageContent() {
         </div>
 
         <aside 
-          className={`bg-white border-l border-slate-200 transition-all duration-300 ease-in-out flex flex-col overflow-hidden ${
+          className={`bg-white border-l border-slate-200 transition-all duration-300 ease-in-out flex flex-col overflow-y-auto custom-scrollbar ${
             selectedOrder ? "w-full lg:w-[450px] opacity-100" : "w-0 opacity-0 border-none"
           }`}
         >
@@ -1188,13 +1190,13 @@ function AdminOrdersPageContent() {
                   </div>
                 </div>
 
-                {/* Atribución / Vendedor */}
+                {/* Atribución / Asesor Comercial */}
                 <div className="bg-emerald-50/50 p-4 rounded-xl border border-emerald-100 flex items-center gap-3">
                   <div className="size-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
                     <span className="material-symbols-outlined text-xl">person_check</span>
                   </div>
                   <div>
-                    <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest leading-none mb-1">Vendedor Asignado</p>
+                    <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest leading-none mb-1">Asesor Asignado</p>
                     <p className="text-sm font-bold text-emerald-900 font-display">
                       {selectedOrder.profiles?.full_name || 'Sistema'}
                     </p>
@@ -1255,7 +1257,7 @@ function AdminOrdersPageContent() {
                       <div className="col-span-2 mb-2 p-3 bg-amber-50 border border-amber-100 rounded-xl flex items-center gap-3">
                         <span className="material-symbols-outlined text-amber-500 text-sm">lock</span>
                         <p className="text-[11px] font-medium text-amber-700 font-display">
-                          Solo el vendedor responsable o un administrador pueden realizar modificaciones.
+                          Solo el asesor responsable o un administrador pueden realizar modificaciones.
                         </p>
                       </div>
                     );

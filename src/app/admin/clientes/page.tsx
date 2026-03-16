@@ -379,7 +379,7 @@ const AdminClientsPageContent = () => {
       .order("due_date", { ascending: true });
 
     // Role-based filtering: Vendors only see tasks they are assigned to OR tasks they created
-    if (profile && profile.role === 'Vendedor') {
+    if (profile && profile.role === 'Asesor Comercial') {
       query = query.or(`assigned_to_id.eq.${profile.id},created_by_id.eq.${profile.id}`);
     }
 
@@ -450,11 +450,11 @@ const AdminClientsPageContent = () => {
               related_id: taskId || undefined
             });
           }
-        } else if (currentUserProfile.role === 'Vendedor') {
+        } else if (currentUserProfile.role === 'Asesor Comercial') {
           // If Vendor auto-assigns or creates task
           await notifyAdmins({
             title: 'Tarea Creada/Auto-asignada',
-            message: `El vendedor ${currentUserProfile.full_name} ha creado/asignado la tarea: ${taskData.title}`,
+            message: `El asesor comercial ${currentUserProfile.full_name} ha creado/asignado la tarea: ${taskData.title}`,
             type: 'task',
             related_id: taskId || undefined
           });
@@ -468,8 +468,8 @@ const AdminClientsPageContent = () => {
         title: "",
         description: "",
         due_date: new Date().toISOString().split("T")[0],
-        assigned_to: currentUserProfile?.role === 'Vendedor' ? currentUserProfile.full_name : "",
-        assigned_to_id: currentUserProfile?.role === 'Vendedor' ? currentUserProfile.id : "",
+        assigned_to: currentUserProfile?.role === 'Asesor Comercial' ? currentUserProfile.full_name : "",
+        assigned_to_id: currentUserProfile?.role === 'Asesor Comercial' ? currentUserProfile.id : "",
         client_id: "",
         status: "Pendiente",
         created_by_id: currentUserProfile?.id || "",
@@ -599,7 +599,7 @@ const AdminClientsPageContent = () => {
       .select("*")
       .eq("client_id", clientId);
 
-    if (currentUserProfile && currentUserProfile.role === 'Vendedor') {
+    if (currentUserProfile && currentUserProfile.role === 'Asesor Comercial') {
       query = query.eq('created_by_id', currentUserProfile.id);
     }
 
@@ -1315,12 +1315,12 @@ const AdminClientsPageContent = () => {
     <div className="flex flex-col h-full bg-slate-50">
       <header className="bg-white border-b border-slate-200 px-6 py-5 shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex flex-col gap-1">
-          <h2 className="text-2xl font-bold text-slate-900 tracking-tight font-display">
+          <h2 className="text-2xl font-black text-slate-900 tracking-tight font-display">
             {viewTab === "Clientes"
               ? "Gestión de Clientes"
               : "Gestión de Tareas CRM"}
           </h2>
-          <p className="text-slate-500 text-sm font-display">
+          <p className="text-slate-500 text-sm font-medium">
             {viewTab === "Clientes"
               ? "Administra la base de datos de clientes, historiales y notas."
               : "Asignación y seguimiento de tareas para asesores y equipo."}
@@ -1472,14 +1472,14 @@ const AdminClientsPageContent = () => {
               <>
                 <div className="flex flex-col gap-4 mb-6">
                   <div className="flex flex-col md:flex-row gap-3">
-                    <div className="flex-1 relative">
-                      <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-                        search
-                      </span>
+                    <div className="relative w-full lg:max-w-md">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <span className="material-symbols-outlined text-slate-400 text-[20px]">search</span>
+                      </div>
                       <input
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-slate-900 placeholder-slate-400 shadow-[0_4px_12px_rgba(0,0,0,0.15)] font-display"
+                        className="block w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-sm font-display shadow-[0_4px_12px_rgba(0,0,0,0.15)] outline-none"
                         placeholder="Buscar por nombre, empresa o email..."
                         type="text"
                       />
@@ -2893,8 +2893,8 @@ const AdminClientsPageContent = () => {
                                           .split("T")[0],
                                         assigned_to:
                                           (selectedClient as any)
-                                            .assigned_to_name || (currentUserProfile?.role === 'Vendedor' ? currentUserProfile.full_name : ""),
-                                        assigned_to_id: (selectedClient as any).assigned_to_id || (currentUserProfile?.role === 'Vendedor' ? currentUserProfile.id : ""),
+                                            .assigned_to_name || (currentUserProfile?.role === 'Asesor Comercial' ? currentUserProfile.full_name : ""),
+                                        assigned_to_id: (selectedClient as any).assigned_to_id || (currentUserProfile?.role === 'Asesor Comercial' ? currentUserProfile.id : ""),
                                         client_id: (selectedClient as any).id,
                                         status: "Pendiente",
                                         created_by_id: currentUserProfile?.id || "",

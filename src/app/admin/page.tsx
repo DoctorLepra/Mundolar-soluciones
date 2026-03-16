@@ -246,8 +246,8 @@ export default function AdminDashboard() {
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-3xl font-black text-slate-900 font-display tracking-tight text-balance">Panel de Control</h2>
-            <p className="text-slate-500 font-medium">Análisis en tiempo real de telecomunicaciones profesionales.</p>
+            <h2 className="text-2xl font-black text-slate-900 font-display tracking-tight text-balance">Panel de Control</h2>
+            <p className="text-slate-500 text-sm font-medium">Análisis en tiempo real de telecomunicaciones profesionales.</p>
           </div>
           <Link href="/admin/pedidos" className="hidden md:flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-700 px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95 hover:bg-slate-50">
             <Clock size={20} /> Ver Actividad

@@ -67,7 +67,7 @@ function CmsPageContent() {
         )}
 
         {/* Tab Navigation */}
-        <div className="flex bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm mb-8 w-fit overflow-x-auto custom-scrollbar no-scrollbar">
+        <div className="flex bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm mb-8 w-fit max-w-full overflow-x-auto custom-scrollbar no-scrollbar">
           {TABS.map((tab) => {
             const Icon = tab.icon;
             return (

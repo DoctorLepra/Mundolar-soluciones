@@ -6,6 +6,8 @@ import { usePageTitle } from '@/hooks/usePageTitle';
 import RoleGuard from '@/components/admin/RoleGuard';
 import { formatCurrency } from '@/lib/utils';
 import * as XLSX from 'xlsx';
+import AdminActionFooter from '@/components/admin/AdminActionFooter';
+import { Plus, FileUp } from 'lucide-react';
 
 interface Warehouse {
   id: string;
@@ -272,7 +274,7 @@ function AdminWarehousesPageContent() {
             <h2 className="text-2xl font-black text-slate-900 font-display tracking-tight">Gestión de Bodegas</h2>
             <p className="text-slate-500 text-sm font-medium">Administra los puntos físicos de almacenamiento</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="hidden lg:flex items-center gap-3">
             <button 
               onClick={handleExport}
               className="flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-700 px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95 hover:bg-slate-50"
@@ -532,6 +534,28 @@ function AdminWarehousesPageContent() {
           </div>
         </div>
       )}
+      <WarehouseActionFooter handleOpenCreateModal={handleOpenCreateModal} handleExport={handleExport} />
     </div>
+  );
+}
+
+function WarehouseActionFooter({ handleOpenCreateModal, handleExport }: { handleOpenCreateModal: () => void, handleExport: () => void }) {
+  return (
+    <AdminActionFooter>
+      <button 
+        onClick={handleOpenCreateModal}
+        className="flex-1 flex items-center justify-center gap-2 bg-primary text-white p-4 rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all active:scale-95 font-display"
+      >
+        <Plus size={20} />
+        <span>Nueva</span>
+      </button>
+      <button 
+        onClick={handleExport}
+        className="flex-1 flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-700 p-4 rounded-xl font-bold shadow-sm hover:bg-slate-50 transition-all active:scale-95 font-display"
+      >
+        <FileUp size={20} />
+        <span>Exportar</span>
+      </button>
+    </AdminActionFooter>
   );
 }

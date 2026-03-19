@@ -36,6 +36,7 @@ function AdminBrandsPageContent() {
 
     // UI State
     const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null);
+    const [showMobileList, setShowMobileList] = useState(true);
     
     // Edit Form State
     const [editForm, setEditForm] = useState({
@@ -394,7 +395,7 @@ function AdminBrandsPageContent() {
             <h2 className="text-2xl font-black text-slate-900 tracking-tight font-display">Gestión de Marcas</h2>
             <p className="text-slate-500 text-sm font-medium">Administra los fabricantes y marcas de productos.</p>
           </div>
-          <div className="flex gap-3">
+          <div className="hidden lg:flex gap-3">
             <button onClick={handleOpenModal} className="flex items-center justify-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95 hover:bg-primary-dark shadow-primary/20 font-display">
                 <span className="material-symbols-outlined text-[20px]">add</span>
                 Crear Marca
@@ -404,9 +405,9 @@ function AdminBrandsPageContent() {
         
       </header>
 
-      <div className="flex-1 overflow-hidden p-8 pt-4 flex flex-col lg:flex-row gap-8">
+      <div className="flex-1 overflow-hidden p-4 sm:p-8 pt-4 flex flex-col lg:flex-row gap-4 sm:gap-8">
         {/* List Column */}
-        <div className="w-full lg:w-[380px] shrink-0 flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className={`w-full lg:w-[380px] shrink-0 flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden ${(!showMobileList && selectedBrand) ? 'hidden lg:flex' : 'flex'}`}>
           <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
             <h3 className="font-bold text-slate-900 font-display text-sm uppercase tracking-wider">Listado de Marcas</h3>
             <span className="text-[10px] text-slate-400 font-bold bg-white px-2 py-0.5 rounded-full border border-slate-200">{allBrands.length} TOTAL</span>
@@ -459,10 +460,20 @@ function AdminBrandsPageContent() {
                 <span className="text-[11px] font-medium font-display">Arrastra para reordenar el listado</span>
             </div>
           </div>
+          {/* Mobile selection message */}
+          {selectedBrand && (
+            <button 
+               onClick={() => setShowMobileList(false)}
+               className="lg:hidden m-3 bg-primary text-white py-3 rounded-xl font-bold text-sm shadow-lg shadow-primary/20 flex items-center justify-center gap-2 animate-in fade-in slide-in-from-bottom-2"
+            >
+               <span className="material-symbols-outlined text-[18px]">edit</span>
+               Editar "{selectedBrand.name}"
+            </button>
+          )}
         </div>
 
         {/* Edit Panel Column */}
-        <div className="flex-1 flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className={`flex-1 flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden ${(showMobileList && selectedBrand) ? 'hidden lg:flex' : 'flex'}`}>
           {!selectedBrand && !loading ? (
             <div className="flex-1 flex flex-col items-center justify-center text-center p-10 space-y-4">
                 <div className="size-20 bg-slate-50 rounded-full flex items-center justify-center text-slate-300 border border-slate-100">
@@ -475,24 +486,32 @@ function AdminBrandsPageContent() {
             </div>
           ) : (
             <>
-              <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                <div>
-                    <h2 className="text-xl font-bold text-slate-900 font-display">Editar Marca</h2>
-                    <p className="text-xs text-slate-500 font-medium mt-0.5">ID: #{selectedBrand?.id}</p>
+              <div className="p-4 sm:p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                <div className="flex items-center gap-4">
+                    <button 
+                        onClick={() => setShowMobileList(true)}
+                        className="lg:hidden size-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-500 shadow-sm"
+                    >
+                        <span className="material-symbols-outlined text-[20px]">menu_open</span>
+                    </button>
+                    <div>
+                        <h2 className="text-lg sm:text-xl font-bold text-slate-900 font-display">Editar Marca</h2>
+                        <p className="text-[10px] text-slate-500 font-medium mt-0.5">ID: #{selectedBrand?.id}</p>
+                    </div>
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-slate-500 font-display">Estado:</span>
-                    <label className="relative inline-flex items-center cursor-pointer">
+                    <span className="hidden sm:inline text-sm font-bold text-slate-500 font-display">Estado:</span>
+                    <label className="relative inline-flex items-center cursor-pointer scale-90 sm:scale-100">
                       <input type="checkbox" checked={editForm.status === 'Activo'} onChange={handleStatusToggle} className="sr-only peer" />
                       <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                      <span className="ml-3 text-sm font-medium text-slate-900 font-display">{editForm.status}</span>
+                      <span className="ml-2 sm:ml-3 text-xs sm:text-sm font-medium text-slate-900 font-display">{editForm.status}</span>
                     </label>
                   </div>
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-8">
+              <div className="flex-1 overflow-y-auto p-4 sm:p-8">
                 <form onSubmit={handleUpdateSubmit} className="space-y-8 max-w-3xl">
                     <div className="max-w-md">
                         <label className="block text-sm font-medium text-slate-700 mb-2 font-display">Nombre de la Marca</label>

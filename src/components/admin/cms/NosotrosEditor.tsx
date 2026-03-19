@@ -102,7 +102,7 @@ export default function NosotrosEditor() {
             <h3 className="text-lg font-black text-slate-900 font-display">Cabecera "Nosotros"</h3>
             <p className="text-slate-500 text-xs font-medium">Gestiona el impacto visual inicial de la página.</p>
           </div>
-          <button onClick={handleSave} disabled={saving} className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-primary-dark transition-all shadow-sm">
+          <button onClick={handleSave} disabled={saving} className="hidden lg:flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-primary-dark transition-all shadow-sm">
             {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
             Guardar cambios
           </button>
@@ -214,7 +214,7 @@ export default function NosotrosEditor() {
             <h3 className="text-lg font-black text-slate-900 font-display">Nuestra Trayectoria</h3>
             <p className="text-slate-500 text-xs font-medium">Gestiona los hitos de la línea de tiempo.</p>
           </div>
-          <button onClick={addMilestone} className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-xl text-sm font-bold">
+          <button onClick={addMilestone} className="hidden lg:flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-xl text-sm font-bold">
             <Plus size={16} />
             Agregar Hito
           </button>
@@ -268,10 +268,17 @@ export default function NosotrosEditor() {
         <button 
           onClick={handleSave} 
           disabled={saving} 
-          className="w-full flex items-center justify-center gap-2 bg-primary text-white px-6 py-3.5 rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all active:scale-95"
+          className="flex-1 flex items-center justify-center gap-2 bg-primary text-white p-4 rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all active:scale-95 font-display"
         >
           {saving ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
-          Guardar cambios
+          <span>Guardar cambios</span>
+        </button>
+        <button 
+          onClick={addMilestone}
+          className="flex-1 flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-700 p-4 rounded-xl font-bold shadow-sm hover:bg-slate-50 transition-all active:scale-95 font-display"
+        >
+          <Plus size={20} />
+          <span>Agregar Hito</span>
         </button>
       </AdminActionFooter>
     </div>

@@ -97,11 +97,11 @@ const Hero: React.FC<HeroProps> = ({ data }) => {
               {typedText}
               {isTyping && <span className="animate-pulse opacity-75">|</span>}
             </p>
-            <div className="flex gap-4 mt-2">
-              <Link href="/catalogo" className="flex items-center justify-center h-12 px-8 bg-primary hover:bg-primary-dark text-white text-base font-bold rounded-lg transition-all shadow-lg shadow-primary/25">
+            <div className="flex flex-wrap gap-4 mt-2">
+              <Link href="/catalogo" className="flex items-center justify-center h-12 px-4 md:px-8 bg-primary hover:bg-primary-dark text-white text-sm md:text-base font-bold rounded-lg transition-all shadow-lg shadow-primary/25 whitespace-nowrap">
                 Comprar Ahora
               </Link>
-              <Link href="/catalogo" className="flex items-center justify-center h-12 px-8 bg-white/10 border border-white/20 hover:bg-white/20 text-white text-base font-bold rounded-lg transition-all backdrop-blur-sm">
+              <Link href="/catalogo" className="flex items-center justify-center h-12 px-4 md:px-8 bg-white/10 border border-white/20 hover:bg-white/20 text-white text-sm md:text-base font-bold rounded-lg transition-all backdrop-blur-sm whitespace-nowrap">
                 Ver Catálogo
               </Link>
             </div>

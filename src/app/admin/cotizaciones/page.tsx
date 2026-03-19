@@ -529,13 +529,15 @@ function AdminQuotesPageContent() {
           <h2 className="text-2xl font-black text-slate-900 font-display tracking-tight">Cotizaciones</h2>
           <p className="text-slate-500 text-sm font-medium">Genera y administra presupuestos para clientes.</p>
         </div>
-        <button 
-          onClick={() => setIsCreateModalOpen(true)}
-          className="flex items-center justify-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95 hover:bg-primary-dark shadow-primary/20"
-        >
-          <span className="material-symbols-outlined text-[20px]">add</span>
-          Crear Cotización
-        </button>
+        <div className="hidden lg:flex">
+          <button 
+            onClick={() => setIsCreateModalOpen(true)}
+            className="flex items-center justify-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95 hover:bg-primary-dark shadow-primary/20"
+          >
+            <span className="material-symbols-outlined text-[20px]">add</span>
+            Crear Cotización
+          </button>
+        </div>
       </header>
 
       <div className="flex-1 flex overflow-hidden">

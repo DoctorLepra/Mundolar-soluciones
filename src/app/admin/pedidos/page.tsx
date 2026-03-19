@@ -855,6 +855,7 @@ function AdminOrdersPageContent() {
           <h2 className="text-2xl font-black text-slate-900 tracking-tight font-display">Gestión de Pedidos</h2>
           <p className="text-slate-500 text-sm font-medium">Administra y rastrea pedidos de equipos de telecomunicaciones.</p>
         </div>
+        <div className="hidden lg:flex">
           <button 
             onClick={() => {
               setIsEditMode(false);
@@ -875,6 +876,7 @@ function AdminOrdersPageContent() {
             <span className="material-symbols-outlined text-[20px]">add</span>
             <span>Crear Pedido</span>
           </button>
+        </div>
       </header>
       
       <div className="flex flex-1 overflow-hidden">

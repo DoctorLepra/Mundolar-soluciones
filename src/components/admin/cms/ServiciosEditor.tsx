@@ -90,7 +90,7 @@ export default function ServiciosEditor() {
             <h3 className="text-lg font-black text-slate-900 font-display">Cabecera de Servicios</h3>
             <p className="text-slate-500 text-xs font-medium">Define el título y subtítulo de la página.</p>
           </div>
-          <button onClick={handleSaveAll} disabled={saving} className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-primary-dark transition-all">
+          <button onClick={handleSaveAll} disabled={saving} className="hidden lg:flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-primary-dark transition-all">
             {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
             Guardar cambios
           </button>
@@ -163,7 +163,7 @@ export default function ServiciosEditor() {
             <h3 className="text-lg font-black text-slate-900 font-display">Listado de Servicios</h3>
             <p className="text-slate-500 text-xs font-medium">CRUD dinámico para los servicios ofrecidos.</p>
           </div>
-          <button onClick={handleAddService} className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-slate-800 transition-all">
+          <button onClick={handleAddService} className="hidden lg:flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-slate-800 transition-all">
             <Plus size={16} />
             Nuevo Servicio
           </button>
@@ -215,10 +215,17 @@ export default function ServiciosEditor() {
         <button 
           onClick={handleSaveAll} 
           disabled={saving} 
-          className="w-full flex items-center justify-center gap-2 bg-primary text-white px-6 py-3.5 rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all active:scale-95"
+          className="flex-1 flex items-center justify-center gap-2 bg-primary text-white p-4 rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all active:scale-95 font-display"
         >
           {saving ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
-          Guardar cambios
+          <span>Guardar cambios</span>
+        </button>
+        <button 
+          onClick={handleAddService}
+          className="flex-1 flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-700 p-4 rounded-xl font-bold shadow-sm hover:bg-slate-50 transition-all active:scale-95 font-display"
+        >
+          <Plus size={20} />
+          <span>Nuevo Servicio</span>
         </button>
       </AdminActionFooter>
     </div>

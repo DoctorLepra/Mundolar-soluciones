@@ -1010,7 +1010,7 @@ export default function AdminProductsPage() {
             <p className="text-slate-500 text-sm font-medium">Administra tu inventario de radios y repuestos.</p>
           </div>
           
-          <div className="flex items-center gap-3">
+          <div className="hidden lg:flex items-center gap-3">
             {(trm || loadingTrm) && (
               <div className="hidden sm:flex items-center gap-2 px-4 py-2 bg-emerald-50 border border-emerald-100 rounded-2xl text-emerald-700" title="USD TRM Oficial">
                 <span className="material-symbols-outlined text-[18px]">payments</span>

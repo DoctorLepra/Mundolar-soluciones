@@ -1239,6 +1239,21 @@ const AdminClientsPageContent = () => {
     setIsModalOpen(true);
   };
 
+  const handleOpenTaskModal = () => {
+    setIsEditingTask(false);
+    setTaskFormData({
+      title: "",
+      description: "",
+      due_date: new Date().toISOString().split("T")[0],
+      assigned_to: "",
+      assigned_to_id: "",
+      client_id: "",
+      status: "Pendiente",
+      created_by_id: currentUserProfile?.id || "",
+    });
+    setIsTaskModalOpen(true);
+  };
+
   const handleOpenNewModal = () => {
     setIsEditMode(false);
     setEditingClientId(null);
@@ -1329,23 +1344,10 @@ const AdminClientsPageContent = () => {
               : "Asignación y seguimiento de tareas para asesores y equipo."}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="hidden lg:flex items-center gap-3">
           {viewTab === "Tareas" && (
               <button
-                onClick={() => {
-                  setIsEditingTask(false);
-                  setTaskFormData({
-                    title: "",
-                    description: "",
-                    due_date: new Date().toISOString().split("T")[0],
-                    assigned_to: "",
-                    assigned_to_id: "",
-                    client_id: "",
-                    status: "Pendiente",
-                    created_by_id: currentUserProfile?.id || "",
-                  });
-                  setIsTaskModalOpen(true);
-                }}
+                onClick={handleOpenTaskModal}
                 className="flex items-center justify-center gap-2 bg-emerald-600 text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95 hover:bg-emerald-700 shadow-emerald-500/20 font-display"
               >
                 <span className="material-symbols-outlined text-[20px]">
@@ -4580,6 +4582,26 @@ const AdminClientsPageContent = () => {
           </div>
         </div>
       )}
+
+      <AdminActionFooter>
+        {viewTab === "Tareas" ? (
+          <button
+            onClick={handleOpenTaskModal}
+            className="flex-1 flex items-center justify-center gap-2 bg-primary text-white p-4 rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all active:scale-95 font-display"
+          >
+            <Plus size={20} />
+            <span>Nueva Tarea</span>
+          </button>
+        ) : (
+          <button
+            onClick={handleOpenNewModal}
+            className="flex-1 flex items-center justify-center gap-2 bg-primary text-white p-4 rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all active:scale-95 font-display"
+          >
+            <Plus size={20} />
+            <span>Nuevo Cliente</span>
+          </button>
+        )}
+      </AdminActionFooter>
     </div>
   );
 };

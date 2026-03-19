@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   X
 } from 'lucide-react';
+import AdminActionFooter from '@/components/admin/AdminActionFooter';
 
 interface Profile {
   id: string;
@@ -168,13 +169,15 @@ function UsuariosPageContent() {
             <h2 className="text-2xl font-black text-slate-900 font-display tracking-tight">Gestión de Usuarios</h2>
             <p className="text-slate-500 text-sm font-medium">Administra el acceso y roles de tu equipo.</p>
           </div>
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center justify-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95 hover:bg-primary-dark shadow-primary/20 shrink-0"
-          >
-            <span className="material-symbols-outlined text-[20px]">add</span>
-            Nuevo Usuario
-          </button>
+          <div className="hidden lg:flex">
+            <button 
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center justify-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95 hover:bg-primary-dark shadow-primary/20 shrink-0"
+            >
+              <span className="material-symbols-outlined text-[20px]">add</span>
+              Nuevo Usuario
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-col lg:flex-row items-center justify-between gap-4 mt-6">
@@ -382,6 +385,16 @@ function UsuariosPageContent() {
           </div>
         </div>
       )}
+
+      <AdminActionFooter>
+        <button 
+          onClick={() => setIsModalOpen(true)}
+          className="flex-1 flex items-center justify-center gap-2 bg-primary text-white p-4 rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all active:scale-95 font-display"
+        >
+          <UserPlus size={20} />
+          <span>Nuevo Usuario</span>
+        </button>
+      </AdminActionFooter>
     </main>
   );
 }

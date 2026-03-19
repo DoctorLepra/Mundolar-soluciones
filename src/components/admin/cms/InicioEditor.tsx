@@ -100,7 +100,7 @@ export default function InicioEditor() {
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-primary-dark transition-all disabled:opacity-50"
+            className="hidden lg:flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-primary-dark transition-all disabled:opacity-50"
           >
             {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
             {saving ? 'Guardando...' : 'Guardar Cambios'}

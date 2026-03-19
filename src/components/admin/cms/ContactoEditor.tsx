@@ -55,7 +55,7 @@ export default function ContactoEditor() {
             <h3 className="text-lg font-black text-slate-900 font-display">Información de Contacto</h3>
             <p className="text-slate-500 text-xs font-medium">Gestiona los textos de la página de contacto.</p>
           </div>
-          <button onClick={handleSave} disabled={saving} className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-primary-dark transition-all">
+          <button onClick={handleSave} disabled={saving} className="hidden lg:flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-primary-dark transition-all shadow-sm">
             {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
             Guardar Cambios
           </button>
@@ -86,10 +86,10 @@ export default function ContactoEditor() {
         <button 
           onClick={handleSave} 
           disabled={saving} 
-          className="w-full flex items-center justify-center gap-2 bg-primary text-white px-6 py-3.5 rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all active:scale-95"
+          className="w-full flex items-center justify-center gap-2 bg-primary text-white px-6 py-3.5 rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all active:scale-95 font-display"
         >
           {saving ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
-          Guardar cambios
+          <span>Guardar cambios</span>
         </button>
       </AdminActionFooter>
     </div>

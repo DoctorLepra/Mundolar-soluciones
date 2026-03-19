@@ -43,7 +43,6 @@ import ProductCard from '@/components/catalog/ProductCard';
 
 const ProductCarousel: React.FC<ProductCarouselProps> = ({ products }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { addToCart } = useCart();
 
   const scroll = (direction: 'left' | 'right') => {
     if (scrollRef.current) {

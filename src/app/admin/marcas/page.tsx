@@ -6,6 +6,8 @@ import { usePageTitle } from '@/hooks/usePageTitle';
 import { supabase } from '@/lib/supabase';
 import RoleGuard from '@/components/admin/RoleGuard';
 import { convertToWebP } from '@/lib/image-utils';
+import AdminActionFooter from '@/components/admin/AdminActionFooter';
+import { Save, Plus, X, Trash2 } from 'lucide-react';
 
 // Brand interface matching the updated DB schema (Omnitting slug as requested)
 interface Brand {
@@ -618,6 +620,36 @@ function AdminBrandsPageContent() {
           </div>
         </div>
       )}
+
+      <AdminActionFooter>
+        {!selectedBrand ? (
+          <button 
+            onClick={handleOpenModal}
+            className="flex-1 flex items-center justify-center gap-2 bg-primary text-white p-4 rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all active:scale-95"
+          >
+            <Plus size={20} />
+            Nueva Marca
+          </button>
+        ) : (
+          <div className="flex-1 flex gap-3">
+            <button 
+              onClick={() => setSelectedBrand(null)}
+              className="flex-1 flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-700 p-4 rounded-xl font-bold shadow-sm hover:bg-slate-50 transition-all"
+            >
+              <X size={20} />
+              Cerrar
+            </button>
+            <button 
+              onClick={handleUpdateSubmit}
+              disabled={isUpdating}
+              className="flex-[2] flex items-center justify-center gap-2 bg-primary text-white p-4 rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all disabled:opacity-50"
+            >
+              <Save size={20} />
+              {isUpdating ? 'Guardando...' : 'Guardar'}
+            </button>
+          </div>
+        )}
+      </AdminActionFooter>
     </div>
   );
 }

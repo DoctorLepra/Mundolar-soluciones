@@ -22,7 +22,7 @@ interface Notification {
   created_at: string;
 }
 
-export default function AdminSidebar() {
+export default function AdminSidebar({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname();
   const [pendingCount, setPendingCount] = useState(0);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -225,22 +225,61 @@ export default function AdminSidebar() {
   };
 
   return (
-    <aside className="w-64 bg-white border-r border-slate-200 flex flex-col h-full flex-shrink-0 z-20 min-h-screen">
-      <div className="p-6 border-b border-slate-100">
-        <Link href="/" className="flex items-center justify-center">
-            <Image src="/img/logo-rojo-negro.png" alt="Mundolar Admin" width={250} height={62} className="h-[62px] w-auto object-contain" />
+    <aside className="w-screen lg:w-64 bg-white border-r border-slate-200 flex flex-col h-full flex-shrink-0 z-20 min-h-screen overflow-y-auto">
+      
+      {/* Mobile Header with close button */}
+      <div className="flex items-center justify-between p-5 border-b border-slate-100 lg:p-6">
+        <Link href="/" onClick={onClose} className="flex items-center">
+          <Image src="/img/logo-rojo-negro.png" alt="Mundolar Admin" width={200} height={50} className="h-10 lg:h-[62px] w-auto object-contain" />
         </Link>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="lg:hidden flex items-center justify-center size-10 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
+            aria-label="Cerrar menú"
+          >
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        )}
       </div>
-      <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
+
+      {/* User profile banner - mobile only */}
+      <div className="lg:hidden px-5 py-4 bg-slate-50 border-b border-slate-100">
+        <div className="flex items-center gap-3">
+          <div className="size-10 rounded-full bg-primary/10 flex items-center justify-center">
+            <span className="material-symbols-outlined text-primary">person</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-black text-slate-900 truncate font-display">
+              {userProfile ? userProfile.full_name : '...'}
+            </p>
+            <p className="text-xs text-slate-500">{userProfile?.role}</p>
+          </div>
+          {unreadCount > 0 && (
+            <button
+              onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+              className="relative flex items-center justify-center"
+            >
+              <span className="material-symbols-outlined text-slate-500">notifications</span>
+              <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[9px] font-black size-4 flex items-center justify-center rounded-full border-2 border-white">
+                {unreadCount}
+              </span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      <nav className="flex-1 py-4 px-3 space-y-1">
         <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider font-display px-3 pb-2 pt-2">Menú Principal</p>
         {menuItems.map((item) => (
           <Link
             key={`menu-${item.path}-${item.label}`}
             href={item.path}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors group ${
+            onClick={onClose}
+            className={`flex items-center gap-3 px-3 py-3 lg:py-2.5 rounded-xl lg:rounded-lg transition-colors group ${
               isActive(item.path)
                 ? 'bg-primary/10 text-primary'
-                : 'text-slate-600 hover:bg-slate-100'
+                : 'text-slate-600 hover:bg-slate-100 active:bg-slate-200'
             }`}
           >
             <span className={`material-symbols-outlined text-[22px] ${isActive(item.path) ? 'icon-fill' : ''}`}>{item.icon}</span>
@@ -250,6 +289,9 @@ export default function AdminSidebar() {
                  {pendingCount}
                </span>
              )}
+            {isActive(item.path) && (
+              <span className="ml-auto material-symbols-outlined text-[18px] text-primary opacity-60">chevron_right</span>
+            )}
           </Link>
         ))}
         
@@ -262,10 +304,11 @@ export default function AdminSidebar() {
               <Link
                 key={`content-${item.path}-${item.label}`}
                 href={item.path}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors group ${
+                onClick={onClose}
+                className={`flex items-center gap-3 px-3 py-3 lg:py-2.5 rounded-xl lg:rounded-lg transition-colors group ${
                   isActive(item.path)
                     ? 'bg-primary/10 text-primary'
-                    : 'text-slate-600 hover:bg-slate-100'
+                    : 'text-slate-600 hover:bg-slate-100 active:bg-slate-200'
                 }`}
               >
                 <span className={`material-symbols-outlined text-[22px] ${isActive(item.path) ? 'icon-fill' : ''}`}>{item.icon}</span>
@@ -282,10 +325,11 @@ export default function AdminSidebar() {
             </div>
             <Link 
               href="/admin/usuarios"
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors group ${
+              onClick={onClose}
+              className={`flex items-center gap-3 px-3 py-3 lg:py-2.5 rounded-xl lg:rounded-lg transition-colors group ${
                 isActive('/admin/usuarios')
                   ? 'bg-primary/10 text-primary'
-                  : 'text-slate-600 hover:bg-slate-100'
+                  : 'text-slate-600 hover:bg-slate-100 active:bg-slate-200'
               }`}
             >
               <span className={`material-symbols-outlined text-[22px] ${isActive('/admin/usuarios') ? 'icon-fill' : ''}`}>group_add</span>
@@ -322,6 +366,7 @@ export default function AdminSidebar() {
                       onClick={() => {
                         markAsRead(notif.id);
                         setIsNotificationsOpen(false);
+                        if (onClose) onClose();
                       }}
                       className={`p-3 block hover:bg-slate-50 transition-colors ${!notif.is_read ? 'bg-primary/[0.02]' : ''}`}
                     >
@@ -338,7 +383,8 @@ export default function AdminSidebar() {
           </div>
         )}
 
-        <div className="flex items-center gap-3 w-full p-2 rounded-lg hover:bg-slate-50 transition-colors group">
+        {/* Desktop user footer */}
+        <div className="hidden lg:flex items-center gap-3 w-full p-2 rounded-lg hover:bg-slate-50 transition-colors group">
           <button 
             onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
             className="relative flex items-center justify-center rounded-full h-8 w-8 bg-slate-100 text-slate-400 hover:bg-primary/10 hover:text-primary transition-all cursor-pointer group/notif"
@@ -363,6 +409,15 @@ export default function AdminSidebar() {
             </button>
           </div>
         </div>
+
+        {/* Mobile logout button */}
+        <button 
+          onClick={handleLogout}
+          className="lg:hidden w-full flex items-center gap-3 p-3 rounded-xl text-rose-600 bg-rose-50 hover:bg-rose-100 transition-colors font-medium text-sm"
+        >
+          <span className="material-symbols-outlined text-[20px]">logout</span>
+          Cerrar Sesión
+        </button>
       </div>
 
       {/* Realtime Toast */}
@@ -385,3 +440,5 @@ export default function AdminSidebar() {
     </aside>
   );
 }
+
+

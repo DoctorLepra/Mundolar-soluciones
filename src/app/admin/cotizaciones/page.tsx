@@ -7,6 +7,8 @@ import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { notifyAdmins } from '@/lib/notifications';
 import { formatCurrency, formatQuoteId } from '@/lib/utils';
+import AdminActionFooter from '@/components/admin/AdminActionFooter';
+import { Plus } from 'lucide-react';
 
 interface Client {
   id: string;
@@ -78,6 +80,7 @@ function AdminQuotesPageContent() {
   // Search & Filter
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [isFiltersVisible, setIsFiltersVisible] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 6;
 
@@ -574,7 +577,24 @@ function AdminQuotesPageContent() {
 
           {/* Filters (Sync con Pedidos) */}
           <div className="flex flex-col gap-4 mb-6">
-            <div className="flex flex-col md:flex-row gap-3">
+          {/* Mobile Filter Toggle */}
+          <div className="lg:hidden mb-4 flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-slate-400">filter_list</span>
+              <span className="text-sm font-bold text-slate-700">Filtros</span>
+            </div>
+            <button 
+              onClick={() => setIsFiltersVisible(!isFiltersVisible)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs transition-all ${
+                isFiltersVisible ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'bg-white text-slate-600 border border-slate-200'
+              }`}
+            >
+              {isFiltersVisible ? 'Ocultar' : 'Mostrar'}
+              <span className="material-symbols-outlined text-[18px]">{isFiltersVisible ? 'expand_less' : 'expand_more'}</span>
+            </button>
+          </div>
+
+          <div className={`${isFiltersVisible ? 'flex flex-col' : 'hidden lg:flex'} lg:flex-row gap-3 mb-6 animate-in slide-in-from-top-2 duration-200`}>
               <div className="relative w-full lg:max-w-md">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <span className="material-symbols-outlined text-slate-400 text-[20px]">search</span>
@@ -612,7 +632,7 @@ function AdminQuotesPageContent() {
                 <tr>
                   <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">Número</th>
                   <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">Cliente</th>
-                  <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">Fecha</th>
+                  <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden md:table-cell font-display">Fecha</th>
                   <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display text-right">Total</th>
                   <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">Estado</th>
                   <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right pr-6 font-display"></th>
@@ -636,10 +656,10 @@ function AdminQuotesPageContent() {
                       <td className="p-4">
                         <div className="flex flex-col">
                           <div className="font-bold text-slate-900 font-display">{q.clients?.company_name || q.clients?.full_name}</div>
-                          <div className="text-xs text-slate-500 font-display">{q.clients?.email}</div>
+                          <div className="text-xs text-slate-500 font-display hidden sm:block">{q.clients?.email}</div>
                         </div>
                       </td>
-                      <td className="p-4">
+                      <td className="p-4 hidden md:table-cell">
                         <span className="text-sm text-slate-600 font-display">{new Date(q.created_at).toLocaleDateString()}</span>
                       </td>
                       <td className="p-4 text-right">
@@ -1401,6 +1421,21 @@ function AdminQuotesPageContent() {
           </div>
         </div>
       )}
+      <AdminActionFooter>
+        <button 
+          onClick={() => {
+            setIsEditMode(false);
+            setSelectedClient(null);
+            setSelectedProducts([]);
+            setQuoteForm({ observations: '', discount_percentage: '0', valid_until: '' });
+            setIsCreateModalOpen(true);
+          }}
+          className="flex-1 flex items-center justify-center gap-2 bg-primary text-white p-4 rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all active:scale-95"
+        >
+          <Plus size={20} />
+          Crear Cotización
+        </button>
+      </AdminActionFooter>
     </div>
   );
 }

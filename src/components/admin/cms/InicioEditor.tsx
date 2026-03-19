@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Save, Loader2, Plus, Trash2, Image as ImageIcon, CheckCircle2, AlertCircle, ImagePlus } from 'lucide-react';
 import Image from 'next/image';
+import AdminActionFooter from '@/components/admin/AdminActionFooter';
 import CMSImageUpload from './CMSImageUpload';
 
 interface ContentItem {
@@ -188,6 +189,17 @@ export default function InicioEditor() {
           </div>
         </div>
       </div>
+
+      <AdminActionFooter>
+        <button 
+          onClick={handleSave} 
+          disabled={saving} 
+          className="w-full flex items-center justify-center gap-2 bg-primary text-white px-6 py-3.5 rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all active:scale-95"
+        >
+          {saving ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
+          Guardar cambios
+        </button>
+      </AdminActionFooter>
     </div>
   );
 }

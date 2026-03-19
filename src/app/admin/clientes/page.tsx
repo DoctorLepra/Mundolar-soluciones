@@ -9,6 +9,8 @@ import { createNotification, notifyAdmins } from "@/lib/notifications";
 import { formatCurrency, formatTaskId } from "@/lib/utils";
 import { colombiaData, departments } from "@/lib/colombia-data";
 import * as XLSX from "xlsx";
+import AdminActionFooter from "@/components/admin/AdminActionFooter";
+import { Plus, ClipboardList } from "lucide-react";
 
 interface Client {
   id: string;
@@ -151,6 +153,7 @@ const AdminClientsPageContent = () => {
 
   // Dashboward Tabs
   const [viewTab, setViewTab] = useState<"Clientes" | "Tareas">("Clientes");
+  const [isFiltersVisible, setIsFiltersVisible] = useState(false);
 
   const searchParams = useSearchParams();
   const taskIdFromUrl = searchParams.get("taskId");
@@ -1471,7 +1474,30 @@ const AdminClientsPageContent = () => {
             {viewTab === "Clientes" ? (
               <>
                 <div className="flex flex-col gap-4 mb-6">
-                  <div className="flex flex-col md:flex-row gap-3">
+                  {/* Mobile filter toggle */}
+                  <div className="lg:hidden flex items-center justify-between bg-white p-3 rounded-xl border border-slate-200">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-slate-400 text-[20px]">filter_list</span>
+                      <span className="text-sm font-bold text-slate-700">Búsqueda y Filtros</span>
+                    </div>
+                    <button
+                      onClick={() => setIsFiltersVisible(!isFiltersVisible)}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg font-bold text-xs transition-all ${
+                        isFiltersVisible
+                          ? "bg-primary text-white shadow-lg shadow-primary/20"
+                          : "bg-slate-100 text-slate-600"
+                      }`}
+                    >
+                      {isFiltersVisible ? "Ocultar" : "Mostrar"}
+                      <span className="material-symbols-outlined text-[16px]">
+                        {isFiltersVisible ? "expand_less" : "expand_more"}
+                      </span>
+                    </button>
+                  </div>
+
+                  <div className={`${
+                    isFiltersVisible ? "flex flex-col" : "hidden lg:flex"
+                  } lg:flex-row gap-3 animate-in slide-in-from-top-2 duration-200`}>
                     <div className="relative w-full lg:max-w-md">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <span className="material-symbols-outlined text-slate-400 text-[20px]">search</span>
@@ -1935,7 +1961,30 @@ const AdminClientsPageContent = () => {
               <div className="space-y-6">
                 {/* Task Filters & Search */}
                 <div className="flex flex-col gap-4 mb-6">
-                  <div className="flex flex-col md:flex-row gap-3">
+                  {/* Mobile filter toggle */}
+                  <div className="lg:hidden flex items-center justify-between bg-white p-3 rounded-xl border border-slate-200">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-slate-400 text-[20px]">filter_list</span>
+                      <span className="text-sm font-bold text-slate-700">Búsqueda y Filtros</span>
+                    </div>
+                    <button
+                      onClick={() => setIsFiltersVisible(!isFiltersVisible)}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg font-bold text-xs transition-all ${
+                        isFiltersVisible
+                          ? "bg-primary text-white shadow-lg shadow-primary/20"
+                          : "bg-slate-100 text-slate-600"
+                      }`}
+                    >
+                      {isFiltersVisible ? "Ocultar" : "Mostrar"}
+                      <span className="material-symbols-outlined text-[16px]">
+                        {isFiltersVisible ? "expand_less" : "expand_more"}
+                      </span>
+                    </button>
+                  </div>
+
+                  <div className={`${
+                    isFiltersVisible ? "flex flex-col" : "hidden lg:flex"
+                  } lg:flex-row gap-3 animate-in slide-in-from-top-2 duration-200`}>
                     <div className="flex-1 relative">
                       <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
                         search

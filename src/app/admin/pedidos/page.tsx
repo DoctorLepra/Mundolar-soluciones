@@ -8,6 +8,8 @@ import { supabase } from '@/lib/supabase';
 import { notifyAdmins } from '@/lib/notifications';
 import { formatCurrency, formatOrderId } from '@/lib/utils';
 import { colombiaData } from '@/lib/colombia-data';
+import AdminActionFooter from '@/components/admin/AdminActionFooter';
+import { Plus } from 'lucide-react';
 
 interface Warehouse {
   id: string;
@@ -98,6 +100,7 @@ function AdminOrdersPageContent() {
   // Search & Filter
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [isFiltersVisible, setIsFiltersVisible] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 6;
 
@@ -910,7 +913,24 @@ function AdminOrdersPageContent() {
 
             {/* SEARCH & FILTERS */}
             <div className="flex flex-col gap-4 mb-6">
-              <div className="flex flex-col md:flex-row gap-3">
+              {/* Mobile Filter Toggle */}
+          <div className="lg:hidden mb-4 flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-slate-400">filter_list</span>
+              <span className="text-sm font-bold text-slate-700">Filtros</span>
+            </div>
+            <button 
+              onClick={() => setIsFiltersVisible(!isFiltersVisible)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs transition-all ${
+                isFiltersVisible ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'bg-white text-slate-600 border border-slate-200'
+              }`}
+            >
+              {isFiltersVisible ? 'Ocultar' : 'Mostrar'}
+              <span className="material-symbols-outlined text-[18px]">{isFiltersVisible ? 'expand_less' : 'expand_more'}</span>
+            </button>
+          </div>
+
+          <div className={`${isFiltersVisible ? 'flex flex-col' : 'hidden lg:flex'} lg:flex-row gap-3 mb-6 animate-in slide-in-from-top-2 duration-200`}>
                 <div className="relative w-full lg:max-w-md">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <span className="material-symbols-outlined text-slate-400 text-[20px]">search</span>
@@ -985,7 +1005,7 @@ function AdminOrdersPageContent() {
                           <td className="p-4">
                             <div className="flex flex-col">
                               <span className="font-bold text-slate-900 font-display">{order.clients?.full_name || order.clients?.company_name || 'Sin nombre'}</span>
-                              <span className="text-xs text-slate-500 font-display">{order.clients?.email || 'Sin correo'}</span>
+                              <span className="text-xs text-slate-500 font-display hidden sm:block">{order.clients?.email || 'Sin correo'}</span>
                             </div>
                           </td>
                           <td className="p-4 hidden md:table-cell">
@@ -1790,6 +1810,29 @@ function AdminOrdersPageContent() {
           </div>
         </div>
       )}
+
+      <AdminActionFooter>
+        <button 
+          onClick={() => {
+            setIsEditMode(false);
+            setSelectedClient(null);
+            setSelectedProducts([]);
+            setOrderForm({
+              contact_phone: '',
+              contact_email: '',
+              shipping_department: '',
+              shipping_municipality: '',
+              shipping_address: '',
+              discount_percentage: '0'
+            });
+            setIsCreateModalOpen(true);
+          }}
+          className="flex-1 flex items-center justify-center gap-2 bg-primary text-white p-4 rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all active:scale-95"
+        >
+          <Plus size={20} />
+          Nuevo Pedido
+        </button>
+      </AdminActionFooter>
     </div>
   );
 }

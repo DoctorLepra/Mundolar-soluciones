@@ -7,6 +7,8 @@ import { usePageTitle } from '@/hooks/usePageTitle';
 import { formatCurrency } from '@/lib/utils';
 import { convertToWebP } from '@/lib/image-utils';
 import * as XLSX from 'xlsx';
+import AdminActionFooter from '@/components/admin/AdminActionFooter';
+import { Save, Plus, Download, FileUp, MoreHorizontal, Edit, Trash2 } from 'lucide-react';
 
 interface Product {
   id: number;
@@ -106,6 +108,8 @@ export default function AdminProductsPage() {
   const [trm, setTrm] = useState<number | null>(null);
   const [loadingTrm, setLoadingTrm] = useState(false);
   const [isBulkImportModalOpen, setIsBulkImportModalOpen] = useState(false);
+  const [isFiltersVisible, setIsFiltersVisible] = useState(false);
+  const [isImportMenuOpen, setIsImportMenuOpen] = useState(false);
   const [bulkImportData, setBulkImportData] = useState<any[]>([]);
   const [processedBulkData, setProcessedBulkData] = useState<any[]>([]);
   const [importErrors, setImportErrors] = useState<any[]>([]);
@@ -996,7 +1000,8 @@ export default function AdminProductsPage() {
   const endItem = Math.min(currentPage * itemsPerPage, filteredProducts.length);
 
   return (
-    <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-50">
+    <>
+      <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-50">
       <header className="bg-white border-b border-slate-200 px-8 py-6 relative z-30 space-y-6">
         {/* Title and Management Actions */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1073,8 +1078,25 @@ export default function AdminProductsPage() {
           </div>
         </div>
 
+        {/* Mobile Filter Toggle */}
+        <div className="lg:hidden mt-4 flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-slate-400">filter_list</span>
+            <span className="text-sm font-bold text-slate-700">Filtros</span>
+          </div>
+          <button 
+            onClick={() => setIsFiltersVisible(!isFiltersVisible)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs transition-all ${
+              isFiltersVisible ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'bg-white text-slate-600 border border-slate-200'
+            }`}
+          >
+            {isFiltersVisible ? 'Ocultar' : 'Mostrar'}
+            <span className="material-symbols-outlined text-[18px]">{isFiltersVisible ? 'expand_less' : 'expand_more'}</span>
+          </button>
+        </div>
+
         {/* Search and Filters Bar */}
-        <div className="flex flex-col lg:flex-row items-center justify-between gap-4 mt-6">
+        <div className={`${isFiltersVisible ? 'flex flex-col' : 'hidden lg:flex'} lg:flex-row items-center justify-between gap-4 mt-6 animate-in slide-in-from-top-2 duration-200`}>
           <div className="relative w-full lg:max-w-md">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <span className="material-symbols-outlined text-slate-400 text-[20px]">search</span>
@@ -1141,16 +1163,14 @@ export default function AdminProductsPage() {
               <thead className="sticky top-0 z-20 bg-slate-50">
                 <tr className="bg-slate-50 border-b border-slate-200">
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Producto</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Categoría</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">SKU</th>
+                  <th className="hidden lg:table-cell px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Categoría</th>
+                  <th className="hidden sm:table-cell px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">SKU</th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Venta / +IVA</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Bodega Principal</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Bodega Auxiliar</th>
+                  <th className="hidden md:table-cell px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Bodega Principal</th>
+                  <th className="hidden xl:table-cell px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Bodega Auxiliar</th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Stock Total</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Estado</th>
-                  {currentUserProfile?.role === 'Admin' && (
-                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Acciones</th>
-                  )}
+                  <th className="hidden md:table-cell px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Estado</th>
+                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
@@ -1178,42 +1198,31 @@ export default function AdminProductsPage() {
                             </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm text-slate-700">{categories.find(c => c.id === p.category_id)?.name || 'Sin categoría'}</span></td>
-                      <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm font-mono text-slate-600">{p.sku || 'N/A'}</span></td>
+                      <td className="hidden lg:table-cell px-6 py-4 whitespace-nowrap"><span className="text-sm text-slate-700">{categories.find(c => c.id === p.category_id)?.name || 'Sin categoría'}</span></td>
+                      <td className="hidden sm:table-cell px-6 py-4 whitespace-nowrap"><span className="text-sm font-mono text-slate-600">{p.sku || 'N/A'}</span></td>
                       <td className="px-6 py-4 whitespace-nowrap text-right">
                         <div className="flex flex-col items-end">
                           <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase">Venta:</span>
+                            <span className="hidden sm:inline text-[10px] font-bold text-slate-400 uppercase">Venta:</span>
                             <span className="text-sm font-bold text-slate-900 font-mono">${formatCurrency(p.original_price || p.price)}</span>
                           </div>
                           <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] font-bold text-primary/70 uppercase">+IVA:</span>
+                            <span className="hidden sm:inline text-[10px] font-bold text-primary/70 uppercase">+IVA:</span>
                             <span className="text-sm font-black text-primary font-mono">${formatCurrency(p.price_with_iva || 0)}</span>
                           </div>
-                          {isOffer && (
-                            <span className="text-[10px] text-red-500 line-through font-mono opacity-70">
-                              Ant: ${formatCurrency(p.original_price || 0)}
-                            </span>
-                          )}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <td className="hidden md:table-cell px-6 py-4 whitespace-nowrap text-center">
                         <div className="flex flex-col items-center">
                           <span className="text-xs font-bold text-primary bg-primary/5 px-2 py-1 rounded-md">
                             {warehouses.find(w => w.id === p.warehouse_id)?.name || 'No asignada'}
                           </span>
-                          <span className="text-[10px] text-slate-500 mt-1 font-mono">
-                            {p.main_warehouse_stock || 0} unid.
-                          </span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <td className="hidden xl:table-cell px-6 py-4 whitespace-nowrap text-center">
                         <div className="flex flex-col items-center">
                           <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2 py-1 rounded-md">
                             {warehouses.find(w => w.id === p.auxiliary_warehouse_id)?.name || 'Ninguna'}
-                          </span>
-                          <span className="text-[10px] text-slate-400 mt-1 font-mono">
-                            {p.auxiliary_warehouse_stock || 0} unid.
                           </span>
                         </div>
                       </td>
@@ -1222,42 +1231,20 @@ export default function AdminProductsPage() {
                           <span className={`text-sm font-bold text-${stockInfo.color}-600`}>
                             {p.stock_quantity}
                           </span>
-                          <span className={`text-[10px] text-${stockInfo.color}-500/70`}>
-                            {stockInfo.unit}
-                          </span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center gap-3">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (currentUserProfile && (currentUserProfile.role === 'Admin' || currentUserProfile.role === 'Asesor Comercial')) {
-                                toggleStatus(p);
-                              }
-                            }}
-                            className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 ${p.status === 'Activo' ? 'bg-primary' : 'bg-slate-200'} ${currentUserProfile?.role !== 'Admin' ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
-                            disabled={currentUserProfile?.role !== 'Admin'}
-                          >
-                            <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${p.status === 'Activo' ? 'translate-x-4' : 'translate-x-0'}`} />
+                      <td className="hidden md:table-cell px-6 py-4 whitespace-nowrap">
+                        <span className={`text-xs font-medium ${p.status === 'Activo' ? 'text-emerald-600' : 'text-slate-500'}`}>
+                          {p.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button onClick={() => handleOpenEditModal(p)} className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors">
+                            <span className="material-symbols-outlined text-[20px]">edit</span>
                           </button>
-                          <span className={`text-xs font-medium ${p.status === 'Activo' ? 'text-emerald-600' : 'text-slate-500'}`}>
-                            {p.status}
-                          </span>
                         </div>
                       </td>
-                      {currentUserProfile?.role === 'Admin' && (
-                        <td className="px-6 py-4 whitespace-nowrap text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <button onClick={() => handleOpenEditModal(p)} className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors">
-                              <span className="material-symbols-outlined text-[20px]">edit</span>
-                            </button>
-                            <button onClick={() => openDeleteModal(p)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors">
-                              <span className="material-symbols-outlined text-[20px]">delete</span>
-                            </button>
-                          </div>
-                        </td>
-                      )}
                     </tr>);
                 })) : (<tr><td colSpan={9} className="text-center p-8 text-slate-500">No se encontraron productos.</td></tr>)
               }
@@ -1737,6 +1724,24 @@ export default function AdminProductsPage() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+
+      <AdminActionFooter>
+        <button 
+          onClick={handleOpenCreateModal}
+          className="flex-1 flex items-center justify-center gap-2 bg-primary text-white p-4 rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all active:scale-95"
+        >
+          <Plus size={20} />
+          Nuevo
+        </button>
+        <button 
+          onClick={() => setIsBulkImportModalOpen(true)}
+          className="flex-1 flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-700 p-4 rounded-xl font-bold shadow-sm hover:bg-slate-50 transition-all active:scale-95"
+        >
+          <FileUp size={20} />
+          Importar
+        </button>
+      </AdminActionFooter>
+    </>
   );
 }

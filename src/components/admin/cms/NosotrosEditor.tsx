@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Save, Loader2, Plus, Trash2, CheckCircle2, Milestone } from 'lucide-react';
+import { Save, Loader2, Plus, Trash2, Target, Users, TrendingUp, Award } from 'lucide-react';
+import AdminActionFooter from '@/components/admin/AdminActionFooter';
 import CMSImageUpload from './CMSImageUpload';
 import CMSIconPicker from './CMSIconPicker';
 
@@ -262,6 +263,17 @@ export default function NosotrosEditor() {
           </div>
         </div>
       </div>
+
+      <AdminActionFooter>
+        <button 
+          onClick={handleSave} 
+          disabled={saving} 
+          className="w-full flex items-center justify-center gap-2 bg-primary text-white px-6 py-3.5 rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all active:scale-95"
+        >
+          {saving ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
+          Guardar cambios
+        </button>
+      </AdminActionFooter>
     </div>
   );
 }

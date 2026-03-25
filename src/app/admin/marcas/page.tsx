@@ -436,7 +436,10 @@ function AdminBrandsPageContent() {
                             onDrop={(e) => handleDrop(e, node)}
                             onDragEnd={handleDragEnd}
                             onDragLeave={() => setDropIndicator(null)}
-                            onClick={() => setSelectedBrand(node)}
+                            onClick={() => {
+                                setSelectedBrand(node);
+                                setShowMobileList(false);
+                            }}
                             className={`group flex items-center gap-2 p-2 rounded-lg cursor-pointer border ${selectedBrand?.id === node.id ? 'bg-primary/5 border-primary/20' : 'hover:bg-slate-50 border-transparent'}`}
                         >
                             <span className="material-symbols-outlined text-slate-400 cursor-grab active:cursor-grabbing text-[20px]">drag_indicator</span>

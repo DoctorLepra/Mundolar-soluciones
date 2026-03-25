@@ -218,6 +218,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
           specs={technicalSpecs}
           description={product.description || null}
           brandName={product.brands?.name || 'del Fabricante'}
+          techSpecsUrl={product.tech_specs_url || null}
         />
       </div>
 

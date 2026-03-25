@@ -6,21 +6,22 @@ interface Props {
   specs: string | null;
   description: string | null;
   brandName: string;
+  techSpecsUrl?: string | null;
 }
 
 const TABS = [
-  { id: 'specs', label: 'Especificaciones Técnicas' },
   { id: 'description', label: 'Descripción Detallada' },
+  { id: 'specs', label: 'Especificaciones Técnicas' },
 ];
 
-export default function ProductTabs({ specs, description, brandName }: Props) {
-  const [activeTab, setActiveTab] = useState<'specs' | 'description'>('specs');
+export default function ProductTabs({ specs, description, brandName, techSpecsUrl }: Props) {
+  const [activeTab, setActiveTab] = useState<'specs' | 'description'>('description');
 
   return (
     <div>
       {/* Tab navigation */}
-      <div className="border-b border-slate-200 mb-8">
-        <nav className="flex gap-8 overflow-x-auto no-scrollbar pb-1">
+      <div className="border-b border-slate-200 mb-8 flex items-center gap-8 overflow-x-auto no-scrollbar">
+        <nav className="flex gap-8 shrink-0">
           {TABS.map(tab => (
             <button
               key={tab.id}
@@ -35,6 +36,17 @@ export default function ProductTabs({ specs, description, brandName }: Props) {
             </button>
           ))}
         </nav>
+        {techSpecsUrl && (
+          <a
+            href={techSpecsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 text-sm font-bold text-primary hover:text-primary-dark transition-colors pb-4 shrink-0"
+          >
+            <span className="material-symbols-outlined text-lg">file_download</span>
+            Descargar ficha técnica
+          </a>
+        )}
       </div>
 
       {/* Tab content */}

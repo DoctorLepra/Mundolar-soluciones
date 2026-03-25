@@ -1148,7 +1148,7 @@ function AdminOrdersPageContent() {
                 </div>
               </div>
 
-              <div className="p-6 space-y-8 flex-1">
+              <div className="p-6 space-y-8 flex-1 pb-32 lg:pb-8">
                 {/* Client Profile */}
                 <div className="flex items-center gap-4">
                   {selectedOrder.clients?.photo_url && (selectedOrder.clients.photo_url.startsWith('http') || selectedOrder.clients.photo_url.startsWith('/')) ? (

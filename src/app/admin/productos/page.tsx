@@ -36,6 +36,7 @@ interface Product {
   offer_start_date: string | null;
   offer_end_date: string | null;
   last_trm_sync: string | null;
+  tech_specs_url: string | null;
 }
 
 interface Category {
@@ -80,6 +81,11 @@ export default function AdminProductsPage() {
   const [imagePreviewUrls, setImagePreviewUrls] = useState<{ id: string, url: string, file?: File, isExisting?: boolean }[]>([]);
   const [imagesToDelete, setImagesToDelete] = useState<string[]>([]);
   
+  // Tech Specs handling state
+  const [techSpecFile, setTechSpecFile] = useState<File | null>(null);
+  const [existingTechSpecUrl, setExistingTechSpecUrl] = useState<string | null>(null);
+  const [techSpecToDelete, setTechSpecToDelete] = useState<string | null>(null);
+
   const [isOfferActive, setIsOfferActive] = useState(false);
   const [productForm, setProductForm] = useState({
     name: '',
@@ -103,6 +109,7 @@ export default function AdminProductsPage() {
     offer_end_date: '',
     offer_discount_percentage: '',
     status: 'Activo', // Default status
+    tech_specs_url: '',
   });
 
   const [trm, setTrm] = useState<number | null>(null);
@@ -346,10 +353,14 @@ export default function AdminProductsPage() {
       offer_start_date: '', 
       offer_end_date: '', 
       offer_discount_percentage: '',
-      status: 'Activo' 
+      status: 'Activo',
+      tech_specs_url: '',
     });
     setImagePreviewUrls([]);
     setImagesToDelete([]);
+    setTechSpecFile(null);
+    setExistingTechSpecUrl(null);
+    setTechSpecToDelete(null);
     setIsProductModalOpen(true);
     fetchTRM(); // Also fetch TRM when opening create modal
   };
@@ -402,8 +413,13 @@ export default function AdminProductsPage() {
             ? ((1 - Number(product.price) / Number(product.original_price)) * 100).toFixed(2) 
             : '',
         status: product.status === 'Archivado' ? 'Inactivo' : (product.status || 'Activo'),
+        tech_specs_url: product.tech_specs_url || '',
     });
     
+    setTechSpecFile(null);
+    setExistingTechSpecUrl(product.tech_specs_url || null);
+    setTechSpecToDelete(null);
+
     const urls = parseImageUrls(product.image_urls);
     setImagePreviewUrls(urls.map(url => ({ id: Math.random().toString(36).substr(2, 9), url, isExisting: true })));
     setImagesToDelete([]);
@@ -508,6 +524,44 @@ export default function AdminProductsPage() {
         setImagesToDelete(prev => [...prev, previewToRemove.url]);
     }
     setImagePreviewUrls(prev => prev.filter(p => p.id !== previewId));
+  };
+  
+  const handleTechSpecChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+        const file = e.target.files[0];
+        const allowedTypes = [
+            'application/pdf',
+            'image/png',
+            'image/jpeg',
+            'image/jpg',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        ];
+        
+        if (!allowedTypes.includes(file.type) && !file.name.match(/\.(pdf|png|jpe?g|docx|xlsx)$/i)) {
+            alert('Formato de archivo no permitido. Solo PDF, PNG, JPG, DOCX, XLSX.');
+            return;
+        }
+        
+        if (file.size > 10 * 1024 * 1024) { // 10MB limit
+            alert('El archivo es demasiado grande. Máximo 10MB.');
+            return;
+        }
+
+        setTechSpecFile(file);
+        if (existingTechSpecUrl) {
+            setTechSpecToDelete(existingTechSpecUrl);
+            setExistingTechSpecUrl(null);
+        }
+    }
+  };
+
+  const handleRemoveTechSpec = () => {
+      if (existingTechSpecUrl) {
+          setTechSpecToDelete(existingTechSpecUrl);
+          setExistingTechSpecUrl(null);
+      }
+      setTechSpecFile(null);
   };
   
   const handleFormSubmit = async (e: React.FormEvent) => {
@@ -646,6 +700,55 @@ export default function AdminProductsPage() {
         }
       }
 
+      // 3. Upload Tech Spec to Cloudflare R2 if it changed
+      let finalTechSpecUrl = existingTechSpecUrl;
+      
+      if (techSpecFile) {
+          const file = techSpecFile;
+          const extMatch = file.name.match(/\.(pdf|png|jpe?g|docx|xlsx)$/i);
+          const ext = extMatch ? extMatch[0] : '.pdf';
+          const fileName = `${Date.now()}-techspec-${Math.random().toString(36).substring(2, 9)}${ext}`;
+
+          const presignedRes = await fetch('/api/upload/presigned', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fileName,
+              contentType: file.type || 'application/octet-stream',
+              folder: 'productos'
+            })
+          });
+
+          if (!presignedRes.ok) throw new Error('Error al obtener URL de subida para ficha técnica');
+          const { signedUrl, publicUrl } = await presignedRes.json();
+
+          const uploadRes = await fetch(signedUrl, {
+            method: 'PUT',
+            body: file,
+            headers: { 'Content-Type': file.type || 'application/octet-stream' }
+          });
+
+          if (!uploadRes.ok) throw new Error('Error al subir ficha técnica a Cloudflare');
+          
+          finalTechSpecUrl = publicUrl;
+      }
+      
+      // 4. Delete removed tech spec from R2
+      if (techSpecToDelete) {
+          try {
+              const urlObj = new URL(techSpecToDelete);
+              if (urlObj.hostname.includes('r2.dev')) {
+                  await fetch('/api/upload/presigned', {
+                      method: 'DELETE',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ publicUrl: techSpecToDelete })
+                  });
+              }
+          } catch (err) {
+              console.error("Error deleting tech spec from storage:", err);
+          }
+      }
+
     const dbStatus = status === 'Inactivo' ? 'Archivado' : status;
 
     const productData = { 
@@ -670,7 +773,8 @@ export default function AdminProductsPage() {
           offer_end_date: finalOfferEndDate,
           warehouse_id: warehouse_id || null,
           auxiliary_warehouse_id: auxiliary_warehouse_id || null,
-          last_trm_sync: price_usd ? new Date().toISOString() : null
+          last_trm_sync: price_usd ? new Date().toISOString() : null,
+          tech_specs_url: finalTechSpecUrl
       };
       
       if (isEditing && productToEdit) {
@@ -1287,7 +1391,59 @@ export default function AdminProductsPage() {
           <div><label className="block text-sm font-medium text-slate-700 mb-2">Descripción <span className="text-red-500">*</span></label><textarea name="description" value={productForm.description} onChange={handleFormChange} required rows={3} className="block w-full rounded-lg border-slate-600 px-4 py-2 bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm"></textarea></div>
 
           {/* 4. Especificaciones Técnicas */}
-          <div><label className="block text-sm font-medium text-slate-700 mb-2">Especificaciones Técnicas</label><textarea name="specs" value={productForm.specs} onChange={handleFormChange} rows={3} placeholder="Ingrese las especificaciones técnicas..." className="block w-full rounded-lg border-slate-600 px-4 py-2 bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm"></textarea></div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Especificaciones Técnicas</label>
+            <textarea name="specs" value={productForm.specs} onChange={handleFormChange} rows={3} placeholder="Ingrese las especificaciones técnicas..." className="block w-full rounded-lg border-slate-600 px-4 py-2 bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm"></textarea>
+          </div>
+
+          {/* Ficha Técnica (Documento) */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Carga de especificaciones técnicas</label>
+            <div className="flex items-center gap-4">
+              {(techSpecFile || existingTechSpecUrl) ? (
+                <div className="flex items-center justify-between w-full p-3 border border-slate-200 rounded-lg bg-slate-50 relative group">
+                   <div className="flex items-center gap-3 overflow-hidden">
+                      <div className="size-10 rounded-lg bg-red-100 text-red-600 flex items-center justify-center shrink-0">
+                         <span className="material-symbols-outlined text-2xl">description</span>
+                      </div>
+                      <div className="min-w-0">
+                         <p className="text-sm font-bold text-slate-900 truncate">
+                             {techSpecFile ? techSpecFile.name : 'Documento_Técnico_Actual'}
+                         </p>
+                         <p className="text-xs text-slate-500">
+                             {techSpecFile ? `${(techSpecFile.size / 1024 / 1024).toFixed(2)} MB` : 'Archivo guardado previamente'}
+                         </p>
+                      </div>
+                   </div>
+                   <button 
+                      type="button" 
+                      onClick={handleRemoveTechSpec}
+                      className="text-slate-400 hover:text-red-500 transition-colors p-2"
+                      title="Eliminar archivo"
+                   >
+                     <span className="material-symbols-outlined text-xl">delete</span>
+                   </button>
+                   {!techSpecFile && existingTechSpecUrl && (
+                      <a href={existingTechSpecUrl} target="_blank" rel="noreferrer" className="absolute top-1 right-12 text-primary hover:text-primary-dark p-2" title="Descargar/Ver archivo">
+                          <span className="material-symbols-outlined text-xl">download</span>
+                      </a>
+                   )}
+                </div>
+              ) : (
+                <label className="flex items-center justify-center gap-3 px-4 py-4 bg-slate-50 border-2 border-slate-200 border-dashed rounded-lg cursor-pointer hover:bg-slate-100 hover:border-primary transition-all w-full">
+                  <span className="material-symbols-outlined text-slate-400 text-2xl">upload_file</span>
+                  <div className="flex flex-col">
+                      <span className="text-sm text-slate-700 font-bold">Seleccionar archivo...</span>
+                      <span className="text-[11px] text-slate-500 font-medium">o arrastra y suelta aquí</span>
+                  </div>
+                  <input type="file" className="sr-only" onChange={handleTechSpecChange} accept=".pdf,.png,.jpg,.jpeg,.docx,.xlsx,application/pdf,image/png,image/jpeg,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+                </label>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-500 mt-2">
+              <span className="font-bold">Formatos permitidos:</span> PDF, PNG, JPG, DOCX, XLSX. <span className="font-bold">Máximo:</span> 10MB.
+            </p>
+          </div>
 
           {/* 5. Estado y Ubicación */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

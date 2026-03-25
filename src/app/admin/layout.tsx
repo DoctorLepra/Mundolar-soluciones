@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import AdminSidebar from '@/components/admin/Sidebar';
+import FloatingNotifications from '@/components/admin/FloatingNotifications';
 
 export default function AdminLayout({
   children,
@@ -24,7 +25,7 @@ export default function AdminLayout({
 
       {/* Sidebar - Drawer on Mobile */}
       <div className={`
-        fixed lg:relative inset-y-0 left-0 z-50
+        fixed lg:relative inset-y-0 left-0 z-[1000]
         transition-transform duration-300 ease-in-out
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
@@ -34,7 +35,7 @@ export default function AdminLayout({
       {/* Backdrop for Mobile Sidebar */}
       {isSidebarOpen && (
         <div 
-          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden animate-in fade-in duration-300"
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[990] lg:hidden animate-in fade-in duration-300"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
@@ -43,6 +44,8 @@ export default function AdminLayout({
       <main className="flex-1 overflow-y-auto no-scrollbar relative">
         {children}
       </main>
+
+      <FloatingNotifications />
     </div>
   );
 }

@@ -478,7 +478,10 @@ function AdminCategoriesPageContent() {
                     onDrop={(e) => handleDrop(e, node)}
                     onDragEnd={handleDragEnd}
                     onDragLeave={() => setDropIndicator(null)}
-                    onClick={() => setSelectedCategory(node)}
+                    onClick={() => {
+                        setSelectedCategory(node);
+                        setShowMobileTree(false);
+                    }}
                     className={`group flex items-center gap-2 p-2 rounded-lg cursor-pointer border ${selectedCategory?.id === node.id ? 'bg-primary/5 border-primary/20' : 'hover:bg-slate-50 border-transparent'}`}
                     style={{ paddingLeft: `${(level * 24) + 8}px` }}
                 >

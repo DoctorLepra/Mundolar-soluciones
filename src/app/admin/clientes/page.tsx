@@ -2393,7 +2393,7 @@ const AdminClientsPageContent = () => {
               : "w-0 opacity-0 border-none"
           }`}
         >
-          <div className="min-w-[500px] h-full flex flex-col">
+          <div className="min-w-0 lg:min-w-[500px] h-full flex flex-col">
             {(() => {
               if (viewTab === "Clientes") {
                 if (!selectedClient) {
@@ -2421,7 +2421,7 @@ const AdminClientsPageContent = () => {
                         </span>
                       </button>
 
-                      <div className="p-8 flex-1 overflow-y-auto">
+                      <div className="p-8 flex-1 overflow-y-auto pb-32 lg:pb-8">
                         <div className="flex justify-between items-start mb-6 pr-8">
                           <div className="text-xs font-bold uppercase tracking-wider text-slate-400 font-display">
                             Perfil del Cliente

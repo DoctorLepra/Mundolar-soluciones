@@ -73,12 +73,7 @@ export default function RootLayout({
         <link 
           rel="stylesheet" 
           href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" 
-          media="print" 
-          onLoad={(e) => { e.currentTarget.media = 'all'; }} 
         />
-        <noscript>
-          <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
-        </noscript>
         <link rel="icon" href="/img/logo-rojo-blanco.png" type="image/png" />
         <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#db1923" />

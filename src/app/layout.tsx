@@ -3,11 +3,33 @@ import "./globals.css";
 
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://mundolarsoluciones.vercel.app'),
   title: {
     default: "Inicio | Mundolar Soluciones",
     template: "%s | Mundolar Soluciones",
   },
-  description: "Telecomunicaciones Profesionales",
+  description: "Telecomunicaciones Profesionales - Expertos en Radiocomunicaciones y Soluciones Tecnológicas en Colombia.",
+  openGraph: {
+    title: 'Mundolar Soluciones | Telecomunicaciones Profesionales',
+    description: 'Expertos en soluciones de radiocomunicación, venta y alquiler de equipos de las mejores marcas.',
+    url: 'https://mundolarsoluciones.vercel.app',
+    siteName: 'Mundolar Soluciones',
+    images: [
+      {
+        url: '/img/logo-rojo-blanco.png',
+        width: 800,
+        height: 600,
+      },
+    ],
+    locale: 'es_CO',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Mundolar Soluciones',
+    description: 'Telecomunicaciones Profesionales en Colombia.',
+    images: ['/img/logo-rojo-blanco.png'],
+  },
 };
 
 import Navbar from "@/components/Navbar";

@@ -107,8 +107,31 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
   const relatedProducts = await getRelatedProducts(product.id, product.category_id);
   const technicalSpecs: string | null = product.specs || null;
 
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: product.name,
+    description: product.description,
+    image: images,
+    brand: {
+      '@type': 'Brand',
+      name: product.brands?.name || 'Mundolar',
+    },
+    offers: {
+      '@type': 'Offer',
+      price: priceWithIva,
+      priceCurrency: 'COP',
+      availability: 'https://schema.org/InStock',
+      url: `https://mundolarsoluciones.vercel.app/producto/${product.id}`,
+    },
+  };
+
   return (
     <main className="max-w-[1440px] mx-auto px-4 lg:px-8 py-8">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       {/* Breadcrumb */}
       <nav className="flex items-center text-sm text-slate-500 mb-8 overflow-x-auto whitespace-nowrap pb-2 no-scrollbar">
         <Link className="hover:text-primary transition-colors" href="/">Inicio</Link>

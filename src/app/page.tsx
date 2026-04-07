@@ -136,32 +136,32 @@ export default async function Home() {
 
       <section className="border-y border-slate-200 py-10 overflow-hidden">
         <div className="max-w-[1440px] mx-auto px-4 md:px-10">
-          <p className="text-center text-sm font-medium text-slate-500 mb-8 uppercase tracking-wider">Distribuidor Autorizado De</p>
+          <p className="text-center text-sm font-semibold text-slate-600 mb-8 uppercase tracking-wider">Distribuidor Autorizado De</p>
           
           <div className="relative">
-            <div className="logo-loop-container gap-12 md:gap-24 opacity-60 grayscale hover:grayscale-0 transition-all duration-500">
+            <div className="logo-loop-container gap-12 md:gap-24 grayscale hover:grayscale-0 transition-all duration-500">
               {brands.length > 0 ? (
                 [...brands, ...brands, ...brands].map((brand, idx) => (
                   <div key={`${brand.id}-${idx}`} className="relative h-12 w-32 md:w-40 flex items-center justify-center shrink-0">
                     {brand.image_url ? (
                       <Image 
                         src={brand.image_url} 
-                        alt={brand.name} 
+                        alt={`Logo de la marca ${brand.name}`} 
                         fill 
                         className="object-contain"
                       />
                     ) : (
-                      <h3 className="text-xl font-bold text-slate-800 uppercase tracking-tight">{brand.name}</h3>
+                      <span className="text-xl font-bold text-slate-800 uppercase tracking-tight">{brand.name}</span>
                     )}
                   </div>
                 ))
               ) : (
                 [1, 2, 3].map((i) => (
                   <React.Fragment key={i}>
-                    <h3 className="text-2xl font-bold font-sans italic text-slate-800 shrink-0">MOTOROLA</h3>
-                    <h3 className="text-2xl font-bold font-serif text-slate-800 shrink-0">KENWOOD</h3>
-                    <h3 className="text-2xl font-black tracking-tighter text-slate-800 shrink-0">Hytera</h3>
-                    <h3 className="text-2xl font-bold tracking-widest text-slate-800 shrink-0">ICOM</h3>
+                    <span className="text-2xl font-bold font-sans italic text-slate-800 shrink-0">MOTOROLA</span>
+                    <span className="text-2xl font-bold font-serif text-slate-800 shrink-0">KENWOOD</span>
+                    <span className="text-2xl font-black tracking-tighter text-slate-800 shrink-0">Hytera</span>
+                    <span className="text-2xl font-bold tracking-widest text-slate-800 shrink-0">ICOM</span>
                   </React.Fragment>
                 ))
               )}
@@ -177,7 +177,7 @@ export default async function Home() {
             <p className="text-slate-600 max-w-2xl">Explore nuestra amplia gama de soluciones de telecomunicaciones profesionales adaptadas a su industria.</p>
           </div>
           <Link href="/catalogo" className="text-primary font-bold hover:underline flex items-center gap-1">
-            Ver Todas las Categorías <span className="material-symbols-outlined text-sm">arrow_forward</span>
+            Ver Todas las Categorías <span className="material-symbols-outlined text-sm" aria-hidden="true">arrow_forward</span>
           </Link>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -186,7 +186,7 @@ export default async function Home() {
               <div className="aspect-[4/3] relative bg-slate-100 group-hover:scale-105 transition-transform duration-500">
                  <Image 
                     src={cat.image_url || `https://picsum.photos/400/300?random=${cat.id}`} 
-                    alt={cat.name}
+                    alt={`Categoría ${cat.name}`}
                     fill
                     sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 25vw"
                     className="object-cover"
@@ -194,7 +194,7 @@ export default async function Home() {
               </div>
               <div className="p-4 relative bg-white">
                 <h3 className="text-lg font-bold text-slate-900 mb-1">{cat.name}</h3>
-                <p className="text-sm text-slate-500 line-clamp-2">{cat.description}</p>
+                <p className="text-sm text-slate-600 line-clamp-2">{cat.description}</p>
               </div>
             </Link>
           ))}
@@ -206,29 +206,29 @@ export default async function Home() {
       <section className="bg-primary/5 rounded-2xl p-8 md:p-12 max-w-[1440px] mx-auto px-4 md:px-10">
         <div className="text-center max-w-2xl mx-auto mb-12">
           <h2 className="text-2xl md:text-3xl font-bold mb-4 text-slate-900">Servicios Integrales de Telecomunicaciones</h2>
-          <p className="text-slate-600">No solo vendemos radios; aseguramos que su infraestructura de comunicación sea robusta, confiable y esté lista para todo.</p>
+          <p className="text-slate-700 font-medium">No solo vendemos radios; aseguramos que su infraestructura de comunicación sea robusta, confiable y esté lista para todo.</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           <div className="flex flex-col items-center text-center gap-4">
             <div className="size-16 rounded-full bg-white text-primary flex items-center justify-center shadow-md">
-              <span className="material-symbols-outlined text-3xl">settings_input_antenna</span>
+              <span className="material-symbols-outlined text-3xl" aria-hidden="true">settings_input_antenna</span>
             </div>
             <h3 className="text-xl font-bold text-slate-900">Instalación</h3>
-            <p className="text-sm text-slate-500">Configuración profesional de repetidoras, antenas y estaciones base móviles.</p>
+            <p className="text-sm text-slate-600">Configuración profesional de repetidoras, antenas y estaciones base móviles.</p>
           </div>
           <div className="flex flex-col items-center text-center gap-4">
             <div className="size-16 rounded-full bg-white text-primary flex items-center justify-center shadow-md">
-              <span className="material-symbols-outlined text-3xl">build_circle</span>
+              <span className="material-symbols-outlined text-3xl" aria-hidden="true">build_circle</span>
             </div>
             <h3 className="text-xl font-bold text-slate-900">Reparación</h3>
-            <p className="text-sm text-slate-500">Técnicos certificados listos para reparar fallas de hardware y mantenimiento.</p>
+            <p className="text-sm text-slate-600">Técnicos certificados listos para reparar fallas de hardware y mantenimiento.</p>
           </div>
           <div className="flex flex-col items-center text-center gap-4">
             <div className="size-16 rounded-full bg-white text-primary flex items-center justify-center shadow-md">
-              <span className="material-symbols-outlined text-3xl">support_agent</span>
+              <span className="material-symbols-outlined text-3xl" aria-hidden="true">support_agent</span>
             </div>
             <h3 className="text-xl font-bold text-slate-900">Consultoría</h3>
-            <p className="text-sm text-slate-500">Asesoramiento experto para diseñar la red de comunicación perfecta.</p>
+            <p className="text-sm text-slate-600">Asesoramiento experto para diseñar la red de comunicación perfecta.</p>
           </div>
         </div>
       </section>

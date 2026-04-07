@@ -74,6 +74,7 @@ const Hero: React.FC<HeroProps> = ({ data }) => {
             <button
               key={index}
               onClick={() => setCurrentSlide(index)}
+              aria-label={`Ir a diapositiva ${index + 1}`}
               className={`h-2 rounded-full transition-all duration-300 ${
                 index === currentSlide ? 'w-6 bg-white' : 'w-2 bg-white/50 hover:bg-white'
               }`}

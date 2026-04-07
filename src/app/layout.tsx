@@ -32,9 +32,35 @@ export const metadata: Metadata = {
   },
 };
 
+import { Geist, Rethink_Sans, Unbounded, Imperial_Script } from "next/font/google";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { CartProvider } from "@/context/CartContext";
+
+const geist = Geist({
+  subsets: ["latin"],
+  variable: "--font-geist",
+  display: "swap",
+});
+
+const rethinkSans = Rethink_Sans({
+  subsets: ["latin"],
+  variable: "--font-rethink-sans",
+  display: "swap",
+});
+
+const unbounded = Unbounded({
+  subsets: ["latin"],
+  variable: "--font-unbounded",
+  display: "swap",
+});
+
+const imperialScript = Imperial_Script({
+  weight: "400",
+  subsets: ["latin"],
+  variable: "--font-imperial-script",
+  display: "swap",
+});
 
 export default function RootLayout({
   children,
@@ -42,12 +68,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es" suppressHydrationWarning>
+    <html lang="es" suppressHydrationWarning className={`${geist.variable} ${rethinkSans.variable} ${unbounded.variable} ${imperialScript.variable}`}>
       <head>
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Imperial+Script&family=Rethink+Sans:ital,wght@0,400..800;1,400..800&family=Unbounded:wght@200..900&display=swap" rel="stylesheet" />
+        <link 
+          rel="stylesheet" 
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" 
+          media="print" 
+          onLoad={(e) => { e.currentTarget.media = 'all'; }} 
+        />
+        <noscript>
+          <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+        </noscript>
         <link rel="icon" href="/img/logo-rojo-blanco.png" type="image/png" />
         <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#db1923" />

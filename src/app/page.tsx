@@ -3,10 +3,12 @@ import type { Metadata } from 'next';
 export const metadata: Metadata = { title: 'Inicio | Mundolar Soluciones' };
 import { supabase } from '@/lib/supabase';
 import Hero from '@/components/home/Hero';
-import ProductCarousel from '@/components/home/ProductCarousel';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import Image from 'next/image';
-import Newsletter from '@/components/Newsletter';
+
+const ProductCarousel = dynamic(() => import('@/components/home/ProductCarousel'), { ssr: true });
+const Newsletter = dynamic(() => import('@/components/Newsletter'), { ssr: true });
 
 // Types
 interface Category {

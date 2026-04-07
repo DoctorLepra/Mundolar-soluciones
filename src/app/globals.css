@@ -25,9 +25,9 @@ html {
   --color-background-light: var(--color-background-light);
   --color-surface-light: var(--color-surface-light);
 
-  --font-display: "Rethink Sans", sans-serif;
-  --font-body: "Geist", sans-serif;
-  --font-sans: "Geist", sans-serif;
+  --font-display: var(--font-rethink-sans);
+  --font-body: var(--font-geist);
+  --font-sans: var(--font-geist);
 }
 
 body {

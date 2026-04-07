@@ -15,7 +15,7 @@ export async function POST(request: Request) {
       }
     );
 
-    const { full_name, email, role = 'Asesor Comercial' } = await request.json();
+    const { full_name, email, role = 'Ejecutivo de cuenta' } = await request.json();
 
     if (!full_name || !email || !role) {
       return NextResponse.json({ error: 'Faltan campos obligatorios' }, { status: 400 });

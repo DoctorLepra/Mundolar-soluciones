@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, Suspense } from "react";
+import React, { useState, useEffect, useRef, Suspense, useMemo } from "react";
 import Image from "next/image";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -137,6 +137,8 @@ const AdminClientsPageContent = () => {
   );
   const [clientOrders, setClientOrders] = useState<any[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
+  const [clientQuotes, setClientQuotes] = useState<any[]>([]);
+  const [loadingQuotes, setLoadingQuotes] = useState(false);
 
   // CRM State
   const [clientInteractions, setClientInteractions] = useState<Interaction[]>(
@@ -238,6 +240,16 @@ const AdminClientsPageContent = () => {
     new Date().toISOString().split("T")[0],
   );
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+
+  // Historial Unificado (Pedidos + Cotizaciones)
+  const historyItems = useMemo(() => {
+    const orders = clientOrders.map((o) => ({ ...o, _type: "order" }));
+    const quotes = clientQuotes.map((q) => ({ ...q, _type: "quote" }));
+    return [...orders, ...quotes].sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
+  }, [clientOrders, clientQuotes]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -382,7 +394,7 @@ const AdminClientsPageContent = () => {
       .order("due_date", { ascending: true });
 
     // Role-based filtering: Vendors only see tasks they are assigned to OR tasks they created
-    if (profile && profile.role === 'Asesor Comercial') {
+    if (profile && profile.role === 'Ejecutivo de cuenta') {
       query = query.or(`assigned_to_id.eq.${profile.id},created_by_id.eq.${profile.id}`);
     }
 
@@ -453,11 +465,11 @@ const AdminClientsPageContent = () => {
               related_id: taskId || undefined
             });
           }
-        } else if (currentUserProfile.role === 'Asesor Comercial') {
+        } else if (currentUserProfile.role === 'Ejecutivo de cuenta') {
           // If Vendor auto-assigns or creates task
           await notifyAdmins({
             title: 'Tarea Creada/Auto-asignada',
-            message: `El asesor comercial ${currentUserProfile.full_name} ha creado/asignado la tarea: ${taskData.title}`,
+            message: `El Ejecutivo de cuenta ${currentUserProfile.full_name} ha creado/asignado la tarea: ${taskData.title}`,
             type: 'task',
             related_id: taskId || undefined
           });
@@ -471,8 +483,8 @@ const AdminClientsPageContent = () => {
         title: "",
         description: "",
         due_date: new Date().toISOString().split("T")[0],
-        assigned_to: currentUserProfile?.role === 'Asesor Comercial' ? currentUserProfile.full_name : "",
-        assigned_to_id: currentUserProfile?.role === 'Asesor Comercial' ? currentUserProfile.id : "",
+        assigned_to: currentUserProfile?.role === 'Ejecutivo de cuenta' ? currentUserProfile.full_name : "",
+        assigned_to_id: currentUserProfile?.role === 'Ejecutivo de cuenta' ? currentUserProfile.id : "",
         client_id: "",
         status: "Pendiente",
         created_by_id: currentUserProfile?.id || "",
@@ -602,7 +614,7 @@ const AdminClientsPageContent = () => {
       .select("*")
       .eq("client_id", clientId);
 
-    if (currentUserProfile && currentUserProfile.role === 'Asesor Comercial') {
+    if (currentUserProfile && currentUserProfile.role === 'Ejecutivo de cuenta') {
       query = query.eq('created_by_id', currentUserProfile.id);
     }
 
@@ -614,6 +626,27 @@ const AdminClientsPageContent = () => {
       setClientOrders(data || []);
     }
     setLoadingOrders(false);
+  };
+
+  const fetchClientQuotes = async (clientId: string) => {
+    setLoadingQuotes(true);
+    let query = supabase
+      .from("quotes")
+      .select("*")
+      .eq("client_id", clientId);
+
+    if (currentUserProfile && currentUserProfile.role === 'Ejecutivo de cuenta') {
+      query = query.eq('created_by_id', currentUserProfile.id);
+    }
+
+    const { data, error } = await query.order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching client quotes:", error);
+    } else {
+      setClientQuotes(data || []);
+    }
+    setLoadingQuotes(false);
   };
 
   const fetchInteractions = async (clientId: string) => {
@@ -773,6 +806,7 @@ const AdminClientsPageContent = () => {
     if (selectedClientId) {
       if (activeTab === "Historial") {
         fetchClientOrders(selectedClientId);
+        fetchClientQuotes(selectedClientId);
       } else if (activeTab === "CRM") {
         fetchInteractions(selectedClientId);
       }
@@ -2687,63 +2721,76 @@ const AdminClientsPageContent = () => {
                           ) : activeTab === "Historial" ? (
                             <div className="space-y-4">
                               <h4 className="text-sm font-bold text-slate-900 font-display uppercase tracking-widest text-[11px] text-slate-400 mb-4">
-                                Pedidos Recientes
+                                Historial de Operaciones
                               </h4>
 
-                              {loadingOrders ? (
+                              {(loadingOrders || loadingQuotes) ? (
                                 <div className="p-8 text-center">
                                   <div className="size-6 border-2 border-primary border-t-transparent animate-spin rounded-full mx-auto"></div>
                                 </div>
-                              ) : clientOrders.length === 0 ? (
+                              ) : historyItems.length === 0 ? (
                                 <div className="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
                                   <span className="material-symbols-outlined text-slate-300 text-3xl mb-2">
-                                    shopping_bag
+                                    history
                                   </span>
                                   <p className="text-xs text-slate-500 font-display">
-                                    Este cliente aún no tiene pedidos.
+                                    Este cliente aún no tiene actividad registrada.
                                   </p>
                                 </div>
                               ) : (
                                 <div className="space-y-3">
-                                  {clientOrders.map((order) => (
+                                  {historyItems.map((item: any) => (
                                     <div
-                                      key={order.id}
+                                      key={`${item._type}-${item.id}`}
                                       className="p-4 bg-white border border-slate-200 rounded-xl hover:shadow-md transition-all group"
                                     >
                                       <div className="flex justify-between items-start mb-2">
-                                        <div>
-                                          <p className="text-sm font-bold text-slate-900 font-display">
-                                            #
-                                            {order.id
-                                              .toString()
-                                              .padStart(5, "0")}
-                                          </p>
-                                          <p className="text-[10px] text-slate-500 font-display">
-                                            {new Date(
-                                              order.created_at,
-                                            ).toLocaleDateString()}
-                                          </p>
+                                        <div className="flex items-center gap-2">
+                                          <div className={`size-8 rounded-lg flex items-center justify-center ${
+                                            item._type === 'order' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'
+                                          }`}>
+                                            <span className="material-symbols-outlined text-lg">
+                                              {item._type === 'order' ? 'shopping_bag' : 'request_quote'}
+                                            </span>
+                                          </div>
+                                          <div>
+                                            <p className="text-sm font-bold text-slate-900 font-display leading-tight">
+                                              {item._type === 'order' ? 'Pedido' : 'Cotización'} #
+                                              {item._type === 'order' 
+                                                ? item.id.toString().padStart(5, "0") 
+                                                : (item.quote_number || item.id.toString().substring(0, 8))}
+                                            </p>
+                                            <p className="text-[10px] text-slate-500 font-display">
+                                              {new Date(item.created_at).toLocaleDateString()}
+                                            </p>
+                                          </div>
                                         </div>
                                         <span
                                           className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                            order.status === "Completado"
+                                            item.status === "Completado" || item.status === "Aprobada"
                                               ? "bg-emerald-100 text-emerald-700"
-                                              : order.status === "Pendiente"
+                                              : item.status === "Pendiente"
                                                 ? "bg-amber-100 text-amber-700"
-                                                : "bg-blue-100 text-blue-700"
+                                                : item.status === "Cancelada" || item.status === "Cancelado"
+                                                  ? "bg-red-100 text-red-700"
+                                                  : item.status === "Renovada"
+                                                    ? "bg-blue-100 text-blue-700"
+                                                    : "bg-slate-100 text-slate-700"
                                           }`}
                                         >
-                                          {order.status}
+                                          {item.status}
                                         </span>
                                       </div>
-                                      <div className="flex justify-between items-center">
+                                      <div className="flex justify-between items-center mt-3 pl-10">
                                         <p className="text-sm font-bold text-primary font-mono">
-                                          ${formatCurrency(order.total_amount)}
+                                          ${formatCurrency(item.total_amount)}
                                         </p>
                                         <button
                                           onClick={() =>
                                             router.push(
-                                              `/admin/pedidos?id=${order.id}`,
+                                              item._type === 'order' 
+                                                ? `/admin/pedidos?id=${item.id}`
+                                                : `/admin/cotizaciones?id=${item.id}`
                                             )
                                           }
                                           className="text-[10px] font-bold text-slate-400 group-hover:text-primary transition-colors flex items-center gap-1"
@@ -2944,8 +2991,8 @@ const AdminClientsPageContent = () => {
                                           .split("T")[0],
                                         assigned_to:
                                           (selectedClient as any)
-                                            .assigned_to_name || (currentUserProfile?.role === 'Asesor Comercial' ? currentUserProfile.full_name : ""),
-                                        assigned_to_id: (selectedClient as any).assigned_to_id || (currentUserProfile?.role === 'Asesor Comercial' ? currentUserProfile.id : ""),
+                                            .assigned_to_name || (currentUserProfile?.role === 'Ejecutivo de cuenta' ? currentUserProfile.full_name : ""),
+                                        assigned_to_id: (selectedClient as any).assigned_to_id || (currentUserProfile?.role === 'Ejecutivo de cuenta' ? currentUserProfile.id : ""),
                                         client_id: (selectedClient as any).id,
                                         status: "Pendiente",
                                         created_by_id: currentUserProfile?.id || "",

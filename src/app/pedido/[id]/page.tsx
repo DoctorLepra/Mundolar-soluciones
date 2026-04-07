@@ -41,14 +41,14 @@ export default function OrderRedirectPage() {
           return;
         }
 
-        // 3. Check Role (Admin or Asesor Comercial)
+        // 3. Check Role (Admin or Ejecutivo de cuenta)
         const { data: profile } = await supabase
           .from('profiles')
           .select('role')
           .eq('id', user.id)
           .single();
 
-        if (profile && (profile.role === 'Admin' || profile.role === 'Asesor Comercial')) {
+        if (profile && (profile.role === 'Admin' || profile.role === 'Ejecutivo de cuenta')) {
           // 4. Authorized -> Redirect to Admin
           router.push(`/admin/pedidos?id=${decodedId}`);
         } else {

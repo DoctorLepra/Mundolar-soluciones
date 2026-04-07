@@ -331,7 +331,7 @@ function AdminOrdersPageContent() {
           profiles:created_by_id (full_name, role)
         `);
 
-      if (profile && profile.role === 'Asesor Comercial') {
+      if (profile && profile.role === 'Ejecutivo de cuenta') {
         query = query.eq('created_by_id', user!.id);
       }
 
@@ -759,11 +759,11 @@ function AdminOrdersPageContent() {
       if (itemsError) throw itemsError;
 
       // Notification Logic
-      if (currentUserProfile?.role === 'Asesor Comercial') {
+      if (currentUserProfile?.role === 'Ejecutivo de cuenta') {
         const { data: { user } } = await supabase.auth.getUser();
         await notifyAdmins({
           title: 'Nuevo Pedido Registrado',
-          message: `El asesor comercial ${currentUserProfile.full_name} ha creado un nuevo pedido.`,
+          message: `El Ejecutivo de cuenta ${currentUserProfile.full_name} ha creado un nuevo pedido.`,
           type: 'order',
           related_id: orderId.toString()
         });
@@ -1212,7 +1212,7 @@ function AdminOrdersPageContent() {
                   </div>
                 </div>
 
-                {/* Atribución / Asesor Comercial */}
+                {/* Atribución / Ejecutivo de cuenta */}
                 <div className="bg-emerald-50/50 p-4 rounded-xl border border-emerald-100 flex items-center gap-3">
                   <div className="size-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
                     <span className="material-symbols-outlined text-xl">person_check</span>

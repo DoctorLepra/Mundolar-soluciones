@@ -64,6 +64,39 @@ interface Quote {
   };
 }
 
+const DEFAULT_CONDITIONS = {
+  venta: `* Vigencia: 3 días hábiles
+* Disponibilidad: Inmediata, sujeto rotación inventario almacén
+* Tiempo de entrega: Despacho una vez cancelada la factura
+* Cuenta Bancaria: Bancolombia ahorros No. 74300004050 Mundolar Soluciones Sas
+* Cuenta Bancaria: Banco Caja Social ahorros No. 24122592885 Mundolar Soluciones Sas
+* Mercancía legalmente importada original Motorola, Hytera, Kenwood, Icom, Vertex, Txpro.
+* Transporte a nivel nacional: el envìo y/o despacho se realiza por la transportadora que 
+   indique el cliente final  y bajo la responsabilidad de este.
+* Obsequio. Programación de radios de comunicaciones`,
+  alquiler: `* Vigencia: 3 días hábiles
+* Radios Incluyen: bateria, clip, antena y cargador completo  -  En perfectas condiciones para la operación
+* Se debe tener registro de cliente actualizado a la fecha de solicitar el servicio
+* Todo alquiler maneja un deposito en efectivo, valor que se devuelve al momento de recibir los equipos
+* Al momento de entregar el servicio de alquiler se emite carta compromisoria para firmas y compromisos
+* Todo servicio debe ser solicitado formalmente con ocho (8) dìas de anterioridad.
+* Transporte a nivel nacional: el envìo y/o despacho se realiza por la transportadora que 
+   indique el cliente final  y bajo la responsabilidad de este.
+* Cuenta Bancaria: Bancolombia ahorros No. 74300004050 Mundolar Soluciones Sas
+* Cuenta Bancaria: Banco Caja Social ahorros No. 24122592885 Mundolar Soluciones Sas`,
+  mantenimiento: `* Vigencia: 3 días hábiles
+* Garantìa mano de obra: 40 dìas sobre las mismas reparaciones efectuadas
+* Todo radio es diagnosticado bajo una orden de servicio, permitiendo un historial tècnico de cada equipo.
+* Forma de pago: Contado, en caso de no aprobaciòn el valor por cada equipo diagnosticado es de $18.000
+* Cuenta Bancaria: Bancolombia ahorros No. 74300004050 Mundolar Soluciones Sas
+* Cuenta Bancaria: Banco Caja Social ahorros No. 24122592885 Mundolar Soluciones Sas
+* Mercancía legalmente importada original Motorola, Hytera, Kenwood, Icom, Vertex, Txpro.
+* Transporte a nivel nacional: el envìo y/o despacho se realiza por la transportadora que 
+   indique el cliente final  y bajo la responsabilidad de este.`
+};
+
+const DEFAULT_NOTE = `Los equipos, accesorios, repuestos son cotizados de acuerdo a las fichas técnicas y/o recomendaciones brindadas por parte del cliente, por favor revisar las especificaciones técnicas (datasheet) de cada modelo de equipo mencionado antes de adquirirlas, es libertad y responsabilidad propia del mismo.`;
+
 function AdminQuotesPageContent() {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,9 +135,14 @@ function AdminQuotesPageContent() {
 
   // Quote form states
   const [quoteForm, setQuoteForm] = useState({
-    observations: '',
+    observations: DEFAULT_NOTE,
     discount_percentage: '0',
-    valid_until: ''
+    valid_until: '',
+    conditions: {
+      venta: { enabled: false, text: DEFAULT_CONDITIONS.venta },
+      alquiler: { enabled: false, text: DEFAULT_CONDITIONS.alquiler },
+      mantenimiento: { enabled: false, text: DEFAULT_CONDITIONS.mantenimiento }
+    }
   });
 
   const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null>(null);
@@ -293,18 +331,45 @@ function AdminQuotesPageContent() {
 
   useEffect(() => {
     const fetchNextNumber = async () => {
-      const { data, error } = await supabase.rpc('get_next_quote_number');
-      // If RPC doesn't exist yet, we'll just use a fallback or fetch last quote
-      if (error) {
-        const { data: lastQuote } = await supabase.from('quotes').select('quote_number').order('created_at', { ascending: false }).limit(1);
+      const currentYear = new Date().getFullYear().toString().slice(-2);
+      try {
+        const { data: lastQuote } = await supabase
+          .from('quotes')
+          .select('quote_number')
+          .order('created_at', { ascending: false })
+          .limit(1);
+        
         if (lastQuote && lastQuote.length > 0) {
-          const num = parseInt(lastQuote[0].quote_number.replace('COT-', '')) + 1;
-          setNextQuoteNumber(`COT-${num.toString().padStart(4, '0')}`);
+          const lastNumStr = lastQuote[0].quote_number;
+          // Match new format: YY-NNNN (removed COT-)
+          const match = lastNumStr.match(/(\d{2})-(\d{4})/);
+          
+          if (match) {
+            const lastYear = match[1];
+            const lastSeq = parseInt(match[2]);
+            
+            if (lastYear === currentYear) {
+              setNextQuoteNumber(`${currentYear}-${(lastSeq + 1).toString().padStart(4, '0')}`);
+            } else {
+              // Year changed, reset sequence to 3000
+              setNextQuoteNumber(`${currentYear}-3000`);
+            }
+          } else {
+            // Check for previous COT-YY-NNNN format or COT-####
+            const cotMatch = lastNumStr.match(/COT-(\d{2})-(\d{4})/) || lastNumStr.match(/COT-(\d{4})/);
+            if (cotMatch) {
+              setNextQuoteNumber(`${currentYear}-3000`);
+            } else {
+              setNextQuoteNumber(`${currentYear}-3000`);
+            }
+          }
         } else {
-          setNextQuoteNumber('COT-0001');
+          // No quotes at all, start at 3000
+          setNextQuoteNumber(`${currentYear}-3000`);
         }
-      } else {
-        setNextQuoteNumber(data);
+      } catch (error) {
+        console.error("Error calculating next quote number:", error);
+        setNextQuoteNumber(`${currentYear}-3000`); // Fallback
       }
     };
     if (isCreateModalOpen) fetchNextNumber();
@@ -372,8 +437,14 @@ function AdminQuotesPageContent() {
       setIsSubmitting(true);
       const subtotal = calculateSubtotal();
       const total = calculateTotal();
-
       let quoteId = selectedQuoteId;
+
+      const observationsJson = JSON.stringify({
+        general: quoteForm.observations,
+        venta: quoteForm.conditions.venta,
+        alquiler: quoteForm.conditions.alquiler,
+        mantenimiento: quoteForm.conditions.mantenimiento
+      });
 
       if (isEditMode && quoteId) {
         const { error: quoteUpdateError } = await supabase
@@ -382,7 +453,7 @@ function AdminQuotesPageContent() {
             subtotal,
             discount_percentage: parseFloat(quoteForm.discount_percentage),
             total_amount: total,
-            observations: quoteForm.observations,
+            observations: observationsJson,
             valid_until: quoteForm.valid_until || null
           })
           .eq('id', quoteId);
@@ -400,11 +471,12 @@ function AdminQuotesPageContent() {
         const { data: quoteData, error: quoteError } = await supabase
           .from('quotes')
           .insert([{
+            quote_number: nextQuoteNumber, // Ensure the new format is saved
             client_id: selectedClient.id,
             subtotal,
             discount_percentage: parseFloat(quoteForm.discount_percentage),
             total_amount: total,
-            observations: quoteForm.observations,
+            observations: observationsJson,
             valid_until: quoteForm.valid_until || null,
             status: 'Pendiente',
             created_by_id: (await supabase.auth.getUser()).data.user?.id
@@ -428,13 +500,13 @@ function AdminQuotesPageContent() {
       if (itemsError) throw itemsError;
 
       // Notification Logic
-      if (currentUserProfile?.role === 'Asesor Comercial') {
+      if (currentUserProfile?.role === 'Ejecutivo de cuenta') {
         const quoteNumber = isEditMode ? 'Existente' : (typeof quoteId === 'string' ? 'Nueva' : '');
         await notifyAdmins({
           title: isEditMode ? 'Cotización Actualizada' : 'Nueva Cotización Generada',
           message: isEditMode 
-            ? `El asesor comercial ${currentUserProfile.full_name} ha actualizado una cotización.`
-            : `El asesor comercial ${currentUserProfile.full_name} ha generado una nueva cotización.`,
+            ? `El Ejecutivo de cuenta ${currentUserProfile.full_name} ha actualizado una cotización.`
+            : `El Ejecutivo de cuenta ${currentUserProfile.full_name} ha generado una nueva cotización.`,
           type: 'quote',
           related_id: quoteId || undefined
         });
@@ -444,7 +516,16 @@ function AdminQuotesPageContent() {
       setIsEditMode(false);
       setSelectedClient(null);
       setSelectedProducts([]);
-      setQuoteForm({ observations: '', discount_percentage: '0', valid_until: '' });
+      setQuoteForm({ 
+        observations: '', 
+        discount_percentage: '0', 
+        valid_until: '',
+        conditions: {
+          venta: { enabled: false, text: DEFAULT_CONDITIONS.venta },
+          alquiler: { enabled: false, text: DEFAULT_CONDITIONS.alquiler },
+          mantenimiento: { enabled: false, text: DEFAULT_CONDITIONS.mantenimiento }
+        }
+      });
       fetchQuotes();
       alert(isEditMode ? 'Cotización actualizada' : 'Cotización creada con éxito');
     } catch (error: any) {
@@ -491,10 +572,36 @@ function AdminQuotesPageContent() {
   const handleEditQuote = (quote: Quote) => {
     setSelectedClient(quote.clients || null);
     setClientSearchTerm(quote.clients?.document_number || quote.clients?.nit || '');
+    
+    // Attempt to parse observations if they are JSON
+    let conditionData = {
+      venta: { enabled: false, text: DEFAULT_CONDITIONS.venta },
+      alquiler: { enabled: false, text: DEFAULT_CONDITIONS.alquiler },
+      mantenimiento: { enabled: false, text: DEFAULT_CONDITIONS.mantenimiento }
+    };
+    let plainObservations = quote.observations || '';
+
+    try {
+      if (quote.observations?.startsWith('{')) {
+        const parsed = JSON.parse(quote.observations);
+        if (parsed.venta || parsed.alquiler || parsed.mantenimiento) {
+          conditionData = {
+            venta: parsed.venta || conditionData.venta,
+            alquiler: parsed.alquiler || conditionData.alquiler,
+            mantenimiento: parsed.mantenimiento || conditionData.mantenimiento
+          };
+          plainObservations = parsed.general || '';
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to parse quote observations as JSON, treating as plain text.");
+    }
+
     setQuoteForm({
-      observations: quote.observations || '',
+      observations: plainObservations,
       discount_percentage: quote.discount_percentage.toString(),
-      valid_until: quote.valid_until || ''
+      valid_until: quote.valid_until || '',
+      conditions: conditionData
     });
     
     if (selectedQuoteId === quote.id) {
@@ -996,7 +1103,7 @@ function AdminQuotesPageContent() {
                             });
                           }
                         }}
-                        className="col-span-2 w-full flex items-center justify-center gap-2 px-3 py-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-sm font-bold transition-all shadow-sm font-display mt-2"
+                        className="col-span-2 w-full flex items-center justify-center gap-2 px-3 py-3.5 bg-white border border-slate-200 hover:bg-primary/5 hover:border-primary/20 hover:text-primary hover:shadow-md hover:scale-[1.01] text-slate-700 rounded-xl text-sm font-bold transition-all shadow-sm font-display mt-2"
                       >
                         <span className="material-symbols-outlined text-[20px]">picture_as_pdf</span>
                         Descargar PDF
@@ -1199,15 +1306,80 @@ function AdminQuotesPageContent() {
                       <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-hover:text-primary transition-colors">calendar_today</span>
                     </div>
                   </div>
-                  <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Observaciones y Condiciones</label>
-                    <textarea 
-                      rows={4}
-                      className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-primary outline-none resize-none font-display placeholder:text-slate-300"
-                      placeholder="Indicar garantía, validez de oferta, condiciones de pago..."
-                      value={quoteForm.observations}
-                      onChange={e => setQuoteForm({...quoteForm, observations: e.target.value})}
-                    />
+                  <div className="space-y-6">
+                    {/* Nota */}
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Nota</label>
+                      <textarea 
+                        rows={2}
+                        className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-primary outline-none resize-none font-display placeholder:text-slate-300"
+                        placeholder="Comentarios adicionales no incluidos en las condiciones automáticas..."
+                        value={quoteForm.observations}
+                        onChange={e => setQuoteForm({...quoteForm, observations: e.target.value})}
+                      />
+                    </div>
+
+                    {/* Commercial Agreements Sections */}
+                    <div className="space-y-3">
+                      <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Acuerdos Comerciales (PDF)</h3>
+                      
+                      {(['venta', 'alquiler', 'mantenimiento'] as const).map((id) => (
+                        <div 
+                          key={id} 
+                          className={`border rounded-2xl transition-all overflow-hidden ${quoteForm.conditions[id].enabled ? 'border-primary/30 shadow-md ring-4 ring-primary/5' : 'border-slate-100 bg-white'}`}
+                        >
+                          <div 
+                            className={`p-4 flex items-center justify-between cursor-pointer group transition-colors ${quoteForm.conditions[id].enabled ? 'bg-primary/5' : 'hover:bg-slate-50'}`}
+                            onClick={() => setQuoteForm({
+                              ...quoteForm,
+                              conditions: {
+                                ...quoteForm.conditions,
+                                [id]: {
+                                  ...quoteForm.conditions[id],
+                                  enabled: !quoteForm.conditions[id].enabled
+                                }
+                              }
+                            })}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className={`size-5 rounded-lg flex items-center justify-center border-2 transition-all ${quoteForm.conditions[id].enabled ? 'bg-primary border-primary scale-110' : 'border-slate-200 scale-100'}`}>
+                                {quoteForm.conditions[id].enabled && <span className="material-symbols-outlined text-white text-[14px] font-black">check</span>}
+                              </div>
+                              <span className={`text-[10px] font-black tracking-widest transition-colors ${quoteForm.conditions[id].enabled ? 'text-primary' : 'text-slate-400'}`}>
+                                ACUERDOS COMERCIALES DE: {id === 'venta' ? 'SUMINISTRO' : id.toUpperCase()}
+                              </span>
+                            </div>
+                            <span className={`material-symbols-outlined transition-all ${quoteForm.conditions[id].enabled ? 'text-primary rotate-180' : 'text-slate-300 group-hover:text-slate-400'}`}>
+                              expand_more
+                            </span>
+                          </div>
+                          
+                          {quoteForm.conditions[id].enabled && (
+                            <div className="px-4 pb-4 animate-in fade-in slide-in-from-top-1 duration-200">
+                              <textarea 
+                                rows={8}
+                                className="w-full p-4 bg-white border border-slate-200 rounded-xl text-[11px] focus:ring-2 focus:ring-primary outline-none font-mono leading-relaxed text-slate-700"
+                                value={quoteForm.conditions[id].text}
+                                onChange={e => {
+                                  e.stopPropagation();
+                                  setQuoteForm({
+                                    ...quoteForm,
+                                    conditions: {
+                                      ...quoteForm.conditions,
+                                      [id]: {
+                                        ...quoteForm.conditions[id],
+                                        text: e.target.value
+                                      }
+                                    }
+                                  });
+                                }}
+                                onClick={e => e.stopPropagation()}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
@@ -1429,7 +1601,16 @@ function AdminQuotesPageContent() {
             setIsEditMode(false);
             setSelectedClient(null);
             setSelectedProducts([]);
-            setQuoteForm({ observations: '', discount_percentage: '0', valid_until: '' });
+            setQuoteForm({ 
+              observations: DEFAULT_NOTE, 
+              discount_percentage: '0', 
+              valid_until: '',
+              conditions: {
+                venta: { enabled: false, text: DEFAULT_CONDITIONS.venta },
+                alquiler: { enabled: false, text: DEFAULT_CONDITIONS.alquiler },
+                mantenimiento: { enabled: false, text: DEFAULT_CONDITIONS.mantenimiento }
+              }
+            });
             setIsCreateModalOpen(true);
           }}
           className="flex-1 flex items-center justify-center gap-2 bg-primary text-white p-4 rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all active:scale-95"

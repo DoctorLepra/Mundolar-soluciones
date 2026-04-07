@@ -58,7 +58,7 @@ interface UserProfile {
   id: string;
   email: string | null;
   full_name: string | null;
-  role: 'Admin' | 'Asesor Comercial' | null;
+  role: 'Admin' | 'Ejecutivo de cuenta' | null;
 }
 
 export default function AdminProductsPage() {

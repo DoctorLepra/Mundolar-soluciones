@@ -36,8 +36,13 @@ export const formatQuoteId = (
   id: number | string | null | undefined,
 ): string => {
   if (id === null || id === undefined) return "N/A";
+  if (typeof id === 'string') {
+    if (id.startsWith('COT-')) return id.replace('COT-', '');
+    return id;
+  }
   const numericId = typeof id === "string" ? parseInt(id) : id;
-  return `COT-${numericId.toString().padStart(4, "0")}`;
+  const year = new Date().getFullYear().toString().slice(-2);
+  return `${year}-${numericId.toString().padStart(4, "0")}`;
 };
 /**
  * Formats a numerical ID into a standardized task string: TAR-0001

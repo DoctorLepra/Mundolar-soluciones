@@ -51,7 +51,7 @@ function UsuariosPageContent() {
   const [formData, setFormData] = useState({
     full_name: '',
     email: '',
-    role: 'Asesor Comercial'
+    role: 'Ejecutivo de cuenta'
   });
 
   useEffect(() => {
@@ -88,7 +88,7 @@ function UsuariosPageContent() {
     setFormData({
       full_name: profile.full_name || '',
       email: profile.email || '',
-      role: profile.role || 'Asesor Comercial'
+      role: profile.role || 'Ejecutivo de cuenta'
     });
     setEditingUserId(profile.id);
     setIsEditMode(true);
@@ -134,7 +134,7 @@ function UsuariosPageContent() {
   };
 
   const resetForm = () => {
-    setFormData({ full_name: '', email: '', role: 'Asesor Comercial' });
+    setFormData({ full_name: '', email: '', role: 'Ejecutivo de cuenta' });
     setIsEditMode(false);
     setEditingUserId(null);
   };
@@ -353,7 +353,7 @@ function UsuariosPageContent() {
                 <div className="space-y-1.5">
                   <label className="block text-sm font-medium text-slate-700 mb-3">Rol de Acceso <span className="text-red-500">*</span></label>
                   <div className="grid grid-cols-2 gap-3">
-                    {['Asesor Comercial', 'Admin'].map((role) => (
+                    {['Ejecutivo de cuenta', 'Admin'].map((role) => (
                       <button
                         key={role}
                         type="button"

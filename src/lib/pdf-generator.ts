@@ -14,20 +14,39 @@ interface PDFData {
   advisor: any;
 }
 
+/**
+ * Robustly converts an image URL to a Base64 data string.
+ * Uses an Image object with crossOrigin='anonymous' to try and bypass
+ * CORS restrictions that 'fetch' might hit.
+ */
 const getBase64ImageFromUrl = async (url: string): Promise<string | null> => {
-  try {
-    const res = await fetch(url);
-    const blob = await res.blob();
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  } catch (error) {
-    console.error('Error converting image to base64:', error);
-    return null;
-  }
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(null);
+        return;
+      }
+      ctx.drawImage(img, 0, 0);
+      try {
+        const dataURL = canvas.toDataURL('image/png');
+        resolve(dataURL);
+      } catch (e) {
+        console.error('CORS/Security Error converting image to base64:', e);
+        resolve(null);
+      }
+    };
+    img.onerror = (err) => {
+      console.error('Error loading image for PDF:', url, err);
+      resolve(null);
+    };
+    img.src = url;
+  });
 };
 
 export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
@@ -41,9 +60,47 @@ export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
 
   // 1. Header & Logo
   const logoBase64 = await getBase64ImageFromUrl('/img/logo-rojo-negro.png');
-  if (logoBase64) {
-    doc.addImage(logoBase64, 'PNG', 20, 10, 50, 25);
-  }
+
+  // Helper for page decorations (Watermark & Footer)
+  const decoratedPages = new Set<number>();
+  const addPageDecorations = (doc: jsPDF) => {
+    const currentPage = (doc as any).internal.getCurrentPageInfo().pageNumber;
+    if (decoratedPages.has(currentPage)) return;
+    decoratedPages.add(currentPage);
+
+    // Watermark
+    if (logoBase64) {
+      doc.saveGraphicsState();
+      doc.setGState(new (doc as any).GState({ opacity: 0.1 }));
+      const imgProps = doc.getImageProperties(logoBase64);
+      const wWidth = 80;
+      const wHeight = (imgProps.height * wWidth) / imgProps.width;
+      doc.addImage(logoBase64, 'PNG', pageWidth / 2 - wWidth / 2, pageHeight / 2 - wHeight / 2, wWidth, wHeight);
+      doc.restoreGraphicsState();
+
+      // Top Logo (Normal Opacity)
+      const hImgWidth = 45;
+      const hImgHeight = (imgProps.height * hImgWidth) / imgProps.width;
+      doc.addImage(logoBase64, 'PNG', 20, 10, hImgWidth, hImgHeight);
+    }
+
+    // Footer
+    const footerY = pageHeight - 15;
+    doc.setDrawColor(primaryRed[0], primaryRed[1], primaryRed[2]);
+    doc.setLineWidth(0.5);
+    doc.line(20, footerY - 5, pageWidth - 20, footerY - 5);
+    
+    doc.setFontSize(8);
+    doc.setTextColor(textGray[0], textGray[1], textGray[2]);
+    const footerText1 = "www.mundolarsoluciones.com  |  (57) 305 2200300 - (601) 5206334  |  comercial@mundolarsoluciones.com";
+    const footerText2 = "Cr 7 No. 156 - 68 Ed North Point III Bogotá - Colombia";
+    
+    doc.text(footerText1, pageWidth / 2, footerY, { align: 'center' });
+    doc.text(footerText2, pageWidth / 2, footerY + 4, { align: 'center' });
+  };
+
+  // 1. Initial Page Header & Logo
+  addPageDecorations(doc); // Decorate first page (includes logo)
 
   // Date
   const months = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
@@ -53,28 +110,42 @@ export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
   doc.setTextColor(textGray[0], textGray[1], textGray[2]);
-  doc.text(dateStr, 20, 45);
+  doc.text(dateStr, 20, 58);
 
   // 2. Client Info
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
+  const clientObj = Array.isArray(quote.clients) ? quote.clients[0] : quote.clients;
+  const persona = (clientObj?.contact_person || '').trim();
+  const empresa = (clientObj?.full_name || clientObj?.company_name || clientObj?.company || '').trim();
+
+  let currentInfoY = 75;
   doc.setTextColor(textDark[0], textDark[1], textDark[2]);
-  const clientName = quote.clients?.company_name || quote.clients?.full_name || 'Cliente';
-  doc.text(clientName.toUpperCase(), 20, 65);
-  
+  doc.setFontSize(11);
+
   doc.setFont('helvetica', 'normal');
-  const contactPerson = quote.clients?.contact_person ? `Atn: ${quote.clients.contact_person}` : '';
-  if (contactPerson) {
-    doc.text(contactPerson, 20, 71);
+  doc.text('Señor/a', 20, currentInfoY);
+  currentInfoY += 6;
+
+  if (persona && empresa && persona.toUpperCase() !== empresa.toUpperCase()) {
+    doc.setFont('helvetica', 'bold');
+    doc.text(persona.toUpperCase(), 20, currentInfoY);
+    currentInfoY += 6;
+    doc.setFont('helvetica', 'normal');
+    doc.text(empresa.toUpperCase(), 20, currentInfoY);
+    currentInfoY += 6;
+  } else {
+    const finalName = persona || empresa || 'CLIENTE';
+    doc.setFont('helvetica', 'bold');
+    doc.text(finalName.toUpperCase(), 20, currentInfoY);
+    currentInfoY += 6;
   }
 
-  // 3. Title (Right aligned, Red)
+  // 3. Title
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
   doc.setTextColor(primaryRed[0], primaryRed[1], primaryRed[2]);
   const titleText = `Propuesta Comercial No. ${quote.quote_number || formatQuoteId(quote.id)}`;
   const titleWidth = doc.getTextWidth(titleText);
-  doc.text(titleText, pageWidth - 20 - titleWidth, 85);
+  doc.text(titleText, pageWidth - 20 - titleWidth, 95);
 
   // 4. Intro Text
   doc.setFont('helvetica', 'normal');
@@ -82,130 +153,187 @@ export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
   doc.setTextColor(textDark[0], textDark[1], textDark[2]);
   const introText = "De acuerdo a solicitud nos permitimos enviar propuesta comercial, siendo todo un gusto colocar nuestra compañía a su servicio.";
   const splitIntro = doc.splitTextToSize(introText, pageWidth - 40);
-  doc.text(splitIntro, 20, 100);
+  doc.text(splitIntro, 20, 110);
 
   // 5. Product Table
   const tableData = await Promise.all(items.map(async (item: any) => {
     let imgBase64 = null;
+    let format: 'JPEG' | 'PNG' = 'JPEG';
     if (item.products?.image_urls) {
-      const firstImg = item.products.image_urls.split(',')[0].trim();
+      let firstImg = '';
+      const rawUrls = item.products.image_urls.trim();
+      if (rawUrls.startsWith('[') && rawUrls.endsWith(']')) {
+        try {
+          const parsed = JSON.parse(rawUrls);
+          if (Array.isArray(parsed) && parsed.length > 0) firstImg = parsed[0];
+        } catch (e) { firstImg = rawUrls.replace(/[\[\]"]/g, '').split(',')[0].trim(); }
+      } else { firstImg = rawUrls.split(',')[0].trim(); }
       if (firstImg) {
-        imgBase64 = await getBase64ImageFromUrl(firstImg);
+        const imgUrl = firstImg.startsWith('http') ? firstImg : `${window.location.origin}${firstImg.startsWith('/') ? '' : '/'}${firstImg}`;
+        imgBase64 = await getBase64ImageFromUrl(imgUrl);
+        if (imgBase64) format = imgBase64.includes('image/png') ? 'PNG' : 'JPEG';
       }
     }
-
     return {
       sku: item.products?.sku || 'N/A',
       name: `${item.products?.name || 'Producto'}${item.products?.description ? '\n' + item.products.description : ''}`,
       qty: item.quantity.toString(),
-      price: `$${formatCurrency(item.unit_price)}`,
-      total: `$${formatCurrency(item.quantity * item.unit_price)}`,
-      imgBase64
+      price: `$ ${formatCurrency(item.unit_price)}`, // Added space
+      total: `$ ${formatCurrency(item.quantity * item.unit_price)}`, // Added space
+      imgBase64,
+      format
     };
   }));
 
   autoTable(doc, {
-    startY: 110,
+    startY: 120,
+    margin: { top: 65, left: 20, right: 20 },
     head: [['REF', 'IMAGEN', 'DESCRIPCIÓN', 'CANT', 'VALOR UNIT', 'VALOR TOTAL']],
     body: tableData.map((d: any) => [d.sku, '', d.name, d.qty, d.price, d.total]),
     theme: 'grid',
-    headStyles: {
-      fillColor: primaryRed as [number, number, number],
-      textColor: [255, 255, 255],
-      fontStyle: 'bold',
-      halign: 'center'
-    },
-    columnStyles: {
-      0: { halign: 'center', cellWidth: 20 },
-      1: { halign: 'center', cellWidth: 30, minCellHeight: 25 },
-      2: { cellWidth: 'auto' },
-      3: { halign: 'center', cellWidth: 15 },
-      4: { halign: 'right', cellWidth: 30 },
-      5: { halign: 'right', cellWidth: 30 }
-    },
+    styles: { fontSize: 9, cellPadding: 1.5, lineColor: [0, 0, 0], lineWidth: 0.1, halign: 'center', valign: 'middle' },
+    headStyles: { fillColor: primaryRed as [number, number, number], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center', lineWidth: 0 },
+    columnStyles: { 0: { cellWidth: 20 }, 1: { cellWidth: 30, minCellHeight: 25 }, 2: { halign: 'left', cellWidth: 'auto' }, 3: { cellWidth: 15 }, 4: { cellWidth: 30 }, 5: { cellWidth: 30 } },
     didDrawCell: (data) => {
       if (data.section === 'body' && data.column.index === 1) {
         const item = tableData[data.row.index];
         if (item.imgBase64) {
-          const padding = 2;
-          const imgWidth = data.cell.width - padding * 2;
-          const imgHeight = data.cell.height - padding * 2;
-          doc.addImage(item.imgBase64, 'JPEG', data.cell.x + padding, data.cell.y + padding, imgWidth, imgHeight);
+          try {
+            const padding = 2;
+            const imgWidth = data.cell.width - padding * 2;
+            const imgHeight = data.cell.height - padding * 2;
+            doc.addImage(item.imgBase64, item.format, data.cell.x + padding, data.cell.y + padding, imgWidth, imgHeight);
+          } catch (e) {}
         }
       }
     },
-    // Watermark
     didDrawPage: (data) => {
-      if (logoBase64) {
-        doc.saveGraphicsState();
-        doc.setGState(new (doc as any).GState({ opacity: 0.1 }));
-        doc.addImage(logoBase64, 'PNG', pageWidth / 2 - 40, pageHeight / 2 - 40, 80, 40);
-        doc.restoreGraphicsState();
-      }
-
-      // Footer
-      const footerY = pageHeight - 15;
-      doc.setDrawColor(primaryRed[0], primaryRed[1], primaryRed[2]);
-      doc.setLineWidth(0.5);
-      doc.line(20, footerY - 5, pageWidth - 20, footerY - 5);
-      
-      doc.setFontSize(8);
-      doc.setTextColor(textGray[0], textGray[1], textGray[2]);
-      const footerText1 = "www.mundolarsoluciones.com  |  (57) 305 2200300 - (601) 5206334  |  comercial@mundolarsoluciones.com";
-      const footerText2 = "Cr 7 No. 156 - 68 Ed North Point III Bogotá - Colombia";
-      
-      doc.text(footerText1, pageWidth / 2, footerY, { align: 'center' });
-      doc.text(footerText2, pageWidth / 2, footerY + 4, { align: 'center' });
+      addPageDecorations(doc); // Ensure decoration on table-overflow pages
     }
   });
 
   // 6. Totals
-  const finalY = (doc as any).lastAutoTable.finalY + 5;
   const subtotal = quote.subtotal || 0;
   const iva = (subtotal * 0.19);
-  const total = quote.total_amount || 0;
+  const total = subtotal + iva;
+  const lastTable = (doc as any).lastAutoTable;
+  const manualTableX = 130; 
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.setTextColor(textDark[0], textDark[1], textDark[2]);
-  
-  const totalX = pageWidth - 20;
-  doc.text('SUBTOTAL:', totalX - 50, finalY);
-  doc.text(`$${formatCurrency(subtotal)}`, totalX, finalY, { align: 'right' });
-  
-  doc.text('IVA 19%:', totalX - 50, finalY + 5);
-  doc.text(`$${formatCurrency(iva)}`, totalX, finalY + 5, { align: 'right' });
-  
-  doc.setTextColor(primaryRed[0], primaryRed[1], primaryRed[2]);
-  doc.setFontSize(12);
-  doc.text('TOTAL:', totalX - 50, finalY + 12);
-  doc.text(`$${formatCurrency(total)}`, totalX, finalY + 12, { align: 'right' });
+  autoTable(doc, {
+    startY: lastTable.finalY,
+    margin: { left: manualTableX },
+    tableWidth: 60,
+    body: [
+      ['SUBTOTAL', `$ ${formatCurrency(subtotal)}`], // Added space
+      ['IVA 19 %', `$ ${formatCurrency(iva)}`], // Added space
+      ['TOTAL', `$ ${formatCurrency(total)}`] // Added space
+    ],
+    theme: 'grid',
+    styles: { fontSize: 9, cellPadding: 1.5, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: textDark as [number, number, number], halign: 'center', valign: 'middle' },
+    columnStyles: { 0: { fontStyle: 'bold', cellWidth: 30 }, 1: { cellWidth: 30 } }
+  });
 
-  // 7. Commercial Conditions & Advisor
-  let currentY = finalY + 25;
+  const totalsFinalY = (doc as any).lastAutoTable.finalY;
+
+  // 7. Commercial Agreements & Advisor
+  let currentY = totalsFinalY + 15;
   if (currentY + 50 > pageHeight - 20) {
     doc.addPage();
-    currentY = 20;
+    addPageDecorations(doc);
+    currentY = 65;
   }
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
+  doc.setFontSize(8.5);
   doc.setTextColor(textDark[0], textDark[1], textDark[2]);
-  doc.text('CONDICIONES COMERCIALES:', 20, currentY);
+  
+  doc.saveGraphicsState();
+  doc.setGState(new (doc as any).GState({ opacity: 0.7 }));
+  
+  doc.text('NOTA:', 20, currentY);
+  currentY += 7;
   
   doc.setFont('helvetica', 'normal');
-  const conditions = quote.observations || "Sin condiciones comerciales adicionales.";
-  const splitConditions = doc.splitTextToSize(conditions, pageWidth - 40);
-  doc.text(splitConditions, 20, currentY + 6);
-
-  currentY += 15 + (splitConditions.length * 5);
+  doc.setFontSize(7.5);
   
+  const observations = quote.observations || "";
+  const DEFAULT_NOTE = `Los equipos, accesorios, repuestos son cotizados de acuerdo a las fichas técnicas y/o recomendaciones brindadas por parte del cliente, por favor revisar las especificaciones técnicas (datasheet) de cada modelo de equipo mencionado antes de adquirirlas, es libertad y responsabilidad propia del mismo.`;
+  
+  try {
+    if (observations.trim().startsWith('{')) {
+      const parsed = JSON.parse(observations);
+      let hasContent = false;
+      const noteText = parsed.general || DEFAULT_NOTE;
+      hasContent = true;
+      const splitNote = doc.splitTextToSize(noteText, pageWidth - 40);
+      doc.text(splitNote, 20, currentY);
+      currentY += (splitNote.length * 5) + 5;
+
+      // Restore for Agreements
+      doc.restoreGraphicsState();
+      doc.setFontSize(9);
+
+      const categories = [ { id: 'venta', label: 'VENTA' }, { id: 'alquiler', label: 'ALQUILER' }, { id: 'mantenimiento', label: 'MANTENIMIENTO' } ];
+      categories.forEach(cat => {
+        const data = parsed[cat.id];
+        if (data && data.enabled && data.text) {
+          hasContent = true;
+          if (currentY + 30 > pageHeight - 30) {
+            doc.addPage();
+            addPageDecorations(doc);
+            currentY = 65;
+          }
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(10);
+          doc.setTextColor(primaryRed[0], primaryRed[1], primaryRed[2]);
+          const displayLabel = cat.id === 'venta' ? 'SUMINISTRO' : cat.label;
+          doc.text(`ACUERDOS COMERCIALES DE ${displayLabel}:`, 20, currentY);
+          currentY += 5;
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(9);
+          doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+          const split = doc.splitTextToSize(data.text, pageWidth - 40);
+          doc.text(split, 20, currentY);
+          currentY += (split.length * 4.5) + 8;
+        }
+      });
+      if (!hasContent) {
+        doc.text("Sin condiciones comerciales adicionales.", 20, currentY);
+        currentY += 10;
+      }
+    } else {
+      // Plain text - treat as Nota disclaimer
+      const splitNote = doc.splitTextToSize(observations || "Sin condiciones comerciales adicionales.", pageWidth - 40);
+      doc.text(splitNote, 20, currentY);
+      currentY += (splitNote.length * 5) + 10;
+      doc.restoreGraphicsState();
+    }
+  } catch (e) {
+    // Error parsing - treat as Nota disclaimer
+    doc.setFontSize(7.5);
+    const splitNote = doc.splitTextToSize(observations || "Sin condiciones comerciales adicionales.", pageWidth - 40);
+    doc.text(splitNote, 20, currentY);
+    currentY += (splitNote.length * 5) + 10;
+    doc.restoreGraphicsState();
+  }
+
+  currentY += 5;
+  if (currentY + 30 > pageHeight - 20) {
+    doc.addPage();
+    addPageDecorations(doc);
+    currentY = 65;
+  }
+  
+  const displayRole = (advisor?.role === 'Admin' || advisor?.role === 'Ejecutivo de cuenta' || !advisor?.role) 
+    ? 'Ejecutivo de cuenta' 
+    : advisor.role;
+
   doc.setFont('helvetica', 'bold');
   doc.text('Cordialmente,', 20, currentY);
   currentY += 10;
-  doc.text(advisor?.full_name || 'Asesor Comercial', 20, currentY);
+  doc.text(advisor?.full_name || 'Ejecutivo de cuenta', 20, currentY);
   doc.setFont('helvetica', 'normal');
-  doc.text(advisor?.role || 'Mundolar Soluciones', 20, currentY + 5);
+  doc.text(displayRole, 20, currentY + 5);
 
   doc.save(`Cotizacion_${quote.quote_number || quote.id}.pdf`);
 };

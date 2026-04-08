@@ -24,8 +24,6 @@ const Hero: React.FC<HeroProps> = ({ data }) => {
   const [currentSlide, setCurrentSlide] = useState(0);
 
   const fullText = data?.description || "Descubra lo último en tecnología de radio digital móvil. Desde unidades portátiles robustas hasta estaciones base de alta potencia, mantenemos a su equipo conectado en cualquier lugar.";
-  const [typedText, setTypedText] = useState('');
-  const [isTyping, setIsTyping] = useState(true);
 
   useEffect(() => {
     const slideInterval = setInterval(() => {
@@ -33,22 +31,6 @@ const Hero: React.FC<HeroProps> = ({ data }) => {
     }, 7000);
     return () => clearInterval(slideInterval);
   }, [heroImages.length]);
-
-  useEffect(() => {
-    setIsTyping(true);
-    setTypedText('');
-    let i = 0;
-    const typingInterval = setInterval(() => {
-      if (i < fullText.length) {
-        setTypedText(fullText.substring(0, i + 1));
-        i++;
-      } else {
-        clearInterval(typingInterval);
-        setIsTyping(false);
-      }
-    }, 40);
-    return () => clearInterval(typingInterval);
-  }, [fullText]);
 
   return (
       <section className="relative w-full h-[60vh] md:h-[70vh] flex items-center text-white overflow-hidden -mt-6 md:-mt-10">
@@ -59,7 +41,8 @@ const Hero: React.FC<HeroProps> = ({ data }) => {
               src={src}
               alt={`Hero background ${index + 1}`}
               fill
-              sizes="100vw"
+              sizes="(max-width: 768px) 100vw, 100vw"
+              quality={75}
               className={`object-cover transition-opacity duration-1000 ease-in-out ${
                 index === currentSlide ? 'opacity-100' : 'opacity-0'
               }`}
@@ -94,9 +77,8 @@ const Hero: React.FC<HeroProps> = ({ data }) => {
                 <>Comunicación <br /><span className="text-primary">Sin Límites</span></>
               )}
             </h1>
-            <p className="text-lg text-slate-200 max-w-lg leading-relaxed text-left min-h-[112px] md:min-h-[84px]">
-              {typedText}
-              {isTyping && <span className="animate-pulse opacity-75">|</span>}
+            <p className="text-lg text-slate-200 max-w-lg leading-relaxed text-left min-h-[112px] md:min-h-[84px] animate-fade-in-up">
+              {fullText}
             </p>
             <div className="flex flex-wrap gap-4 mt-2">
               <Link href="/catalogo" className="flex items-center justify-center h-12 px-4 md:px-8 bg-primary hover:bg-primary-dark text-white text-sm md:text-base font-bold rounded-lg transition-all shadow-lg shadow-primary/25 whitespace-nowrap">

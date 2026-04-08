@@ -1,6 +1,8 @@
 import React from 'react';
 import type { Metadata } from 'next';
 export const metadata: Metadata = { title: 'Inicio | Mundolar Soluciones' };
+export const revalidate = 3600; // Cache and regenerate page every hour
+
 import { supabase } from '@/lib/supabase';
 import Hero from '@/components/home/Hero';
 import dynamic from 'next/dynamic';
@@ -150,6 +152,9 @@ export default async function Home() {
                         src={brand.image_url} 
                         alt={`Logo de la marca ${brand.name}`} 
                         fill 
+                        sizes="(max-width: 768px) 32vw, 40vw"
+                        quality={80}
+                        loading="lazy"
                         className="object-contain"
                       />
                     ) : (
@@ -191,6 +196,8 @@ export default async function Home() {
                     alt={`Categoría ${cat.name}`}
                     fill
                     sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 25vw"
+                    quality={80}
+                    loading="lazy"
                     className="object-cover"
                  />
               </div>

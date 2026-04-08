@@ -26,6 +26,10 @@ const Hero: React.FC<HeroProps> = ({ data }) => {
   const fullText = data?.description || "Descubra lo último en tecnología de radio digital móvil. Desde unidades portátiles robustas hasta estaciones base de alta potencia, mantenemos a su equipo conectado en cualquier lugar.";
 
   useEffect(() => {
+    // Determine screen width and disable rotation on mobile to fix NO_LCP timeout
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      return;
+    }
     const slideInterval = setInterval(() => {
       setCurrentSlide(prev => (prev === heroImages.length - 1 ? 0 : prev + 1));
     }, 7000);

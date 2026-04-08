@@ -70,10 +70,22 @@ export default function RootLayout({
   return (
     <html lang="es" suppressHydrationWarning className={`${geist.variable} ${rethinkSans.variable} ${unbounded.variable} ${imperialScript.variable}`}>
       <head>
-        <link 
-          rel="stylesheet" 
-          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" 
+        {/* Deferred load of massive Material Symbols Font to prevent 3.8MB render blocking */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                var l = document.createElement('link');
+                l.rel = 'stylesheet';
+                l.href = 'https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200';
+                document.head.appendChild(l);
+              })();
+            `
+          }}
         />
+        <noscript>
+          <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+        </noscript>
         <link rel="icon" href="/img/logo-rojo-blanco.png" type="image/png" />
         <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#db1923" />

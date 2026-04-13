@@ -78,16 +78,19 @@ export default function AdminDashboard() {
     try {
       setLoading(true);
       const isAdmin = userProfile.role === 'Admin';
+      const isAuxiliar = userProfile.role === 'Auxiliar de Gestión y Operaciones';
       
       // 1. Fetch Basic Metrics
-      let ordersQuery = supabase.from('orders').select('*, order_items(quantity, price_at_purchase, product_id)');
-      if (!isAdmin) {
-        ordersQuery = ordersQuery.eq('created_by_id', userProfile.id);
+      let ordersData: any[] = [];
+      if (!isAuxiliar) {
+        let ordersQuery = supabase.from('orders').select('*, order_items(quantity, price_at_purchase, product_id)');
+        if (!isAdmin) {
+          ordersQuery = ordersQuery.eq('created_by_id', userProfile.id);
+        }
+        const { data } = await ordersQuery;
+        if (data) ordersData = data;
       }
-      const { data: ordersData } = await ordersQuery;
       
-      if (!ordersData) return;
-
       const totalSales = ordersData.reduce((acc, curr) => acc + (curr.total_amount || 0), 0);
       const activeOrdersCount = ordersData.filter(o => ['Pendiente', 'Procesando', 'Procesado'].includes(o.status)).length;
 
@@ -227,6 +230,7 @@ export default function AdminDashboard() {
 
   const COLORS = ['#db1923', '#0d0d0d', '#10b981', '#f59e0b', '#8b5cf6'];
   const isAdmin = userProfile?.role === 'Admin';
+  const isAuxiliar = userProfile?.role === 'Auxiliar de Gestión y Operaciones';
 
   if (loading) {
     return (
@@ -255,6 +259,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Top Metrics Row */}
+        {!isAuxiliar && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all group">
             <div className="flex justify-between items-center mb-4">
@@ -289,9 +294,11 @@ export default function AdminDashboard() {
             <p className="text-slate-400 text-[11px] mt-1 font-medium font-sans">Crecimiento mensual</p>
           </div>
         </div>
+        )}
 
         {/* Operational Metrics Row */}
-        <div className={`grid grid-cols-1 md:grid-cols-${isAdmin ? '3' : '2'} gap-6`}>
+        <div className={`grid grid-cols-1 md:grid-cols-${isAdmin ? '3' : (isAuxiliar ? '1' : '2')} gap-6`}>
+          {!isAuxiliar && (
           <Link href="/admin/clientes" className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all group">
             <div className="flex justify-between items-center mb-4">
               <div className="p-3 bg-slate-100 rounded-2xl text-slate-600 group-hover:bg-slate-900 group-hover:text-white transition-colors">
@@ -302,7 +309,9 @@ export default function AdminDashboard() {
             <h3 className="text-3xl font-black text-slate-900 font-display">{metrics.pendingTasks}</h3>
             <p className="text-slate-400 text-[11px] mt-1 font-medium font-sans">Tareas por realizar</p>
           </Link>
+          )}
 
+          {!isAuxiliar && (
           <Link href="/admin/cotizaciones" className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all group">
             <div className="flex justify-between items-center mb-4">
               <div className="p-3 bg-pink-50 rounded-2xl text-pink-600 group-hover:bg-pink-600 group-hover:text-white transition-colors">
@@ -313,8 +322,9 @@ export default function AdminDashboard() {
             <h3 className="text-3xl font-black text-slate-900 font-display">{metrics.pendingQuotes}</h3>
             <p className="text-slate-400 text-[11px] mt-1 font-medium font-sans">Por aprobar</p>
           </Link>
+          )}
 
-          {isAdmin && (
+          {(isAdmin || isAuxiliar) && (
             <Link href="/admin/bodegas" className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all group">
               <div className="flex justify-between items-center mb-4">
                 <div className="p-3 bg-orange-50 rounded-2xl text-orange-600 group-hover:bg-orange-600 group-hover:text-white transition-colors">
@@ -329,6 +339,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Main Analytics Row */}
+        {!isAuxiliar && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Sales Trend Graph */}
           <div className="lg:col-span-2 bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
@@ -405,11 +416,13 @@ export default function AdminDashboard() {
             </div>
           </div>
         </div>
+        )}
 
         {/* Secondary Analytics Row */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className={`grid grid-cols-1 md:grid-cols-${isAuxiliar ? '1' : '2'} lg:grid-cols-${isAuxiliar ? '1' : '3'} gap-6`}>
           
           {/* Top Selling Products */}
+          {!isAuxiliar && (
           <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
             <div className="flex items-center gap-2 mb-6">
               <div className="p-2 bg-amber-50 text-amber-600 rounded-lg"><TrendingUp size={16}/></div>
@@ -428,6 +441,7 @@ export default function AdminDashboard() {
               {topProducts.length === 0 && <p className="text-xs text-slate-400 font-display text-center py-4">Sin datos de ventas.</p>}
             </div>
           </div>
+          )}
 
           {/* Low Stock Alerts */}
           <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
@@ -454,6 +468,7 @@ export default function AdminDashboard() {
           </div>
 
           {/* Geo Segmentation */}
+          {!isAuxiliar && (
           <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
             <div className="flex items-center gap-2 mb-6">
               <div className="p-2 bg-slate-900 text-white rounded-lg"><MapPin size={16}/></div>
@@ -474,6 +489,7 @@ export default function AdminDashboard() {
               {geoData.length === 0 && <p className="text-xs text-slate-400 font-display text-center py-4">Sin datos geográficos.</p>}
             </div>
           </div>
+          )}
 
         </div>
 
@@ -481,6 +497,7 @@ export default function AdminDashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
           {/* Recent Orders - Occupies 2 columns now */}
+          {!isAuxiliar && (
           <div className="lg:col-span-2 flex flex-col gap-4 bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
             <div className="p-6 pb-0 flex justify-between items-center">
               <h3 className="text-lg font-black text-slate-900 font-display">Pedidos recientes</h3>
@@ -528,9 +545,10 @@ export default function AdminDashboard() {
               </table>
             </div>
           </div>
+          )}
 
           {/* Quick Inventory / Recently Added */}
-          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
+          <div className={`bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col ${isAuxiliar ? 'lg:col-span-3' : ''}`}>
             <div className="p-6 pb-2">
               <h3 className="text-lg font-black text-slate-900 font-display">Inventario reciente</h3>
             </div>

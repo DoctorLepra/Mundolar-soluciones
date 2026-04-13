@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import Image from 'next/image';
 import { usePageTitle } from '@/hooks/usePageTitle';
+import RoleGuard from '@/components/admin/RoleGuard';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { notifyAdmins } from '@/lib/notifications';
@@ -1843,12 +1844,14 @@ function AdminOrdersPageContent() {
 export default function AdminOrdersPage() {
   usePageTitle('Pedidos');
   return (
-    <React.Suspense fallback={
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-      </div>
-    }>
-      <AdminOrdersPageContent />
-    </React.Suspense>
+    <RoleGuard allowedRoles={['Admin', 'Ejecutivo de cuenta']}>
+      <React.Suspense fallback={
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      }>
+        <AdminOrdersPageContent />
+      </React.Suspense>
+    </RoleGuard>
   );
 }

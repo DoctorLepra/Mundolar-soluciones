@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, Suspense, useMemo } from "react";
 import Image from "next/image";
 import { usePageTitle } from "@/hooks/usePageTitle";
+import RoleGuard from "@/components/admin/RoleGuard";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { createNotification, notifyAdmins } from "@/lib/notifications";
@@ -3336,41 +3337,45 @@ const AdminClientsPageContent = () => {
 
                       <div className="p-8 pt-4 border-t border-slate-100 bg-white mt-auto">
                         <div className="flex gap-3">
-                          <button
-                            onClick={() => {
-                              setEditingTaskId(selectedTask.id);
-                              setIsEditingTask(true);
-                              setTaskFormData({
-                                title: selectedTask.title,
-                                description: selectedTask.description || "",
-                                due_date: selectedTask.due_date.split("T")[0],
-                                assigned_to: selectedTask.assigned_to || "",
-                                assigned_to_id: selectedTask.assigned_to_id || "",
-                                client_id: selectedTask.client_id || "",
-                                status: selectedTask.status,
-                                created_by_id: selectedTask.created_by_id || "",
-                              });
-                              setIsTaskModalOpen(true);
-                            }}
-                            className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-50 hover:border-slate-300 transition-all font-display"
-                          >
-                            <span className="material-symbols-outlined text-[20px]">
-                              edit
-                            </span>
-                            Editar
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteTask(selectedTask.id);
-                            }}
-                            className="flex items-center justify-center size-[48px] bg-red-50 text-red-500 border border-red-100 rounded-xl hover:bg-red-500 hover:text-white transition-all shadow-sm"
-                            title="Eliminar tarea"
-                          >
-                            <span className="material-symbols-outlined text-[20px]">
-                              delete
-                            </span>
-                          </button>
+                          {(currentUserProfile?.role === "Admin" || (selectedTask.created_by_id && currentUserProfile?.id && selectedTask.created_by_id === currentUserProfile.id)) && (
+                            <>
+                              <button
+                                onClick={() => {
+                                  setEditingTaskId(selectedTask.id);
+                                  setIsEditingTask(true);
+                                  setTaskFormData({
+                                    title: selectedTask.title,
+                                    description: selectedTask.description || "",
+                                    due_date: selectedTask.due_date.split("T")[0],
+                                    assigned_to: selectedTask.assigned_to || "",
+                                    assigned_to_id: selectedTask.assigned_to_id || "",
+                                    client_id: selectedTask.client_id || "",
+                                    status: selectedTask.status,
+                                    created_by_id: selectedTask.created_by_id || "",
+                                  });
+                                  setIsTaskModalOpen(true);
+                                }}
+                                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-50 hover:border-slate-300 transition-all font-display"
+                              >
+                                <span className="material-symbols-outlined text-[20px]">
+                                  edit
+                                </span>
+                                Editar
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteTask(selectedTask.id);
+                                }}
+                                className="flex items-center justify-center size-[48px] bg-red-50 text-red-500 border border-red-100 rounded-xl hover:bg-red-500 hover:text-white transition-all shadow-sm"
+                                title="Eliminar tarea"
+                              >
+                                <span className="material-symbols-outlined text-[20px]">
+                                  delete
+                                </span>
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -4657,12 +4662,14 @@ const AdminClientsPageContent = () => {
 export default function AdminClientsPage() {
   usePageTitle('CRM Clientes');
   return (
-    <Suspense fallback={
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
-      </div>
-    }>
-      <AdminClientsPageContent />
-    </Suspense>
+    <RoleGuard allowedRoles={['Admin', 'Ejecutivo de cuenta']}>
+      <Suspense fallback={
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+        </div>
+      }>
+        <AdminClientsPageContent />
+      </Suspense>
+    </RoleGuard>
   );
 }

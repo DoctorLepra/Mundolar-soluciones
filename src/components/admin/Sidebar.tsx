@@ -75,18 +75,21 @@ export default function AdminSidebar({ onClose }: { onClose?: () => void }) {
 
 
   const isAdmin = userProfile?.role === 'Admin';
+  const isAuxiliar = userProfile?.role === 'Auxiliar de Gestión y Operaciones';
 
   const menuItems = [
     { label: 'Dashboard', path: '/admin', icon: 'dashboard' },
     { label: 'Productos', path: '/admin/productos', icon: 'inventory_2' },
-    ...(isAdmin ? [
+    ...(isAdmin || isAuxiliar ? [
       { label: 'Bodegas', path: '/admin/bodegas', icon: 'warehouse' },
       { label: 'Categorías', path: '/admin/categorias', icon: 'category' },
       { label: 'Marcas', path: '/admin/marcas', icon: 'verified' },
     ] : []),
-    { label: 'Pedidos', path: '/admin/pedidos', icon: 'shopping_cart' },
-    { label: 'Cotizaciones', path: '/admin/cotizaciones', icon: 'request_quote' },
-    { label: 'CRM', path: '/admin/clientes', icon: 'group' },
+    ...(!isAuxiliar ? [
+      { label: 'Pedidos', path: '/admin/pedidos', icon: 'shopping_cart' },
+      { label: 'Cotizaciones', path: '/admin/cotizaciones', icon: 'request_quote' },
+      { label: 'CRM', path: '/admin/clientes', icon: 'group' },
+    ] : [])
   ];
 
   const contentItems = isAdmin ? [

@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import Image from 'next/image';
 import { usePageTitle } from '@/hooks/usePageTitle';
+import RoleGuard from '@/components/admin/RoleGuard';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { notifyAdmins } from '@/lib/notifications';
@@ -1629,8 +1630,10 @@ function AdminQuotesPageContent() {
 export default function AdminQuotesPage() {
   usePageTitle('Cotizaciones');
   return (
-    <Suspense fallback={<div>Cargando...</div>}>
-      <AdminQuotesPageContent />
-    </Suspense>
+    <RoleGuard allowedRoles={['Admin', 'Ejecutivo de cuenta']}>
+      <Suspense fallback={<div>Cargando...</div>}>
+        <AdminQuotesPageContent />
+      </Suspense>
+    </RoleGuard>
   );
 }

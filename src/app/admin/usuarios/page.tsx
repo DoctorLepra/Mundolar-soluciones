@@ -352,21 +352,22 @@ function UsuariosPageContent() {
                 {/* Role and Submit */}
                 <div className="space-y-1.5">
                   <label className="block text-sm font-medium text-slate-700 mb-3">Rol de Acceso <span className="text-red-500">*</span></label>
-                  <div className="grid grid-cols-2 gap-3">
-                    {['Ejecutivo de cuenta', 'Admin'].map((role) => (
-                      <button
-                        key={role}
-                        type="button"
-                        onClick={() => setFormData({...formData, role})}
-                        className={`py-2.5 rounded-lg text-sm font-bold border transition-all ${
-                          formData.role === role 
-                            ? 'bg-primary border-primary text-white shadow-md' 
-                            : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
-                        }`}
-                      >
-                        {role}
-                      </button>
-                    ))}
+                  <div className="relative">
+                    <select
+                      value={formData.role}
+                      onChange={(e) => setFormData({...formData, role: e.target.value})}
+                      className="block w-full pl-4 pr-10 py-2.5 bg-white border border-slate-600 rounded-lg text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-1 focus:ring-primary sm:text-sm outline-none appearance-none"
+                    >
+                      <option value="" disabled>Seleccione un rol...</option>
+                      <option value="Admin">Admin</option>
+                      <option value="Ejecutivo de cuenta">Ejecutivo de cuenta</option>
+                      <option value="Auxiliar de Gestión y Operaciones">Auxiliar de Gestión y Operaciones</option>
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500">
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+                      </svg>
+                    </div>
                   </div>
                 </div>
 

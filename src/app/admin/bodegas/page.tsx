@@ -23,7 +23,7 @@ interface Warehouse {
 export default function AdminWarehousesPage() {
   usePageTitle('Bodegas');
   return (
-    <RoleGuard allowedRoles={['Admin']}>
+    <RoleGuard allowedRoles={['Admin', 'Auxiliar de Gestión y Operaciones']}>
       <AdminWarehousesPageContent />
     </RoleGuard>
   );

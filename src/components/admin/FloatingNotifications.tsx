@@ -115,8 +115,8 @@ export default function FloatingNotifications() {
 
   return (
     <>
-      {/* Floating Button - Mobile Only */}
-      <div className="lg:hidden fixed bottom-28 right-6 z-[120]">
+      {/* Floating Button */}
+      <div className="fixed bottom-28 right-6 lg:bottom-10 lg:right-10 z-[120]">
         <button
           onClick={() => setIsOpen(true)}
           className="relative size-14 bg-white text-slate-700 rounded-full shadow-2xl border border-slate-100 flex items-center justify-center group active:scale-95 transition-all"

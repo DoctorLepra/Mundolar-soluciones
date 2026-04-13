@@ -28,7 +28,7 @@ interface CategoryNode extends Category {
 export default function AdminCategoriesPage() {
   usePageTitle('Categorías');
   return (
-    <RoleGuard allowedRoles={['Admin']}>
+    <RoleGuard allowedRoles={['Admin', 'Auxiliar de Gestión y Operaciones']}>
       <AdminCategoriesPageContent />
     </RoleGuard>
   );

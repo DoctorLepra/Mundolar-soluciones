@@ -22,7 +22,7 @@ interface Brand {
 export default function AdminBrandsPage() {
   usePageTitle('Marcas');
   return (
-    <RoleGuard allowedRoles={['Admin']}>
+    <RoleGuard allowedRoles={['Admin', 'Auxiliar de Gestión y Operaciones']}>
       <AdminBrandsPageContent />
     </RoleGuard>
   );

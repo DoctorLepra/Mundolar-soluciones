@@ -191,7 +191,7 @@ export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
     head: [['REF', 'IMAGEN', 'DESCRIPCIÓN', 'CANT', 'VALOR UNIT', 'VALOR TOTAL']],
     body: tableData.map((d: any) => [d.sku, '', d.name, d.qty, d.price, d.total]),
     theme: 'grid',
-    styles: { fontSize: 9, cellPadding: 1.5, lineColor: [0, 0, 0], lineWidth: 0.1, halign: 'center', valign: 'middle' },
+    styles: { fontSize: 9, cellPadding: 1.5, lineColor: [0, 0, 0], lineWidth: 0.1, halign: 'center', valign: 'middle', fillColor: false },
     headStyles: { fillColor: primaryRed as [number, number, number], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center', lineWidth: 0 },
     columnStyles: { 0: { cellWidth: 20 }, 1: { cellWidth: 30, minCellHeight: 25 }, 2: { halign: 'left', cellWidth: 'auto' }, 3: { cellWidth: 15 }, 4: { cellWidth: 30 }, 5: { cellWidth: 30 } },
     didDrawCell: (data) => {
@@ -214,22 +214,32 @@ export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
 
   // 6. Totals
   const subtotal = quote.subtotal || 0;
-  const iva = (subtotal * 0.19);
-  const total = subtotal + iva;
+  const discountPercentage = quote.discount_percentage || 0;
+  const discountAmount = (subtotal * discountPercentage) / 100;
+  const subtotalAfterDiscount = subtotal - discountAmount;
+  const iva = (subtotalAfterDiscount * 0.19);
+  const total = subtotalAfterDiscount + iva;
   const lastTable = (doc as any).lastAutoTable;
   const manualTableX = 130; 
+
+  const totalsBody: any[] = [
+    ['SUBTOTAL', `$ ${formatCurrency(subtotal)}`]
+  ];
+
+  if (discountPercentage > 0) {
+    totalsBody.push(['DESCUENTO', `-$ ${formatCurrency(discountAmount)}`]);
+  }
+
+  totalsBody.push(['IVA 19 %', `$ ${formatCurrency(iva)}`]);
+  totalsBody.push(['TOTAL', `$ ${formatCurrency(total)}`]);
 
   autoTable(doc, {
     startY: lastTable.finalY,
     margin: { left: manualTableX },
     tableWidth: 60,
-    body: [
-      ['SUBTOTAL', `$ ${formatCurrency(subtotal)}`], // Added space
-      ['IVA 19 %', `$ ${formatCurrency(iva)}`], // Added space
-      ['TOTAL', `$ ${formatCurrency(total)}`] // Added space
-    ],
+    body: totalsBody,
     theme: 'grid',
-    styles: { fontSize: 9, cellPadding: 1.5, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: textDark as [number, number, number], halign: 'center', valign: 'middle' },
+    styles: { fontSize: 9, cellPadding: 1.5, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: textDark as [number, number, number], halign: 'center', valign: 'middle', fillColor: false },
     columnStyles: { 0: { fontStyle: 'bold', cellWidth: 30 }, 1: { cellWidth: 30 } }
   });
 
@@ -243,18 +253,11 @@ export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
     currentY = 65;
   }
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
+  doc.setFontSize(7.5);
   doc.setTextColor(textDark[0], textDark[1], textDark[2]);
   
   doc.saveGraphicsState();
   doc.setGState(new (doc as any).GState({ opacity: 0.7 }));
-  
-  doc.text('NOTA:', 20, currentY);
-  currentY += 7;
-  
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
   
   const observations = quote.observations || "";
   const DEFAULT_NOTE = `Los equipos, accesorios, repuestos son cotizados de acuerdo a las fichas técnicas y/o recomendaciones brindadas por parte del cliente, por favor revisar las especificaciones técnicas (datasheet) de cada modelo de equipo mencionado antes de adquirirlas, es libertad y responsabilidad propia del mismo.`;
@@ -265,9 +268,20 @@ export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
       let hasContent = false;
       const noteText = parsed.general || DEFAULT_NOTE;
       hasContent = true;
-      const splitNote = doc.splitTextToSize(noteText, pageWidth - 40);
+
+      // Draw "NOTA:" in bold
+      doc.setFont('helvetica', 'bold');
+      doc.text('NOTA: ', 20, currentY);
+      const offset = doc.getTextWidth('NOTA: ');
+      
+      // Calculate padding spaces for the normal text
+      doc.setFont('helvetica', 'normal');
+      let spacePad = "";
+      while (doc.getTextWidth(spacePad) < offset) { spacePad += " "; }
+
+      const splitNote = doc.splitTextToSize(spacePad + noteText, pageWidth - 40);
       doc.text(splitNote, 20, currentY);
-      currentY += (splitNote.length * 5) + 5;
+      currentY += (splitNote.length * 4) + 5;
 
       // Restore for Agreements
       doc.restoreGraphicsState();
@@ -303,7 +317,15 @@ export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
       }
     } else {
       // Plain text - treat as Nota disclaimer
-      const splitNote = doc.splitTextToSize(observations || "Sin condiciones comerciales adicionales.", pageWidth - 40);
+      doc.setFont('helvetica', 'bold');
+      doc.text('NOTA: ', 20, currentY);
+      const offset = doc.getTextWidth('NOTA: ');
+      
+      doc.setFont('helvetica', 'normal');
+      let spacePad = "";
+      while (doc.getTextWidth(spacePad) < offset) { spacePad += " "; }
+      
+      const splitNote = doc.splitTextToSize(spacePad + (observations || "Sin condiciones comerciales adicionales."), pageWidth - 40);
       doc.text(splitNote, 20, currentY);
       currentY += (splitNote.length * 5) + 10;
       doc.restoreGraphicsState();
@@ -311,7 +333,15 @@ export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
   } catch (e) {
     // Error parsing - treat as Nota disclaimer
     doc.setFontSize(7.5);
-    const splitNote = doc.splitTextToSize(observations || "Sin condiciones comerciales adicionales.", pageWidth - 40);
+    doc.setFont('helvetica', 'bold');
+    doc.text('NOTA: ', 20, currentY);
+    const offset = doc.getTextWidth('NOTA: ');
+    
+    doc.setFont('helvetica', 'normal');
+    let spacePad = "";
+    while (doc.getTextWidth(spacePad) < offset) { spacePad += " "; }
+    
+    const splitNote = doc.splitTextToSize(spacePad + (observations || "Sin condiciones comerciales adicionales."), pageWidth - 40);
     doc.text(splitNote, 20, currentY);
     currentY += (splitNote.length * 5) + 10;
     doc.restoreGraphicsState();
@@ -335,5 +365,5 @@ export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
   doc.setFont('helvetica', 'normal');
   doc.text(displayRole, 20, currentY + 5);
 
-  doc.save(`Cotizacion_${quote.quote_number || quote.id}.pdf`);
+  doc.save(`Cotización_Mundolar_${quote.quote_number || quote.id}.pdf`);
 };

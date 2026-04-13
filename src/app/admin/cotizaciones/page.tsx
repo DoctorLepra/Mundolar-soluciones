@@ -527,6 +527,9 @@ function AdminQuotesPageContent() {
         }
       });
       fetchQuotes();
+      if (isEditMode && typeof quoteId === 'string' && quoteId === selectedQuoteId) {
+        fetchQuoteItems(quoteId);
+      }
       alert(isEditMode ? 'Cotización actualizada' : 'Cotización creada con éxito');
     } catch (error: any) {
       console.error('Error saving quote:', error);

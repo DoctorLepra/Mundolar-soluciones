@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { Bell, X, Info, ExternalLink, MessageSquare, ShoppingCart, FileText } from 'lucide-react';
@@ -20,8 +21,10 @@ export default function FloatingNotifications() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
   const [toast, setToast] = useState<{title: string, message: string} | null>(null);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     setupNotifications();
   }, []);
 
@@ -95,6 +98,15 @@ export default function FloatingNotifications() {
     setUnreadCount(prev => Math.max(0, prev - 1));
   };
 
+  const markAllAsRead = async () => {
+    const unreadIds = notifications.filter(n => !n.is_read).map(n => n.id);
+    if (unreadIds.length === 0) return;
+    
+    await supabase.from('notifications').update({ is_read: true }).in('id', unreadIds);
+    setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+    setUnreadCount(0);
+  };
+
   const getIcon = (type: string) => {
     switch (type) {
       case 'order': return <ShoppingCart size={18} className="text-blue-500" />;
@@ -115,30 +127,38 @@ export default function FloatingNotifications() {
 
   return (
     <>
-      {/* Floating Button */}
-      <div className="fixed bottom-28 right-6 lg:bottom-10 lg:right-10 z-[120]">
-        <button
-          onClick={() => setIsOpen(true)}
-          className="relative size-14 bg-white text-slate-700 rounded-full shadow-2xl border border-slate-100 flex items-center justify-center group active:scale-95 transition-all"
-        >
-          <Bell size={24} className="group-hover:rotate-12 transition-transform" />
-          {unreadCount > 0 && (
-            <span className="absolute -top-1 -right-1 bg-primary text-white text-[10px] font-black size-6 flex items-center justify-center rounded-full border-2 border-white shadow-lg animate-bounce">
-              {unreadCount}
-            </span>
-          )}
-        </button>
-      </div>
+      {/* Inline Button */}
+      <button
+        onClick={() => setIsOpen(true)}
+        className="relative size-10 bg-white text-slate-600 rounded-full border border-slate-200 flex items-center justify-center hover:bg-slate-50 hover:text-primary transition-colors ml-auto shrink-0"
+      >
+        <Bell size={20} className="transition-transform" />
+        {unreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 bg-primary text-white text-[10px] font-black min-w-[20px] h-5 px-1 flex items-center justify-center rounded-full border-2 border-white shadow-sm">
+            {unreadCount}
+          </span>
+        )}
+      </button>
 
       {/* Overlay Modal */}
-      {isOpen && (
+      {mounted && isOpen && createPortal(
         <div className="fixed inset-0 z-[300] bg-slate-900/40 backdrop-blur-sm flex justify-end lg:justify-center lg:items-center animate-in fade-in duration-300">
           
           <div className="bg-white w-full h-full lg:h-auto lg:max-h-[85vh] lg:max-w-2xl lg:rounded-3xl flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-right lg:slide-in-from-bottom-8 duration-300">
             <div className="flex items-center justify-between p-6 lg:p-8 border-b border-slate-100 bg-white z-10 shrink-0">
               <div>
                 <h2 className="text-2xl font-black text-slate-900 font-display">Notificaciones</h2>
-                <p className="text-slate-500 text-sm">Tienes {unreadCount} mensajes sin leer</p>
+                <div className="flex items-center gap-3 mt-1">
+                  <p className="text-slate-500 text-sm">Tienes {unreadCount} mensajes sin leer</p>
+                  {unreadCount > 0 && (
+                    <button 
+                      onClick={markAllAsRead}
+                      className="text-sm font-medium text-primary hover:text-primary/80 transition-colors bg-primary/5 hover:bg-primary/10 px-2 py-0.5 rounded-md"
+                    >
+                      Marcar todo leído
+                    </button>
+                  )}
+                </div>
               </div>
               <button 
                 onClick={() => setIsOpen(false)}
@@ -197,7 +217,8 @@ export default function FloatingNotifications() {
             )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Realtime Toast Notification */}

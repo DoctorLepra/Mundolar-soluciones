@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import FloatingNotifications from './FloatingNotifications';
 
 interface UserProfile {
   id: string;
@@ -114,14 +115,14 @@ export default function AdminSidebar({ onClose }: { onClose?: () => void }) {
     <aside className="w-screen lg:w-64 bg-white border-r border-slate-200 flex flex-col h-full flex-shrink-0 z-[200] min-h-screen overflow-y-auto">
       
       {/* Mobile Header with close button */}
-      <div className="flex items-center justify-between p-5 border-b border-slate-100 lg:p-6">
-        <Link href="/" onClick={onClose} className="flex items-center">
+      <div className="flex items-center justify-center relative p-5 border-b border-slate-100 lg:p-6">
+        <Link href="/" onClick={onClose} className="flex items-center mx-auto">
           <Image src="/img/logo-rojo-negro.png" alt="Mundolar Admin" width={200} height={50} className="h-10 lg:h-[62px] w-auto object-contain" />
         </Link>
         {onClose && (
           <button
             onClick={onClose}
-            className="lg:hidden flex items-center justify-center size-10 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
+            className="lg:hidden absolute right-5 flex items-center justify-center size-10 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
             aria-label="Cerrar menú"
           >
             <span className="material-symbols-outlined">close</span>
@@ -141,6 +142,7 @@ export default function AdminSidebar({ onClose }: { onClose?: () => void }) {
             </p>
             <p className="text-xs text-slate-500">{userProfile?.role}</p>
           </div>
+          <FloatingNotifications />
         </div>
       </div>
 
@@ -234,6 +236,7 @@ export default function AdminSidebar({ onClose }: { onClose?: () => void }) {
               <span className="material-symbols-outlined text-[14px]">logout</span>
             </button>
           </div>
+          <FloatingNotifications />
         </div>
 
         {/* Mobile logout button */}

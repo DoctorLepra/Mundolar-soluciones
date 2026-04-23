@@ -45,7 +45,7 @@ export default function AdminLayout({
         {children}
       </main>
 
-      <FloatingNotifications />
+
     </div>
   );
 }

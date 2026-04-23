@@ -117,7 +117,7 @@ function AdminQuotesPageContent() {
   const [userFilter, setUserFilter] = useState('all');
   const [isFiltersVisible, setIsFiltersVisible] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const ITEMS_PER_PAGE = 6;
+  const ITEMS_PER_PAGE = 10;
 
   // Client search states
   const [clientSearchTerm, setClientSearchTerm] = useState('');
@@ -623,7 +623,7 @@ function AdminQuotesPageContent() {
 
   const filteredQuotes = quotes.filter(q => {
     const search = searchTerm.toLowerCase();
-    const matchesSearch = q.quote_number.toLowerCase().includes(search) || 
+    const matchesSearch = q.quote_number?.toLowerCase().includes(search) || 
            q.clients?.full_name?.toLowerCase().includes(search) ||
            q.clients?.company_name?.toLowerCase().includes(search);
     
@@ -654,7 +654,7 @@ function AdminQuotesPageContent() {
       </header>
 
       <div className="flex-1 flex overflow-hidden">
-        <div className="flex-1 flex flex-col p-6 overflow-y-auto">
+        <div className="flex-1 flex flex-col p-6 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
           {/* Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             {[
@@ -744,7 +744,7 @@ function AdminQuotesPageContent() {
                   onChange={(e) => setUserFilter(e.target.value)}
                   className="appearance-none px-4 py-2.5 bg-white border border-slate-200 rounded-lg text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors shadow-[0_2px_4px_rgba(0,0,0,0.05)] font-display pr-10 outline-none focus:ring-2 focus:ring-primary/20"
                 >
-                  <option value="all">Ejecutivo de cuenta</option>
+                  <option value="all">Todas</option>
                   {Array.from(new Set(quotes.map(q => q.profiles?.full_name).filter(Boolean))).map(name => (
                     <option key={name as string} value={name as string}>{name as string}</option>
                   ))}
@@ -755,9 +755,10 @@ function AdminQuotesPageContent() {
           </div>
 
           {/* List */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <table className="w-full text-left">
-              <thead className="bg-slate-50 border-b border-slate-200">
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">Número</th>
                   <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider font-display">Cliente</th>
@@ -822,6 +823,39 @@ function AdminQuotesPageContent() {
                 )}
               </tbody>
             </table>
+            </div>
+            
+            {/* Pagination Controls */}
+            {filteredQuotes.length > 0 && (
+              <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-slate-200 sm:px-6">
+                <div className="flex-1 flex justify-between sm:hidden">
+                  <button onClick={() => setCurrentPage(p => p - 1)} disabled={currentPage === 1} className="relative inline-flex items-center px-4 py-2 border border-slate-300 text-sm font-medium rounded-md text-slate-700 bg-white hover:bg-slate-50">Anterior</button>
+                  <button onClick={() => setCurrentPage(p => p + 1)} disabled={currentPage === Math.ceil(filteredQuotes.length / ITEMS_PER_PAGE)} className="ml-3 relative inline-flex items-center px-4 py-2 border border-slate-300 text-sm font-medium rounded-md text-slate-700 bg-white hover:bg-slate-50">Siguiente</button>
+                </div>
+                <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm text-slate-700">
+                      Mostrando <span className="font-medium">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> a <span className="font-medium">{Math.min(currentPage * ITEMS_PER_PAGE, filteredQuotes.length)}</span> de <span className="font-medium">{filteredQuotes.length}</span> resultados
+                    </p>
+                  </div>
+                  <div>
+                    <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                      <button onClick={() => setCurrentPage(p => p - 1)} disabled={currentPage === 1} className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-slate-300 bg-white text-sm font-medium text-slate-500 hover:bg-slate-50 disabled:opacity-50">
+                        <span className="material-symbols-outlined text-[20px]">chevron_left</span>
+                      </button>
+                      {Array.from({ length: Math.ceil(filteredQuotes.length / ITEMS_PER_PAGE) }, (_, i) => i + 1).map(page => (
+                        <button key={page} onClick={() => setCurrentPage(page)} aria-current={currentPage === page ? 'page' : undefined} className={`${currentPage === page ? 'z-10 bg-primary/10 border-primary text-primary' : 'bg-white border-slate-300 text-slate-500 hover:bg-slate-50'} relative inline-flex items-center px-4 py-2 border text-sm font-medium`}>
+                          {page}
+                        </button>
+                      ))}
+                      <button onClick={() => setCurrentPage(p => p + 1)} disabled={currentPage === Math.ceil(filteredQuotes.length / ITEMS_PER_PAGE)} className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-slate-300 bg-white text-sm font-medium text-slate-500 hover:bg-slate-50 disabled:opacity-50">
+                        <span className="material-symbols-outlined text-[20px]">chevron_right</span>
+                      </button>
+                    </nav>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

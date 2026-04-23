@@ -32,6 +32,7 @@ const getBase64ImageFromUrl = async (url: string): Promise<string | null> => {
         resolve(null);
         return;
       }
+      ctx.clearRect(0, 0, canvas.width, canvas.height); // Asegurar fondo transparente
       ctx.drawImage(img, 0, 0);
       try {
         const dataURL = canvas.toDataURL('image/png');
@@ -123,13 +124,13 @@ export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
 
   doc.setFont('helvetica', 'normal');
   doc.text('Señor/a', 20, currentInfoY);
-  currentInfoY += 6;
+  currentInfoY += 4;
 
   if (persona && empresa && persona.toUpperCase() !== empresa.toUpperCase()) {
     doc.setFont('helvetica', 'bold');
     doc.text(persona.toUpperCase(), 20, currentInfoY);
-    currentInfoY += 6;
-    doc.setFont('helvetica', 'normal');
+    currentInfoY += 4;
+    doc.setFont('helvetica', 'bold');
     doc.text(empresa.toUpperCase(), 20, currentInfoY);
     currentInfoY += 6;
   } else {
@@ -158,7 +159,7 @@ export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
   // 5. Product Table
   const tableData = await Promise.all(items.map(async (item: any) => {
     let imgBase64 = null;
-    let format: 'JPEG' | 'PNG' = 'JPEG';
+    let format: 'JPEG' | 'PNG' = 'PNG';
     if (item.products?.image_urls) {
       let firstImg = '';
       const rawUrls = item.products.image_urls.trim();
@@ -176,7 +177,7 @@ export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
     }
     return {
       sku: item.products?.sku || 'N/A',
-      name: `${item.products?.name || 'Producto'}${item.products?.description ? '\n' + item.products.description : ''}`,
+      name: `${item.products?.name || 'Producto'}${item.products?.description ? '\n\n' + item.products.description : ''}`,
       qty: item.quantity.toString(),
       price: `$ ${formatCurrency(item.unit_price)}`, // Added space
       total: `$ ${formatCurrency(item.quantity * item.unit_price)}`, // Added space
@@ -185,24 +186,55 @@ export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
     };
   }));
 
+  let col4X = 130;
+  let col4W = 25;
+  let col5W = 25;
+
   autoTable(doc, {
     startY: 120,
     margin: { top: 65, left: 20, right: 20 },
-    head: [['REF', 'IMAGEN', 'DESCRIPCIÓN', 'CANT', 'VALOR UNIT', 'VALOR TOTAL']],
-    body: tableData.map((d: any) => [d.sku, '', d.name, d.qty, d.price, d.total]),
+    head: [['Nº', 'IMAGEN', 'DESCRIPCIÓN', 'CANT', 'VALOR UNIT', 'VALOR TOTAL']],
+    body: tableData.map((d: any, index: number) => [(index + 1).toString(), '', d.name, d.qty, d.price, d.total]),
     theme: 'grid',
     styles: { fontSize: 9, cellPadding: 1.5, lineColor: [0, 0, 0], lineWidth: 0.1, halign: 'center', valign: 'middle', fillColor: false },
-    headStyles: { fillColor: primaryRed as [number, number, number], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center', lineWidth: 0 },
-    columnStyles: { 0: { cellWidth: 20 }, 1: { cellWidth: 30, minCellHeight: 25 }, 2: { halign: 'left', cellWidth: 'auto' }, 3: { cellWidth: 15 }, 4: { cellWidth: 30 }, 5: { cellWidth: 30 } },
+    headStyles: { fillColor: primaryRed as [number, number, number], textColor: [255, 255, 255],fontSize:8, fontStyle: 'bold', halign: 'center', lineWidth: 0 },
+    columnStyles: { 0: { cellWidth: 10 }, 1: { cellWidth: 30, minCellHeight: 25 }, 2: { halign: 'left', cellWidth: 'auto', cellPadding: { top: 1.5, right: 6, bottom: 1.5, left: 2 } }, 3: { cellWidth: 12 }, 4: { cellWidth: 25 }, 5: { cellWidth: 25 } },
     didDrawCell: (data) => {
+      if (data.section === 'head' && data.column.index === 4) {
+        col4X = data.cell.x;
+        col4W = data.cell.width;
+      }
+      if (data.section === 'head' && data.column.index === 5) {
+        col5W = data.cell.width;
+      }
+
       if (data.section === 'body' && data.column.index === 1) {
         const item = tableData[data.row.index];
         if (item.imgBase64) {
           try {
             const padding = 2;
-            const imgWidth = data.cell.width - padding * 2;
-            const imgHeight = data.cell.height - padding * 2;
-            doc.addImage(item.imgBase64, item.format, data.cell.x + padding, data.cell.y + padding, imgWidth, imgHeight);
+            const cellW = data.cell.width - padding * 2;
+            const cellH = data.cell.height - padding * 2;
+            
+            const imgProps = doc.getImageProperties(item.imgBase64);
+            const imgRatio = imgProps.width / imgProps.height;
+            const cellRatio = cellW / cellH;
+            
+            let finalW = cellW;
+            let finalH = cellH;
+            let finalX = data.cell.x + padding;
+            let finalY = data.cell.y + padding;
+            
+            // Mantener el aspecto original de la imagen sin deformarla
+            if (imgRatio > cellRatio) {
+              finalH = cellW / imgRatio;
+              finalY += (cellH - finalH) / 2; // Centrado vertical
+            } else {
+              finalW = cellH * imgRatio;
+              finalX += (cellW - finalW) / 2; // Centrado horizontal
+            }
+            
+            doc.addImage(item.imgBase64, item.format, finalX, finalY, finalW, finalH);
           } catch (e) {}
         }
       }
@@ -220,7 +252,7 @@ export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
   const iva = (subtotalAfterDiscount * 0.19);
   const total = subtotalAfterDiscount + iva;
   const lastTable = (doc as any).lastAutoTable;
-  const manualTableX = 130; 
+  const manualTableX = col4X; 
 
   const totalsBody: any[] = [
     ['SUBTOTAL', `$ ${formatCurrency(subtotal)}`]
@@ -235,12 +267,12 @@ export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
 
   autoTable(doc, {
     startY: lastTable.finalY,
-    margin: { left: manualTableX },
-    tableWidth: 60,
+    margin: { left: manualTableX, right: 20 },
+    tableWidth: col4W + col5W,
     body: totalsBody,
     theme: 'grid',
     styles: { fontSize: 9, cellPadding: 1.5, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: textDark as [number, number, number], halign: 'center', valign: 'middle', fillColor: false },
-    columnStyles: { 0: { fontStyle: 'bold', cellWidth: 30 }, 1: { cellWidth: 30 } }
+    columnStyles: { 0: { fontStyle: 'bold', cellWidth: col4W }, 1: { cellWidth: col5W } }
   });
 
   const totalsFinalY = (doc as any).lastAutoTable.finalY;

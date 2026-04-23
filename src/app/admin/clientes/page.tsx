@@ -352,9 +352,8 @@ const AdminClientsPageContent = () => {
         setCurrentUserProfile(profile);
         // Cargar tareas después de tener el perfil para aplicar filtros de rol
         fetchTasks(profile);
-        if (profile.role === 'Admin') {
-          fetchAllProfiles();
-        } else {
+        fetchAllProfiles();
+        if (profile.role !== 'Admin') {
           // If vendor, auto-assign tasks to themselves
           setTaskFormData(prev => ({ 
             ...prev, 
@@ -1205,8 +1204,7 @@ const AdminClientsPageContent = () => {
           formData.source_type === "Referido por cliente"
             ? formData.referred_by_brand_id
             : null,
-        assigned_to_name:
-          clientType === "Empresa" ? formData.assigned_to_name : null,
+        assigned_to_name: formData.assigned_to_name || null,
         photo_url: clientType === "Natural" ? photo_url : null,
       };
 
@@ -3745,47 +3743,25 @@ const AdminClientsPageContent = () => {
                     </div>
                     <div className="md:col-span-2">
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 font-display">
-                        Foto del Cliente
+                        Ejecutivo comercial asignado{" "}
+                        <span className="text-red-500">*</span>
                       </label>
-                      <div className="relative aspect-video rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 flex items-center justify-center overflow-hidden group hover:border-primary transition-colors cursor-pointer">
-                        {imagePreview ? (
-                          <>
-                            <Image
-                              src={imagePreview}
-                              alt="Preview"
-                              fill
-                              className="object-cover"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setImageFile(null);
-                                setImagePreview(null);
-                              }}
-                              className="absolute top-2 right-2 size-8 bg-white/90 rounded-full flex items-center justify-center text-red-500 shadow-lg hover:bg-white"
-                            >
-                              <span className="material-symbols-outlined text-[20px]">
-                                delete
-                              </span>
-                            </button>
-                          </>
-                        ) : (
-                          <label className="cursor-pointer flex flex-col items-center p-8 text-center w-full h-full justify-center">
-                            <span className="material-symbols-outlined text-4xl text-slate-300 mb-2">
-                              add_a_photo
-                            </span>
-                            <span className="text-xs font-bold text-primary font-display">
-                              SUBIR FOTO
-                            </span>
-                            <input
-                              type="file"
-                              className="sr-only"
-                              onChange={handleImageChange}
-                              accept="image/*"
-                            />
-                          </label>
-                        )}
-                      </div>
+                      <select
+                        name="assigned_to_name"
+                        value={formData.assigned_to_name}
+                        onChange={handleInputChange}
+                        required
+                        className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
+                      >
+                        <option value="">Seleccionar...</option>
+                        {allProfiles
+                          .filter((p) => p.role === "Ejecutivo de cuenta" || p.role === "Admin")
+                          .map((p) => (
+                            <option key={p.id} value={p.full_name}>
+                              {p.full_name} ({p.role})
+                            </option>
+                          ))}
+                      </select>
                     </div>
                   </>
                 ) : (
@@ -4100,8 +4076,13 @@ const AdminClientsPageContent = () => {
                         className="block w-full rounded-lg border-slate-200 px-4 py-3 bg-white text-slate-900 shadow-sm focus:border-primary focus:ring-primary font-display font-medium"
                       >
                         <option value="">Seleccionar...</option>
-                        <option value="Asesor 1">Asesor 1</option>
-                        <option value="Asesor 2">Asesor 2</option>
+                        {allProfiles
+                          .filter((p) => p.role === "Ejecutivo de cuenta" || p.role === "Admin")
+                          .map((p) => (
+                            <option key={p.id} value={p.full_name}>
+                              {p.full_name} ({p.role})
+                            </option>
+                          ))}
                       </select>
                     </div>
 

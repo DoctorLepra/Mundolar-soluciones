@@ -114,6 +114,7 @@ function AdminQuotesPageContent() {
   // Search & Filter
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [userFilter, setUserFilter] = useState('all');
   const [isFiltersVisible, setIsFiltersVisible] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 6;
@@ -627,8 +628,9 @@ function AdminQuotesPageContent() {
            q.clients?.company_name?.toLowerCase().includes(search);
     
     const matchesStatus = statusFilter === 'all' || q.status === statusFilter;
+    const matchesUser = userFilter === 'all' || q.profiles?.full_name === userFilter;
     
-    return matchesSearch && matchesStatus;
+    return matchesSearch && matchesStatus && matchesUser;
   });
 
   const paginatedQuotes = filteredQuotes.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
@@ -661,7 +663,7 @@ function AdminQuotesPageContent() {
               { label: 'Renovadas', status: 'Renovada', color: 'amber', icon: 'history' },
               { label: 'Canceladas', status: 'Cancelada', color: 'red', icon: 'cancel' }
             ].map((card) => {
-              const count = quotes.filter(q => q.status === card.status).length;
+              const count = filteredQuotes.filter(q => q.status === card.status).length;
               const colorClasses: any = {
                 blue: { bg: 'bg-primary/5', text: 'text-primary' },
                 emerald: { bg: 'bg-emerald-50', text: 'text-emerald-600' },
@@ -732,6 +734,20 @@ function AdminQuotesPageContent() {
                   <option value="Aprobada">Aprobada</option>
                   <option value="Renovada">Renovada</option>
                   <option value="Cancelada">Cancelada</option>
+                </select>
+                <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">expand_more</span>
+              </div>
+              
+              <div className="relative">
+                <select 
+                  value={userFilter}
+                  onChange={(e) => setUserFilter(e.target.value)}
+                  className="appearance-none px-4 py-2.5 bg-white border border-slate-200 rounded-lg text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors shadow-[0_2px_4px_rgba(0,0,0,0.05)] font-display pr-10 outline-none focus:ring-2 focus:ring-primary/20"
+                >
+                  <option value="all">Ejecutivo de cuenta</option>
+                  {Array.from(new Set(quotes.map(q => q.profiles?.full_name).filter(Boolean))).map(name => (
+                    <option key={name as string} value={name as string}>{name as string}</option>
+                  ))}
                 </select>
                 <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">expand_more</span>
               </div>
@@ -1100,10 +1116,14 @@ function AdminQuotesPageContent() {
                           const quote = quotes.find(q => q.id === selectedQuoteId);
                           if (quote) {
                             const { generateQuotePDF } = await import('@/lib/pdf-generator');
+                            const creatorProfile = quote.profiles 
+                              ? (Array.isArray(quote.profiles) ? quote.profiles[0] : quote.profiles)
+                              : currentUserProfile;
+
                             await generateQuotePDF({
                               quote,
                               items: selectedQuoteItems,
-                              advisor: currentUserProfile
+                              advisor: creatorProfile
                             });
                           }
                         }}

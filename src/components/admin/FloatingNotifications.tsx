@@ -130,23 +130,25 @@ export default function FloatingNotifications() {
         </button>
       </div>
 
-      {/* Fullscreen Overlay */}
+      {/* Overlay Modal */}
       {isOpen && (
-        <div className="fixed inset-0 z-[300] bg-white flex flex-col p-6 animate-in fade-in slide-in-from-bottom duration-300">
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h2 className="text-2xl font-black text-slate-900 font-display">Notificaciones</h2>
-              <p className="text-slate-500 text-sm">Tienes {unreadCount} mensajes sin leer</p>
+        <div className="fixed inset-0 z-[300] bg-slate-900/40 backdrop-blur-sm flex justify-end lg:justify-center lg:items-center animate-in fade-in duration-300">
+          
+          <div className="bg-white w-full h-full lg:h-auto lg:max-h-[85vh] lg:max-w-2xl lg:rounded-3xl flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-right lg:slide-in-from-bottom-8 duration-300">
+            <div className="flex items-center justify-between p-6 lg:p-8 border-b border-slate-100 bg-white z-10 shrink-0">
+              <div>
+                <h2 className="text-2xl font-black text-slate-900 font-display">Notificaciones</h2>
+                <p className="text-slate-500 text-sm">Tienes {unreadCount} mensajes sin leer</p>
+              </div>
+              <button 
+                onClick={() => setIsOpen(false)}
+                className="size-12 bg-slate-50 rounded-full flex items-center justify-center text-slate-400 active:bg-slate-100 transition-colors hover:text-red-500 hover:bg-red-50"
+              >
+                <X size={24} />
+              </button>
             </div>
-            <button 
-              onClick={() => setIsOpen(false)}
-              className="size-12 bg-slate-50 rounded-full flex items-center justify-center text-slate-400 active:bg-slate-100"
-            >
-              <X size={24} />
-            </button>
-          </div>
-
-          <div className="flex-1 overflow-y-auto no-scrollbar space-y-4 pb-10">
+            
+            <div className="flex-1 overflow-y-auto no-scrollbar space-y-4 p-6 lg:p-8 bg-slate-50">
             {notifications.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 text-slate-300">
                 <Bell size={64} className="mb-4 opacity-20" />
@@ -193,6 +195,7 @@ export default function FloatingNotifications() {
                 </Link>
               ))
             )}
+            </div>
           </div>
         </div>
       )}

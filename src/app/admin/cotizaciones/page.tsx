@@ -915,12 +915,7 @@ function AdminQuotesPageContent() {
                           </div>
                         </div>
                       )}
-                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 font-display">Observaciones</p>
-                        <p className="text-sm text-slate-600 font-display italic">
-                          {quotes.find(q => q.id === selectedQuoteId)?.observations ? `"${quotes.find(q => q.id === selectedQuoteId)?.observations}"` : 'Sin observaciones'}
-                        </p>
-                      </div>
+
                     </div>
 
                     {/* Atribución */}

@@ -210,7 +210,7 @@ export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
 
       if (data.section === 'body' && data.column.index === 1) {
         const item = tableData[data.row.index];
-        if (item.imgBase64) {
+        if (item?.imgBase64) {
           try {
             const padding = 2;
             const cellW = data.cell.width - padding * 2;

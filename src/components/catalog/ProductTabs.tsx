@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { renderBoldText } from '@/lib/format-text';
 
 interface Props {
   specs: string | null;
@@ -55,7 +56,7 @@ export default function ProductTabs({ specs, description, brandName, techSpecsUr
         <div className="lg:col-span-2">
           {activeTab === 'specs' && (
             specs ? (
-              <p className="text-slate-700 leading-relaxed whitespace-pre-wrap">{specs}</p>
+              <div className="text-slate-700 leading-relaxed whitespace-pre-wrap">{renderBoldText(specs)}</div>
             ) : (
               <div className="bg-slate-50 rounded-xl border border-slate-200 p-8 text-center">
                 <span className="material-symbols-outlined text-4xl text-slate-300 mb-3 block">description</span>
@@ -66,7 +67,7 @@ export default function ProductTabs({ specs, description, brandName, techSpecsUr
 
           {activeTab === 'description' && (
             description ? (
-              <p className="text-slate-700 leading-relaxed whitespace-pre-wrap">{description}</p>
+              <div className="text-slate-700 leading-relaxed whitespace-pre-wrap">{renderBoldText(description)}</div>
             ) : (
               <div className="bg-slate-50 rounded-xl border border-slate-200 p-8 text-center">
                 <span className="material-symbols-outlined text-4xl text-slate-300 mb-3 block">article</span>

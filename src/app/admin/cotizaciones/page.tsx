@@ -111,6 +111,10 @@ function AdminQuotesPageContent() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [searchingClient, setSearchingClient] = useState(false);
 
+  // Descripciones personalizadas para el PDF (temporales, no afectan la BD)
+  const [pdfDescriptions, setPdfDescriptions] = useState<Record<number, string>>({});
+  const [editingDescIdx, setEditingDescIdx] = useState<number | null>(null);
+
   // Search & Filter
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -202,6 +206,9 @@ function AdminQuotesPageContent() {
     } else {
       setSelectedQuoteItems([]);
     }
+    // Resetear descripciones personalizadas al cambiar de cotización
+    setPdfDescriptions({});
+    setEditingDescIdx(null);
   }, [selectedQuoteId]);
 
   // Handle dropdowns click outside
@@ -1152,7 +1159,8 @@ function AdminQuotesPageContent() {
                             await generateQuotePDF({
                               quote,
                               items: selectedQuoteItems,
-                              advisor: creatorProfile
+                              advisor: creatorProfile,
+                              customDescriptions: Object.keys(pdfDescriptions).length > 0 ? pdfDescriptions : undefined
                             });
                           }
                         }}
@@ -1291,11 +1299,40 @@ function AdminQuotesPageContent() {
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {selectedProducts.map((item, idx) => (
-                          <tr key={item.product.id} className="group hover:bg-slate-50/50 transition-colors">
+                          <React.Fragment key={item.product.id}>
+                          <tr className="group hover:bg-slate-50/50 transition-colors">
                             <td className="p-4">
                               <div>
-                                <p className="text-sm font-bold text-slate-900 line-clamp-1">{item.product.name}</p>
+                                <div className="flex items-center gap-1.5">
+                                  <p className="text-sm font-bold text-slate-900 line-clamp-1">{item.product.name}</p>
+                                  <button
+                                    onClick={() => {
+                                      if (editingDescIdx === idx) {
+                                        setEditingDescIdx(null);
+                                      } else {
+                                        setEditingDescIdx(idx);
+                                        if (pdfDescriptions[idx] === undefined) {
+                                          setPdfDescriptions(prev => ({
+                                            ...prev,
+                                            [idx]: (item.product as any)?.description || ''
+                                          }));
+                                        }
+                                      }
+                                    }}
+                                    className={`flex-shrink-0 p-0.5 rounded-md transition-all ${editingDescIdx === idx ? 'text-primary bg-primary/10' : 'text-slate-300 hover:text-primary hover:bg-primary/5'}`}
+                                    title="Editar descripción para PDF"
+                                  >
+                                    <span className="material-symbols-outlined text-[14px]">edit_note</span>
+                                  </button>
+                                </div>
                                 <p className="text-[10px] text-slate-400 font-mono tracking-tighter uppercase">{item.product.sku}</p>
+                                {/* Indicador de descripción personalizada */}
+                                {pdfDescriptions[idx] !== undefined && editingDescIdx !== idx && (
+                                  <p className="text-[9px] text-primary mt-0.5 flex items-center gap-0.5 font-medium">
+                                    <span className="material-symbols-outlined text-[10px]">edit_note</span>
+                                    Descripción personalizada para PDF
+                                  </p>
+                                )}
                               </div>
                             </td>
                             <td className="p-4">
@@ -1332,6 +1369,57 @@ function AdminQuotesPageContent() {
                               </button>
                             </td>
                           </tr>
+                          {/* Fila expandible del editor de descripción — ocupa todo el ancho */}
+                          {editingDescIdx === idx && (
+                            <tr className="bg-slate-50/30">
+                              <td colSpan={5} className="px-4 pb-4 pt-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <span className="material-symbols-outlined text-primary text-[14px]">edit_note</span>
+                                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Descripción para PDF — {item.product.name}</span>
+                                </div>
+                                <textarea
+                                  rows={5}
+                                  className="w-full p-3 bg-white border border-slate-200 rounded-xl text-[12px] focus:ring-2 focus:ring-primary outline-none font-mono leading-relaxed text-slate-700 resize-none"
+                                  placeholder="Descripción personalizada para el PDF..."
+                                  value={pdfDescriptions[idx] ?? ((item.product as any)?.description || '')}
+                                  onChange={e => setPdfDescriptions(prev => ({ ...prev, [idx]: e.target.value }))}
+                                />
+                                <div className="flex items-center justify-between mt-1.5">
+                                  <p className="text-[9px] text-slate-400 flex items-center gap-1">
+                                    <span className="material-symbols-outlined text-[12px]">format_bold</span>
+                                    Usa <code className="bg-slate-100 px-1 rounded text-[9px] font-mono">**texto**</code> para <strong>negrilla</strong> en el PDF
+                                  </p>
+                                  <div className="flex items-center gap-2">
+                                    {pdfDescriptions[idx] !== undefined && (
+                                      <button
+                                        onClick={() => {
+                                          setPdfDescriptions(prev => {
+                                            const next = { ...prev };
+                                            delete next[idx];
+                                            return next;
+                                          });
+                                        }}
+                                        className="text-[10px] text-amber-600 hover:text-amber-700 font-bold px-2 py-1 rounded-lg hover:bg-amber-50 transition-colors"
+                                      >
+                                        Restaurar original
+                                      </button>
+                                    )}
+                                    <button
+                                      onClick={() => setEditingDescIdx(null)}
+                                      className="text-[10px] text-white bg-primary hover:bg-primary-dark font-bold px-3 py-1 rounded-lg transition-colors"
+                                    >
+                                      Listo
+                                    </button>
+                                  </div>
+                                </div>
+                                <p className="text-[9px] text-amber-500 mt-1 flex items-center gap-1">
+                                  <span className="material-symbols-outlined text-[11px]">info</span>
+                                  Este cambio solo aplica al PDF, no modifica el producto original.
+                                </p>
+                              </td>
+                            </tr>
+                          )}
+                          </React.Fragment>
                         ))}
                       </tbody>
                     </table>
@@ -1370,6 +1458,10 @@ function AdminQuotesPageContent() {
                         value={quoteForm.observations}
                         onChange={e => setQuoteForm({...quoteForm, observations: e.target.value})}
                       />
+                      <p className="text-[9px] text-slate-400 mt-1 flex items-center gap-1">
+                        <span className="material-symbols-outlined text-[12px]">format_bold</span>
+                        Usa <code className="bg-slate-100 px-1 rounded text-[9px] font-mono">**texto**</code> para <strong>negrilla</strong> en el PDF
+                      </p>
                     </div>
 
                     {/* Commercial Agreements Sections */}
@@ -1428,6 +1520,10 @@ function AdminQuotesPageContent() {
                                 }}
                                 onClick={e => e.stopPropagation()}
                               />
+                              <p className="text-[9px] text-slate-400 mt-1.5 flex items-center gap-1">
+                                <span className="material-symbols-outlined text-[12px]">format_bold</span>
+                                Usa <code className="bg-slate-100 px-1 rounded text-[9px] font-mono">**texto**</code> para <strong>negrilla</strong> en el PDF
+                              </p>
                             </div>
                           )}
                         </div>

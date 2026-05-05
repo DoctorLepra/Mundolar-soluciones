@@ -9,6 +9,7 @@ import ProductActions from '@/components/catalog/ProductActions';
 import ProductImageGallery from '@/components/catalog/ProductImageGallery';
 import ProductTabs from '@/components/catalog/ProductTabs';
 import ProductCard from '@/components/catalog/ProductCard';
+import { renderBoldText } from '@/lib/format-text';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const parseImageUrls = (urls: any): string[] => {
@@ -185,9 +186,9 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
           {product.description && (
             <div className="mb-8">
               <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Descripción</p>
-              <p className="text-slate-700 text-base leading-relaxed line-clamp-3">
-                {product.description}
-              </p>
+              <div className="text-slate-700 text-base leading-relaxed line-clamp-3">
+                {renderBoldText(product.description)}
+              </div>
             </div>
           )}
 

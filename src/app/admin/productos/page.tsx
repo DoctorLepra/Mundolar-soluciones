@@ -1388,7 +1388,7 @@ export default function AdminProductsPage() {
           </div>
 
           {/* 3. Descripción */}
-          <div><label className="block text-sm font-medium text-slate-700 mb-2">Descripción <span className="text-red-500">*</span></label><textarea name="description" value={productForm.description} onChange={handleFormChange} required rows={3} className="block w-full rounded-lg border-slate-600 px-4 py-2 bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm"></textarea></div>
+          <div><label className="block text-sm font-medium text-slate-700 mb-2">Descripción <span className="text-red-500">*</span></label><textarea name="description" value={productForm.description} onChange={handleFormChange} required rows={3} className="block w-full rounded-lg border-slate-600 px-4 py-2 bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm"></textarea><p className="text-[9px] text-slate-400 mt-1 flex items-center gap-1"><span className="material-symbols-outlined text-[12px]">format_bold</span> Usa <code className="bg-slate-100 px-1 rounded text-[9px] font-mono">**texto**</code> para <strong>negrilla</strong> en la vista del producto</p></div>
 
           {/* 4. Especificaciones Técnicas */}
           <div>

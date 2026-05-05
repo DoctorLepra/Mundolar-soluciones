@@ -12,6 +12,7 @@ interface PDFData {
   quote: any;
   items: any[];
   advisor: any;
+  customDescriptions?: Record<number, string>; // Descripciones personalizadas por índice de item
 }
 
 /**
@@ -50,7 +51,82 @@ const getBase64ImageFromUrl = async (url: string): Promise<string | null> => {
   });
 };
 
-export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
+/**
+ * Parses text with **bold** markers and draws it on the PDF
+ * with mixed bold/normal styles. Supports multi-line text.
+ * Returns the final Y position after drawing.
+ */
+const drawFormattedText = (
+  doc: jsPDF,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  lineHeight: number = 4,
+  fontSize: number = 9,
+  maxY?: number
+): number => {
+  doc.setFontSize(fontSize);
+  // Split text into lines first
+  const lines = text.split('\n');
+  let currentY = y;
+
+  for (const line of lines) {
+    // Parse **bold** segments
+    const parts: { text: string; bold: boolean }[] = [];
+    const regex = /\*\*(.+?)\*\*/g;
+    let lastIndex = 0;
+    let match;
+
+    while ((match = regex.exec(line)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push({ text: line.slice(lastIndex, match.index), bold: false });
+      }
+      parts.push({ text: match[1], bold: true });
+      lastIndex = regex.lastIndex;
+    }
+    if (lastIndex < line.length) {
+      parts.push({ text: line.slice(lastIndex), bold: false });
+    }
+    if (parts.length === 0) {
+      parts.push({ text: line, bold: false });
+    }
+
+    // Word-wrap the formatted line manually
+    let currentX = x;
+    
+    for (const part of parts) {
+      doc.setFont('helvetica', part.bold ? 'bold' : 'normal');
+      const words = part.text.split(' ');
+      
+      for (let i = 0; i < words.length; i++) {
+        const word = (i === 0 ? '' : ' ') + words[i];
+        const wordWidth = doc.getTextWidth(word);
+        
+        if (currentX + wordWidth > x + maxWidth && currentX > x) {
+          // Wrap to next line
+          currentY += lineHeight;
+          if (maxY && currentY > maxY) return currentY;
+          currentX = x;
+          // Re-draw without leading space
+          const cleanWord = words[i];
+          doc.text(cleanWord, currentX, currentY);
+          currentX += doc.getTextWidth(cleanWord);
+        } else {
+          doc.text(word, currentX, currentY);
+          currentX += wordWidth;
+        }
+      }
+    }
+    currentY += lineHeight;
+    if (maxY && currentY > maxY) return currentY;
+    // Reset X for new line
+  }
+
+  return currentY;
+};
+
+export const generateQuotePDF = async ({ quote, items, advisor, customDescriptions }: PDFData) => {
   const doc = new jsPDF('p', 'mm', 'a4');
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -157,7 +233,7 @@ export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
   doc.text(splitIntro, 20, 110);
 
   // 5. Product Table
-  const tableData = await Promise.all(items.map(async (item: any) => {
+  const tableData = await Promise.all(items.map(async (item: any, itemIndex: number) => {
     let imgBase64 = null;
     let format: 'JPEG' | 'PNG' = 'PNG';
     if (item.products?.image_urls) {
@@ -175,9 +251,12 @@ export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
         if (imgBase64) format = imgBase64.includes('image/png') ? 'PNG' : 'JPEG';
       }
     }
+    // Usar descripción personalizada si existe, sino la original del producto
+    const customDesc = customDescriptions?.[itemIndex];
+    const description = customDesc !== undefined ? customDesc : (item.products?.description || '');
     return {
       sku: item.products?.sku || 'N/A',
-      name: `${item.products?.name || 'Producto'}${item.products?.description ? '\n\n' + item.products.description : ''}`,
+      name: `${item.products?.name || 'Producto'}${description ? '\n\n' + description : ''}`,
       qty: item.quantity.toString(),
       price: `$ ${formatCurrency(item.unit_price)}`, // Added space
       total: `$ ${formatCurrency(item.quantity * item.unit_price)}`, // Added space
@@ -192,7 +271,7 @@ export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
 
   autoTable(doc, {
     startY: 120,
-    margin: { top: 65, left: 20, right: 20 },
+    margin: { top: 55, bottom: 30, left: 20, right: 20 },
     head: [['Nº', 'IMAGEN', 'DESCRIPCIÓN', 'CANT', 'VALOR UNIT', 'VALOR TOTAL']],
     body: tableData.map((d: any, index: number) => [(index + 1).toString(), '', d.name, d.qty, d.price, d.total]),
     theme: 'grid',
@@ -238,6 +317,29 @@ export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
           } catch (e) {}
         }
       }
+
+      // Renderizado personalizado de la columna DESCRIPCIÓN para soportar **negrilla**
+      if (data.section === 'body' && data.column.index === 2) {
+        const item = tableData[data.row.index];
+        if (item?.name && item.name.includes('**')) {
+          // Limpiar el texto que autotable ya dibujó
+          doc.setFillColor(255, 255, 255);
+          const pad = data.cell.styles.cellPadding as any;
+          const padTop = typeof pad === 'number' ? pad : (pad?.top || 1.5);
+          const padLeft = typeof pad === 'number' ? pad : (pad?.left || 2);
+          const padRight = typeof pad === 'number' ? pad : (pad?.right || 6);
+          doc.rect(data.cell.x + 0.1, data.cell.y + 0.1, data.cell.width - 0.2, data.cell.height - 0.2, 'F');
+          // Redibujar bordes de la celda que fueron tapados por el relleno blanco
+          doc.setDrawColor(0, 0, 0);
+          doc.setLineWidth(0.1);
+          doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'S');
+          
+          doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+          const cellContentWidth = data.cell.width - padLeft - padRight;
+          const cellBottomY = data.cell.y + data.cell.height - 1;
+          drawFormattedText(doc, item.name, data.cell.x + padLeft, data.cell.y + padTop + 3, cellContentWidth, 3.5, 9, cellBottomY);
+        }
+      }
     },
     didDrawPage: (data) => {
       addPageDecorations(doc); // Ensure decoration on table-overflow pages
@@ -267,7 +369,7 @@ export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
 
   autoTable(doc, {
     startY: lastTable.finalY,
-    margin: { left: manualTableX, right: 20 },
+    margin: { bottom: 30, left: manualTableX, right: 20 },
     tableWidth: col4W + col5W,
     body: totalsBody,
     theme: 'grid',
@@ -279,7 +381,7 @@ export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
 
   // 7. Commercial Agreements & Advisor
   let currentY = totalsFinalY + 15;
-  if (currentY + 50 > pageHeight - 20) {
+  if (currentY + 40 > pageHeight - 30) {
     doc.addPage();
     addPageDecorations(doc);
     currentY = 65;
@@ -298,7 +400,7 @@ export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
     if (observations.trim().startsWith('{')) {
       const parsed = JSON.parse(observations);
       let hasContent = false;
-      const noteText = parsed.general || DEFAULT_NOTE;
+      const noteText = (parsed.general || DEFAULT_NOTE).trim();
       hasContent = true;
 
       // Draw "NOTA:" in bold
@@ -324,7 +426,7 @@ export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
         const data = parsed[cat.id];
         if (data && data.enabled && data.text) {
           hasContent = true;
-          if (currentY + 30 > pageHeight - 30) {
+          if (currentY + 25 > pageHeight - 30) {
             doc.addPage();
             addPageDecorations(doc);
             currentY = 65;
@@ -338,9 +440,14 @@ export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
           doc.setFont('helvetica', 'normal');
           doc.setFontSize(9);
           doc.setTextColor(textDark[0], textDark[1], textDark[2]);
-          const split = doc.splitTextToSize(data.text, pageWidth - 40);
-          doc.text(split, 20, currentY);
-          currentY += (split.length * 4.5) + 8;
+          if (data.text.includes('**')) {
+            currentY = drawFormattedText(doc, data.text.trim(), 20, currentY, pageWidth - 40, 4.5, 9);
+            currentY += 4;
+          } else {
+            const split = doc.splitTextToSize(data.text.trim(), pageWidth - 40);
+            doc.text(split, 20, currentY);
+            currentY += (split.length * 4.5) + 8;
+          }
         }
       });
       if (!hasContent) {
@@ -357,7 +464,7 @@ export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
       let spacePad = "";
       while (doc.getTextWidth(spacePad) < offset) { spacePad += " "; }
       
-      const splitNote = doc.splitTextToSize(spacePad + (observations || "Sin condiciones comerciales adicionales."), pageWidth - 40);
+      const splitNote = doc.splitTextToSize(spacePad + (observations.trim() || "Sin condiciones comerciales adicionales."), pageWidth - 40);
       doc.text(splitNote, 20, currentY);
       currentY += (splitNote.length * 5) + 10;
       doc.restoreGraphicsState();
@@ -373,17 +480,25 @@ export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
     let spacePad = "";
     while (doc.getTextWidth(spacePad) < offset) { spacePad += " "; }
     
-    const splitNote = doc.splitTextToSize(spacePad + (observations || "Sin condiciones comerciales adicionales."), pageWidth - 40);
+    const splitNote = doc.splitTextToSize(spacePad + (observations.trim() || "Sin condiciones comerciales adicionales."), pageWidth - 40);
     doc.text(splitNote, 20, currentY);
     currentY += (splitNote.length * 5) + 10;
     doc.restoreGraphicsState();
   }
 
-  currentY += 5;
-  if (currentY + 30 > pageHeight - 20) {
+  // Firma: siempre 3 renglones (~15mm) debajo del último texto
+  const footerLineY = pageHeight - 20;  // Línea roja del footer
+  const signatureHeight = 10;           // Altura del bloque firma (nombre + cargo)
+  const signatureGap = 10;              //2 renglones de separación
+  const availableSpace = footerLineY - currentY;
+
+  if (availableSpace < signatureHeight + signatureGap) {
+    // No cabe en esta página → saltar
     doc.addPage();
     addPageDecorations(doc);
     currentY = 65;
+  } else {
+    currentY = currentY + signatureGap;
   }
   
   const displayRole = (advisor?.role === 'Admin' || advisor?.role === 'Ejecutivo de cuenta' || !advisor?.role) 
@@ -391,11 +506,9 @@ export const generateQuotePDF = async ({ quote, items, advisor }: PDFData) => {
     : advisor.role;
 
   doc.setFont('helvetica', 'bold');
-  doc.text('Cordialmente,', 20, currentY);
-  currentY += 10;
   doc.text(advisor?.full_name || 'Ejecutivo de cuenta', 20, currentY);
   doc.setFont('helvetica', 'normal');
-  doc.text(displayRole, 20, currentY + 5);
+  doc.text(displayRole, 20, currentY + 4);
 
   doc.save(`Cotización_Mundolar_${quote.quote_number || quote.id}.pdf`);
 };

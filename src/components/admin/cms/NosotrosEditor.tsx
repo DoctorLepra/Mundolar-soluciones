@@ -22,6 +22,9 @@ export default function NosotrosEditor() {
     description: 'Somos expertos en soluciones de radiocomunicación portátil y móvil...',
     image: ''
   });
+  const [bannerData, setBannerData] = useState({
+    image: '/img/planeta.png'
+  });
   const [metrics, setMetrics] = useState([
     { key: 'm1', label: 'Años de Experiencia', value: '15+' },
     { key: 'm2', label: 'Clientes Satisfechos', value: '500+' },
@@ -42,6 +45,9 @@ export default function NosotrosEditor() {
       const heroContent = data.find((c: any) => c.section === 'hero' && c.key === 'main');
       if (heroContent) setHeroData(heroContent.content);
 
+      const bannerContent = data.find((c: any) => c.section === 'main' && c.key === 'banner');
+      if (bannerContent) setBannerData(bannerContent.content);
+
       const metricsContent = data.find((c: any) => c.section === 'main' && c.key === 'metrics');
       if (metricsContent) setMetrics(metricsContent.content || []);
 
@@ -61,6 +67,11 @@ export default function NosotrosEditor() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ page: 'nosotros', section: 'hero', key: 'main', content: heroData })
+      });
+      await fetch('/api/admin/cms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ page: 'nosotros', section: 'main', key: 'banner', content: bannerData })
       });
       await fetch('/api/admin/cms', {
         method: 'POST',
@@ -260,6 +271,51 @@ export default function NosotrosEditor() {
                 </button>
               </div>
             ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Banner / Imagen Promocional */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-visible">
+        <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+          <div>
+            <h3 className="text-lg font-black text-slate-900 font-display">Imagen Promocional (Banner)</h3>
+            <p className="text-slate-500 text-xs font-medium">Gestiona la imagen destacada antes del CTA (Ej: Juntos por nuestro planeta).</p>
+          </div>
+        </div>
+        <div className="p-6">
+          <div className="max-w-xl mx-auto space-y-4">
+            <div className="flex justify-between items-center">
+               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Imagen de Campaña</label>
+               {bannerData.image && (
+                 <button onClick={() => setBannerData({...bannerData, image: ''})} className="text-[10px] font-bold text-red-500 hover:text-red-700 flex items-center gap-1">
+                   <Trash2 size={12} /> Eliminar
+                 </button>
+               )}
+            </div>
+            
+            {bannerData.image ? (
+              <div className="relative w-full h-[200px] rounded-2xl overflow-hidden border border-slate-200 shadow-inner group bg-slate-100">
+                <img src={bannerData.image} alt="Banner Promocional" className="w-full h-full object-contain" />
+                <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <CMSImageUpload 
+                    onUploadComplete={(url) => setBannerData({...bannerData, image: Array.isArray(url) ? url[0] : url})}
+                    label="Cambiar Imagen"
+                    buttonClassName="bg-white text-slate-900 px-4 py-2 rounded-xl text-xs font-bold shadow-lg"
+                  />
+                </div>
+              </div>
+            ) : (
+              <CMSImageUpload 
+                onUploadComplete={(url) => setBannerData({...bannerData, image: Array.isArray(url) ? url[0] : url})}
+                label="Subir Imagen Promocional"
+                buttonClassName="w-full h-[200px] rounded-2xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 hover:border-primary hover:text-primary transition-all gap-2 bg-slate-50/50"
+                icon={<Plus size={32} />}
+              />
+            )}
+             <p className="text-[10px] text-slate-400 font-medium tracking-tight text-center mt-2">
+               La imagen se ajustará proporcionalmente sin distorsionarse.
+             </p>
           </div>
         </div>
       </div>

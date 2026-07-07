@@ -43,6 +43,10 @@ export default async function AboutPage() {
     { year: '2023', title: 'Excelencia en Servicio', description: 'Inauguración de nuestro laboratorio de reparaciones de última generación, certificado por marcas importantes como Motorola y Kenwood.', icon: 'build_circle' }
   ];
 
+  const bannerData = cmsContent.find(c => c.section === 'main' && c.key === 'banner')?.content || {
+    image: '/img/planeta.png'
+  };
+
   return (
     <div className="bg-white">
       <section className="relative w-full overflow-hidden bg-slate-900 min-h-[500px] flex flex-col justify-center">
@@ -186,15 +190,17 @@ export default async function AboutPage() {
       </section>
 
       <section className="w-full bg-white py-12">
-        <div className="w-full mb-12">
-          <Image 
-              alt="Mundolar - Responsabilidad Ambiental" 
-              src="/img/planeta.png"
-              width={1920}
-              height={600}
-              className="w-full h-auto"
-              priority
-          />
+        <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 mb-12">
+          <div className="relative w-full rounded-2xl overflow-hidden flex items-center justify-center">
+            <Image 
+                alt="Mundolar - Banner Promocional" 
+                src={bannerData.image || "/img/planeta.png"}
+                width={1440}
+                height={600}
+                className="w-full h-auto max-h-[600px] object-contain rounded-2xl"
+                priority
+            />
+          </div>
         </div>
         <div className="flex justify-center">
           <Link 

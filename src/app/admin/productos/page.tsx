@@ -37,6 +37,9 @@ interface Product {
   offer_end_date: string | null;
   last_trm_sync: string | null;
   tech_specs_url: string | null;
+  product_type: string;
+  rental_price: number | null;
+  includes_iva: boolean;
 }
 
 interface Category {
@@ -52,6 +55,7 @@ interface Brand {
 interface Warehouse {
   id: string;
   name: string;
+  warehouse_type: string;
 }
 
 interface UserProfile {
@@ -110,6 +114,9 @@ export default function AdminProductsPage() {
     offer_discount_percentage: '',
     status: 'Activo', // Default status
     tech_specs_url: '',
+    product_type: 'venta',
+    rental_price: '',
+    includes_iva: false as boolean | string,
   });
 
   const [trm, setTrm] = useState<number | null>(null);
@@ -130,12 +137,26 @@ export default function AdminProductsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('all');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('all'); // Change default to all
+  const [selectedWarehouseTypeFilter, setSelectedWarehouseTypeFilter] = useState('all');
+  const [selectedWarehouseFilter, setSelectedWarehouseFilter] = useState('all');
 
   // State for filter dropdowns visibility
-  const [isCategoryFilterOpen, setIsCategoryFilterOpen] = useState(false);
-  const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
-  const categoryRef = useRef<HTMLDivElement>(null);
-  const statusRef = useRef<HTMLDivElement>(null);
+  const [isFiltersDropdownOpen, setIsFiltersDropdownOpen] = useState(false);
+  const filtersRef = useRef<HTMLDivElement>(null);
+
+  // State for column visibility
+  const [visibleColumns, setVisibleColumns] = useState({
+    type: true,
+    category: true,
+    sku: true,
+    price: true,
+    mainWarehouse: true,
+    auxWarehouse: true,
+    stock: true,
+    status: true,
+  });
+  const [isColumnDropdownOpen, setIsColumnDropdownOpen] = useState(false);
+  const columnDropdownRef = useRef<HTMLDivElement>(null);
 
   // State for delete confirmation modal
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -170,14 +191,14 @@ export default function AdminProductsPage() {
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (categoryRef.current && !categoryRef.current.contains(event.target as Node)) {
-        setIsCategoryFilterOpen(false);
-      }
-      if (statusRef.current && !statusRef.current.contains(event.target as Node)) {
-        setIsStatusFilterOpen(false);
+      if (filtersRef.current && !filtersRef.current.contains(event.target as Node)) {
+        setIsFiltersDropdownOpen(false);
       }
       if (cargaMasivaRef.current && !cargaMasivaRef.current.contains(event.target as Node)) {
         setIsCargaMasivaDropdownOpen(false);
+      }
+      if (columnDropdownRef.current && !columnDropdownRef.current.contains(event.target as Node)) {
+        setIsColumnDropdownOpen(false);
       }
     };
 
@@ -193,7 +214,7 @@ export default function AdminProductsPage() {
         supabase.from('products').select('*, brands(name)').order('created_at', { ascending: false }),
         supabase.from('categories').select('id, name').eq('status', 'Activo'),
         supabase.from('brands').select('id, name'),
-        supabase.from('warehouses').select('id, name').eq('status', 'Activo'),
+        supabase.from('warehouses').select('id, name, warehouse_type').eq('status', 'Activo'),
         fetchTRM()
       ]);
       if (productsPromise.error) setError(`Error al cargar productos: ${productsPromise.error.message}`); 
@@ -317,9 +338,12 @@ export default function AdminProductsPage() {
       const matchesCategory = selectedCategoryFilter === 'all' || product.category_id?.toString() === selectedCategoryFilter;
       const matchesStatus = selectedStatusFilter === 'all' || 
         (selectedStatusFilter === 'Inactivo' ? product.status === 'Archivado' : product.status === selectedStatusFilter);
-      return matchesSearch && matchesCategory && matchesStatus;
+      const matchesWarehouseType = selectedWarehouseTypeFilter === 'all' || product.product_type === selectedWarehouseTypeFilter;
+      const matchesWarehouse = selectedWarehouseFilter === 'all' || product.warehouse_id === selectedWarehouseFilter || product.auxiliary_warehouse_id === selectedWarehouseFilter;
+      
+      return matchesSearch && matchesCategory && matchesStatus && matchesWarehouseType && matchesWarehouse;
     });
-  }, [products, searchTerm, selectedCategoryFilter, selectedStatusFilter, categories]);
+  }, [products, searchTerm, selectedCategoryFilter, selectedStatusFilter, selectedWarehouseTypeFilter, selectedWarehouseFilter, categories]);
 
   // Pagination calculations
   const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
@@ -355,6 +379,9 @@ export default function AdminProductsPage() {
       offer_discount_percentage: '',
       status: 'Activo',
       tech_specs_url: '',
+      product_type: 'venta',
+      rental_price: '',
+      includes_iva: false,
     });
     setImagePreviewUrls([]);
     setImagesToDelete([]);
@@ -414,6 +441,9 @@ export default function AdminProductsPage() {
             : '',
         status: product.status === 'Archivado' ? 'Inactivo' : (product.status || 'Activo'),
         tech_specs_url: product.tech_specs_url || '',
+        product_type: product.product_type || 'venta',
+        rental_price: product.rental_price?.toString() || '',
+        includes_iva: product.includes_iva || false,
     });
     
     setTechSpecFile(null);
@@ -573,11 +603,21 @@ export default function AdminProductsPage() {
     setIsSubmitting(true);
     setFormError(null);
 
-    const { name, description, category_id, brand_id, sku, price, original_price, main_warehouse_stock, auxiliary_warehouse_stock, offer_start_date, offer_end_date, status, price_usd, price_with_iva, specs, cost, profit_percentage, warehouse_id, auxiliary_warehouse_id } = productForm;
+    const { name, description, category_id, brand_id, sku, price, original_price, main_warehouse_stock, auxiliary_warehouse_stock, offer_start_date, offer_end_date, status, price_usd, price_with_iva, specs, cost, profit_percentage, warehouse_id, auxiliary_warehouse_id, product_type, rental_price, includes_iva } = productForm;
     const totalStock = (parseInt(main_warehouse_stock || '0') + parseInt(auxiliary_warehouse_stock || '0'));
 
-    if (!name || !description || !category_id || !brand_id || !sku || !original_price || !warehouse_id) {
+    const isRental = product_type === 'alquiler';
+
+    if (!name || !description || !category_id || !brand_id || !sku || !warehouse_id) {
       setFormError('Todos los campos marcados con * son obligatorios, incluyendo la Bodega Principal.');
+      setIsSubmitting(false); return;
+    }
+    if (isRental && !rental_price) {
+      setFormError('El valor del producto en alquiler es obligatorio.');
+      setIsSubmitting(false); return;
+    }
+    if (!isRental && !original_price) {
+      setFormError('El precio de venta es obligatorio.');
       setIsSubmitting(false); return;
     }
     if(isOfferActive && (!price || !offer_start_date || !offer_end_date)) {
@@ -599,7 +639,8 @@ export default function AdminProductsPage() {
         if (!category_id) missingFields.push('Categoría');
         if (!brand_id) missingFields.push('Marca');
         if (!sku) missingFields.push('SKU');
-        if (!original_price) missingFields.push('Precio');
+        if (!isRental && !original_price) missingFields.push('Precio');
+        if (isRental && !rental_price) missingFields.push('Valor de Alquiler');
         
         if (missingFields.length > 0 || imagePreviewUrls.length === 0) {
             setFormError(`No se puede activar el producto. Faltan campos obligatorios o imágenes.`);
@@ -757,16 +798,18 @@ export default function AdminProductsPage() {
           category_id: parseInt(category_id), 
           brand_id: parseInt(brand_id), 
           sku, 
-          price: finalPrice, 
-          original_price: finalOriginalPrice, 
-          price_usd: price_usd ? parseFloat(price_usd) : null,
-          price_with_iva: price_with_iva ? parseFloat(price_with_iva) : null,
+          price: isRental ? (rental_price ? parseFloat(rental_price as string) : null) : finalPrice, 
+          original_price: isRental ? null : finalOriginalPrice, 
+          price_usd: isRental ? null : (price_usd ? parseFloat(price_usd as string) : null),
+          price_with_iva: isRental 
+            ? (includes_iva && rental_price ? Math.round(parseFloat(rental_price as string) * 1.19) : null)
+            : (price_with_iva ? parseFloat(price_with_iva as string) : null),
           specs: specs || null,
           stock_quantity: totalStock,
           main_warehouse_stock: parseInt(main_warehouse_stock || '0'),
           auxiliary_warehouse_stock: parseInt(auxiliary_warehouse_stock || '0'),
-          cost: cost ? parseFloat(cost) : null,
-          profit_percentage: profit_percentage ? parseFloat(profit_percentage) : null,
+          cost: isRental ? null : (cost ? parseFloat(cost as string) : null),
+          profit_percentage: isRental ? null : (profit_percentage ? parseFloat(profit_percentage as string) : null),
           image_urls: finalUrls, 
           status: dbStatus, 
           offer_start_date: finalOfferStartDate, 
@@ -774,7 +817,10 @@ export default function AdminProductsPage() {
           warehouse_id: warehouse_id || null,
           auxiliary_warehouse_id: auxiliary_warehouse_id || null,
           last_trm_sync: price_usd ? new Date().toISOString() : null,
-          tech_specs_url: finalTechSpecUrl
+          tech_specs_url: finalTechSpecUrl,
+          product_type: product_type || 'venta',
+          rental_price: isRental && rental_price ? parseFloat(rental_price as string) : null,
+          includes_iva: isRental ? !!includes_iva : false,
       };
       
       if (isEditing && productToEdit) {
@@ -914,6 +960,9 @@ export default function AdminProductsPage() {
         PORVENTA: 20,
         VALORVENTA: 1200000,
         "VALOR+IVA": 1428000,
+        ALQUILER: "T",
+        VALOR_ALQUILER: 150000,
+        INCLUYE_IVA: "T",
         STOCK_P: 10,
         STOCK_A: 5
       }
@@ -989,6 +1038,11 @@ export default function AdminProductsPage() {
         const mainStock = parseInt(row.STOCK_P) || 0;
         const auxStock = parseInt(row.STOCK_A) || 0;
         const totalStock = mainStock + auxStock;
+        
+        // Alquiler e IVA Columns
+        const isAlquiler = row.ALQUILER?.toString().trim().toUpperCase() === 'T';
+        const rentalPrice = parseFloat(row.VALOR_ALQUILER) || 0;
+        const incluyeIva = row.INCLUYE_IVA?.toString().trim().toUpperCase() === 'T';
 
         // 1. Calculate Cost if USD is provided but COP is empty
         if (rawCostUsd > 0 && rawCostCop <= 0 && currentTrm) {
@@ -1016,7 +1070,8 @@ export default function AdminProductsPage() {
         if (brandId <= 0) rowErrors.push('Agregar Marca');
         if (catId <= 0) rowErrors.push('Agregar Categoría');
         if (!desc) rowErrors.push('Agregar Descripción');
-        if (rawCostCop <= 0 && valVenta <= 0) rowErrors.push('Agregar Precio/Costo');
+        if (!isAlquiler && rawCostCop <= 0 && valVenta <= 0) rowErrors.push('Agregar Precio/Costo');
+        if (isAlquiler && rentalPrice <= 0) rowErrors.push('Agregar Valor Alquiler');
         if (totalStock <= 0) rowErrors.push('Sin stock definido');
         if (!warehouseId) rowErrors.push('Falta Bodega P');
         
@@ -1031,8 +1086,36 @@ export default function AdminProductsPage() {
 
         if (!brand && brandId) rowErrors.push(`IDMARCA "${brandId}" no existe`);
         if (!category && catId) rowErrors.push(`IDCATEGORIA "${catId}" no existe`);
-        if (!warehouse && warehouseId) rowErrors.push(`Bodega P "${warehouseId}" no existe`);
-        if (!auxWarehouse && auxWarehouseId) rowErrors.push(`Bodega A "${auxWarehouseId}" no existe`);
+        
+        let validWarehouseId = warehouseId;
+        if (!warehouse && warehouseId) {
+            rowErrors.push(`Bodega P "${warehouseId}" no existe`);
+            validWarehouseId = '';
+        } else if (warehouse) {
+            if (isAlquiler && warehouse.warehouse_type === 'venta') {
+                rowErrors.push(`Bodega P no permite alquiler`);
+                validWarehouseId = '';
+            }
+            if (!isAlquiler && warehouse.warehouse_type === 'alquiler') {
+                rowErrors.push(`Bodega P no permite venta`);
+                validWarehouseId = '';
+            }
+        }
+
+        let validAuxWarehouseId = auxWarehouseId;
+        if (!auxWarehouse && auxWarehouseId) {
+            rowErrors.push(`Bodega A "${auxWarehouseId}" no existe`);
+            validAuxWarehouseId = '';
+        } else if (auxWarehouse) {
+            if (isAlquiler && auxWarehouse.warehouse_type === 'venta') {
+                rowErrors.push(`Bodega A no permite alquiler`);
+                validAuxWarehouseId = '';
+            }
+            if (!isAlquiler && auxWarehouse.warehouse_type === 'alquiler') {
+                rowErrors.push(`Bodega A no permite venta`);
+                validAuxWarehouseId = '';
+            }
+        }
 
         const productData = {
             sku,
@@ -1042,14 +1125,17 @@ export default function AdminProductsPage() {
             cost: rawCostCop > 0 ? rawCostCop : null,
             profit_percentage: profitPctCalculated > 0 ? profitPctCalculated : null,
             price_usd: rawCostUsd > 0 ? rawCostUsd : null,
-            original_price: valVenta > 0 ? valVenta : (rawCostCop > 0 ? rawCostCop : null),
-            price: valVenta > 0 ? valVenta : (rawCostCop > 0 ? rawCostCop : null),
+            original_price: valVenta > 0 ? valVenta : (rawCostCop > 0 ? rawCostCop : 0),
+            price: valVenta > 0 ? valVenta : (rawCostCop > 0 ? rawCostCop : 0),
             price_with_iva: valIvaPlus > 0 ? valIvaPlus : null,
+            product_type: isAlquiler ? 'alquiler' : 'venta',
+            rental_price: isAlquiler && rentalPrice > 0 ? rentalPrice : null,
+            includes_iva: incluyeIva,
             stock_quantity: totalStock,
             main_warehouse_stock: mainStock,
             auxiliary_warehouse_stock: auxStock,
-            warehouse_id: warehouseId || null,
-            auxiliary_warehouse_id: auxWarehouseId || null,
+            warehouse_id: validWarehouseId || null,
+            auxiliary_warehouse_id: validAuxWarehouseId || null,
             brand_id: brand ? brand.id : null,
             category_id: category ? category.id : null,
             status: 'Archivado', // Always Inactivo from bulk import due to missing images
@@ -1214,45 +1300,86 @@ export default function AdminProductsPage() {
             />
           </div>
           <div className="flex flex-wrap gap-3 w-full lg:w-auto">
-            <div className="relative" ref={categoryRef}>
+            <div className="relative" ref={filtersRef}>
               <button 
-                onClick={() => { setIsCategoryFilterOpen(prev => !prev); setIsStatusFilterOpen(false); }} 
+                onClick={() => setIsFiltersDropdownOpen(prev => !prev)} 
                 className="group w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-lg bg-white border border-slate-200 hover:border-primary transition-all shadow-[0_2px_4px_rgba(0,0,0,0.05)] font-display"
               >
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Categoría:</span>
-                <span className="text-sm font-medium text-slate-900 whitespace-nowrap">
-                  {selectedCategoryFilter === 'all' ? 'Todas' : categories.find(c => c.id.toString() === selectedCategoryFilter)?.name}
-                </span>
+                <span className="material-symbols-outlined text-[20px] text-slate-500">tune</span>
+                <span className="text-sm font-medium text-slate-900">Filtros Avanzados</span>
                 <span className="material-symbols-outlined text-slate-400 group-hover:text-primary text-[20px] transition-transform">expand_more</span>
               </button>
-              {isCategoryFilterOpen && (
-                <div className="absolute right-0 mt-2 w-56 origin-top-right rounded-xl bg-white shadow-xl ring-1 ring-black ring-opacity-5 focus:outline-none z-50 border border-slate-100 p-1">
-                  <div className="py-1 max-h-60 overflow-y-auto custom-scrollbar">
-                    <a href="#" onClick={e => { e.preventDefault(); setSelectedCategoryFilter('all'); setIsCategoryFilterOpen(false); setCurrentPage(1); }} className="text-slate-600 block px-4 py-2 text-sm hover:bg-slate-50 rounded-lg transition-colors font-display italic">Todas</a>
-                    {categories.map(cat => (
-                      <a href="#" key={cat.id} onClick={e => { e.preventDefault(); setSelectedCategoryFilter(cat.id.toString()); setIsCategoryFilterOpen(false); setCurrentPage(1); }} className="text-slate-700 block px-4 py-2 text-sm hover:bg-slate-50 rounded-lg transition-colors font-display">{cat.name}</a>
-                    ))}
+              {isFiltersDropdownOpen && (
+                <div className="absolute right-0 mt-2 w-72 origin-top-right rounded-xl bg-white shadow-xl ring-1 ring-black ring-opacity-5 focus:outline-none z-50 border border-slate-100 p-4 space-y-4">
+                  
+                  {/* Categoría */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Categoría</label>
+                    <select 
+                      value={selectedCategoryFilter} 
+                      onChange={e => { setSelectedCategoryFilter(e.target.value); setCurrentPage(1); }}
+                      className="block w-full rounded-lg border-slate-200 px-3 py-2 text-sm text-slate-700 focus:ring-primary focus:border-primary"
+                    >
+                      <option value="all">Todas</option>
+                      {categories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                    </select>
                   </div>
-                </div>
-              )}
-            </div>
-            <div className="relative" ref={statusRef}>
-              <button 
-                onClick={() => { setIsStatusFilterOpen(prev => !prev); setIsCategoryFilterOpen(false); }} 
-                className="group w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-lg bg-white border border-slate-200 hover:border-primary transition-all shadow-[0_2px_4px_rgba(0,0,0,0.05)] font-display"
-              >
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Estado:</span>
-                <span className="text-sm font-medium text-slate-900 whitespace-nowrap">{selectedStatusFilter === 'all' ? 'Todos' : selectedStatusFilter}</span>
-                <span className="material-symbols-outlined text-slate-400 group-hover:text-primary text-[20px] transition-transform">expand_more</span>
-              </button>
-              {isStatusFilterOpen && (
-                <div className="absolute right-0 mt-2 w-48 origin-top-right rounded-xl bg-white shadow-xl ring-1 ring-black ring-opacity-5 focus:outline-none z-50 border border-slate-100 p-1">
-                  <div className="py-1">
-                    <a href="#" onClick={e => { e.preventDefault(); setSelectedStatusFilter('all'); setIsStatusFilterOpen(false); setCurrentPage(1); }} className="text-slate-600 block px-4 py-2 text-sm hover:bg-slate-50 rounded-lg transition-colors font-display italic">Todos</a>
-                    {statuses.map(status => (
-                      <a href="#" key={status} onClick={e => { e.preventDefault(); setSelectedStatusFilter(status); setIsStatusFilterOpen(false); setCurrentPage(1); }} className="text-slate-700 block px-4 py-2 text-sm hover:bg-slate-50 rounded-lg transition-colors font-display">{status}</a>
-                    ))}
+
+                  {/* Estado */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Estado</label>
+                    <select 
+                      value={selectedStatusFilter} 
+                      onChange={e => { setSelectedStatusFilter(e.target.value); setCurrentPage(1); }}
+                      className="block w-full rounded-lg border-slate-200 px-3 py-2 text-sm text-slate-700 focus:ring-primary focus:border-primary"
+                    >
+                      <option value="all">Todos</option>
+                      {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
                   </div>
+
+                  {/* Tipo de Bodega (Tipo de Producto) */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Tipo de Producto / Bodega</label>
+                    <select 
+                      value={selectedWarehouseTypeFilter} 
+                      onChange={e => { setSelectedWarehouseTypeFilter(e.target.value); setCurrentPage(1); }}
+                      className="block w-full rounded-lg border-slate-200 px-3 py-2 text-sm text-slate-700 focus:ring-primary focus:border-primary"
+                    >
+                      <option value="all">Todos</option>
+                      <option value="venta">Venta</option>
+                      <option value="alquiler">Alquiler</option>
+                    </select>
+                  </div>
+
+                  {/* Nombre de Bodega */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Bodega (Nombre)</label>
+                    <select 
+                      value={selectedWarehouseFilter} 
+                      onChange={e => { setSelectedWarehouseFilter(e.target.value); setCurrentPage(1); }}
+                      className="block w-full rounded-lg border-slate-200 px-3 py-2 text-sm text-slate-700 focus:ring-primary focus:border-primary"
+                    >
+                      <option value="all">Todas</option>
+                      {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                    </select>
+                  </div>
+
+                  <div className="pt-2">
+                    <button 
+                      onClick={() => {
+                        setSelectedCategoryFilter('all');
+                        setSelectedStatusFilter('all');
+                        setSelectedWarehouseTypeFilter('all');
+                        setSelectedWarehouseFilter('all');
+                        setCurrentPage(1);
+                      }}
+                      className="w-full py-2 text-xs font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                    >
+                      Limpiar Filtros
+                    </button>
+                  </div>
+
                 </div>
               )}
             </div>
@@ -1266,19 +1393,68 @@ export default function AdminProductsPage() {
             <table className="w-full text-left border-collapse">
               <thead className="sticky top-0 z-20 bg-slate-50">
                 <tr className="bg-slate-50 border-b border-slate-200">
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Producto</th>
-                  <th className="hidden lg:table-cell px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Categoría</th>
-                  <th className="hidden sm:table-cell px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">SKU</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Venta / +IVA</th>
-                  <th className="hidden md:table-cell px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Bodega Principal</th>
-                  <th className="hidden xl:table-cell px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Bodega Auxiliar</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Stock Total</th>
-                  <th className="hidden md:table-cell px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Estado</th>
+                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider relative z-30">
+                    <div className="flex items-center gap-2" ref={columnDropdownRef}>
+                      <button 
+                        onClick={() => setIsColumnDropdownOpen(!isColumnDropdownOpen)}
+                        className="p-1 rounded hover:bg-slate-200 transition-colors bg-white shadow-sm border border-slate-200"
+                        title="Configurar columnas"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">view_column</span>
+                      </button>
+                      <span>Producto</span>
+                      {isColumnDropdownOpen && (
+                        <div className="absolute left-6 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 p-2 z-50 text-left font-normal normal-case">
+                          <div className="text-xs font-bold text-slate-400 uppercase mb-2 px-2">Columnas Visibles</div>
+                          <label className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded cursor-pointer">
+                            <input type="checkbox" checked={visibleColumns.type} onChange={() => setVisibleColumns(p => ({...p, type: !p.type}))} className="rounded border-slate-300 text-primary focus:ring-primary" />
+                            <span className="text-sm text-slate-700">Tipo</span>
+                          </label>
+                          <label className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded cursor-pointer">
+                            <input type="checkbox" checked={visibleColumns.category} onChange={() => setVisibleColumns(p => ({...p, category: !p.category}))} className="rounded border-slate-300 text-primary focus:ring-primary" />
+                            <span className="text-sm text-slate-700">Categoría</span>
+                          </label>
+                          <label className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded cursor-pointer">
+                            <input type="checkbox" checked={visibleColumns.sku} onChange={() => setVisibleColumns(p => ({...p, sku: !p.sku}))} className="rounded border-slate-300 text-primary focus:ring-primary" />
+                            <span className="text-sm text-slate-700">SKU</span>
+                          </label>
+                          <label className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded cursor-pointer">
+                            <input type="checkbox" checked={visibleColumns.price} onChange={() => setVisibleColumns(p => ({...p, price: !p.price}))} className="rounded border-slate-300 text-primary focus:ring-primary" />
+                            <span className="text-sm text-slate-700">Venta / +IVA</span>
+                          </label>
+                          <label className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded cursor-pointer">
+                            <input type="checkbox" checked={visibleColumns.mainWarehouse} onChange={() => setVisibleColumns(p => ({...p, mainWarehouse: !p.mainWarehouse}))} className="rounded border-slate-300 text-primary focus:ring-primary" />
+                            <span className="text-sm text-slate-700">Bodega Principal</span>
+                          </label>
+                          <label className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded cursor-pointer">
+                            <input type="checkbox" checked={visibleColumns.auxWarehouse} onChange={() => setVisibleColumns(p => ({...p, auxWarehouse: !p.auxWarehouse}))} className="rounded border-slate-300 text-primary focus:ring-primary" />
+                            <span className="text-sm text-slate-700">Bodega Auxiliar</span>
+                          </label>
+                          <label className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded cursor-pointer">
+                            <input type="checkbox" checked={visibleColumns.stock} onChange={() => setVisibleColumns(p => ({...p, stock: !p.stock}))} className="rounded border-slate-300 text-primary focus:ring-primary" />
+                            <span className="text-sm text-slate-700">Stock Total</span>
+                          </label>
+                          <label className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded cursor-pointer">
+                            <input type="checkbox" checked={visibleColumns.status} onChange={() => setVisibleColumns(p => ({...p, status: !p.status}))} className="rounded border-slate-300 text-primary focus:ring-primary" />
+                            <span className="text-sm text-slate-700">Estado</span>
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  </th>
+                  {visibleColumns.type && <th className="hidden lg:table-cell px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Tipo</th>}
+                  {visibleColumns.category && <th className="hidden lg:table-cell px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Categoría</th>}
+                  {visibleColumns.sku && <th className="hidden sm:table-cell px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">SKU</th>}
+                  {visibleColumns.price && <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Venta / +IVA</th>}
+                  {visibleColumns.mainWarehouse && <th className="hidden md:table-cell px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Bodega P.</th>}
+                  {visibleColumns.auxWarehouse && <th className="hidden xl:table-cell px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Bodega A.</th>}
+                  {visibleColumns.stock && <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Stock</th>}
+                  {visibleColumns.status && <th className="hidden md:table-cell px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Estado</th>}
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {loading ? (<tr><td colSpan={7} className="text-center p-8 text-slate-500">Cargando...</td></tr>) : error ? (<tr><td colSpan={7} className="text-center p-8 text-red-600 bg-red-50">{error}</td></tr>) : paginatedProducts.length > 0 ? (paginatedProducts.map((p) => {
+                {loading ? (<tr><td colSpan={10} className="text-center p-8 text-slate-500">Cargando...</td></tr>) : error ? (<tr><td colSpan={10} className="text-center p-8 text-red-600 bg-red-50">{error}</td></tr>) : paginatedProducts.length > 0 ? (paginatedProducts.map((p) => {
                   const statusInfo = getStatusInfo(p.status); const stockInfo = getStockInfo(p.stock_quantity);
                   const isOffer = p.original_price && p.original_price > 0 && Number(p.price) < Number(p.original_price);
                   const urls = parseImageUrls(p.image_urls);
@@ -1296,14 +1472,32 @@ export default function AdminProductsPage() {
                             </div>
                             <div>
                                 <p className="text-sm font-semibold text-slate-900 group-hover:text-primary transition-colors">
-                                  {p.name.length > 25 ? `${p.name.substring(0, 25)}...` : p.name}
+                                  {p.name.length > 15 ? `${p.name.substring(0, 15)}...` : p.name}
                                 </p>
                                 <p className="text-xs text-slate-500">{p.brands?.name || 'Sin marca'}</p>
                             </div>
                         </div>
                       </td>
-                      <td className="hidden lg:table-cell px-6 py-4 whitespace-nowrap"><span className="text-sm text-slate-700">{categories.find(c => c.id === p.category_id)?.name || 'Sin categoría'}</span></td>
+                      {visibleColumns.type && (
+                      <td className="hidden lg:table-cell px-6 py-4 whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${p.product_type === 'alquiler' ? 'bg-violet-100 text-violet-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                          {p.product_type === 'alquiler' ? 'ALQUILER' : 'VENTA'}
+                        </span>
+                      </td>
+                      )}
+                      {visibleColumns.category && (
+                      <td className="hidden lg:table-cell px-6 py-4 whitespace-nowrap">
+                        <span className="text-sm text-slate-700" title={categories.find(c => c.id === p.category_id)?.name || 'Sin categoría'}>
+                          {(categories.find(c => c.id === p.category_id)?.name || 'Sin categoría').length > 15 
+                            ? `${(categories.find(c => c.id === p.category_id)?.name || 'Sin categoría').substring(0, 15)}...` 
+                            : (categories.find(c => c.id === p.category_id)?.name || 'Sin categoría')}
+                        </span>
+                      </td>
+                      )}
+                      {visibleColumns.sku && (
                       <td className="hidden sm:table-cell px-6 py-4 whitespace-nowrap"><span className="text-sm font-mono text-slate-600">{p.sku || 'N/A'}</span></td>
+                      )}
+                      {visibleColumns.price && (
                       <td className="px-6 py-4 whitespace-nowrap text-right">
                         <div className="flex flex-col items-end">
                           <div className="flex items-center gap-1.5">
@@ -1316,6 +1510,8 @@ export default function AdminProductsPage() {
                           </div>
                         </div>
                       </td>
+                      )}
+                      {visibleColumns.mainWarehouse && (
                       <td className="hidden md:table-cell px-6 py-4 whitespace-nowrap text-center">
                         <div className="flex flex-col items-center">
                           <span className="text-xs font-bold text-primary bg-primary/5 px-2 py-1 rounded-md">
@@ -1323,6 +1519,8 @@ export default function AdminProductsPage() {
                           </span>
                         </div>
                       </td>
+                      )}
+                      {visibleColumns.auxWarehouse && (
                       <td className="hidden xl:table-cell px-6 py-4 whitespace-nowrap text-center">
                         <div className="flex flex-col items-center">
                           <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2 py-1 rounded-md">
@@ -1330,6 +1528,8 @@ export default function AdminProductsPage() {
                           </span>
                         </div>
                       </td>
+                      )}
+                      {visibleColumns.stock && (
                       <td className="px-6 py-4 whitespace-nowrap text-center">
                         <div className="flex flex-col items-center">
                           <span className={`text-sm font-bold text-${stockInfo.color}-600`}>
@@ -1337,20 +1537,26 @@ export default function AdminProductsPage() {
                           </span>
                         </div>
                       </td>
+                      )}
+                      {visibleColumns.status && (
                       <td className="hidden md:table-cell px-6 py-4 whitespace-nowrap">
                         <span className={`text-xs font-medium ${p.status === 'Activo' ? 'text-emerald-600' : 'text-slate-500'}`}>
                           {p.status}
                         </span>
                       </td>
+                      )}
                       <td className="px-6 py-4 whitespace-nowrap text-right">
                         <div className="flex items-center justify-end gap-2">
                           <button onClick={() => handleOpenEditModal(p)} className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors">
                             <span className="material-symbols-outlined text-[20px]">edit</span>
                           </button>
+                          <button onClick={() => openDeleteModal(p)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                            <span className="material-symbols-outlined text-[20px]">delete</span>
+                          </button>
                         </div>
                       </td>
                     </tr>);
-                })) : (<tr><td colSpan={9} className="text-center p-8 text-slate-500">No se encontraron productos.</td></tr>)
+                })) : (<tr><td colSpan={10} className="text-center p-8 text-slate-500">No se encontraron productos.</td></tr>)
               }
             </tbody>
           </table>
@@ -1470,6 +1676,31 @@ export default function AdminProductsPage() {
             </div>
           </div>
 
+          {/* 5b. Tipo de Producto */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Tipo de Producto <span className="text-red-500">*</span></label>
+            <select 
+              name="product_type" 
+              value={productForm.product_type} 
+              onChange={(e) => {
+                const newType = e.target.value;
+                setProductForm(prev => ({
+                  ...prev, 
+                  product_type: newType,
+                  // Reset pricing fields when switching type
+                  ...(newType === 'alquiler' ? { cost: '', profit_percentage: '', original_price: '', price_usd: '', price_with_iva: '' } : { rental_price: '', includes_iva: false }),
+                  // Reset warehouse selection since filtered list changes
+                  warehouse_id: '',
+                  auxiliary_warehouse_id: '',
+                }));
+              }}
+              className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm"
+            >
+              <option value="venta">Venta</option>
+              <option value="alquiler">Alquiler</option>
+            </select>
+          </div>
+
           {/* 6. Bodegas y Stocks Individuales */}
           <div className="space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
             <h3 className="text-sm font-bold text-slate-900 border-b border-slate-200 pb-2 flex items-center gap-2">
@@ -1489,7 +1720,12 @@ export default function AdminProductsPage() {
                             className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm"
                         >
                             <option value="">Seleccionar...</option>
-                            {warehouses.map(w => <option key={w.id} value={w.id}>{w.name} ({w.id})</option>)}
+                            {warehouses
+                              .filter(w => {
+                                if (productForm.product_type === 'alquiler') return w.warehouse_type === 'alquiler' || w.warehouse_type === 'ambos';
+                                return w.warehouse_type === 'venta' || w.warehouse_type === 'ambos' || !w.warehouse_type;
+                              })
+                              .map(w => <option key={w.id} value={w.id}>{w.name} ({w.id})</option>)}
                         </select>
                     </div>
                     {productForm.warehouse_id && (
@@ -1518,7 +1754,12 @@ export default function AdminProductsPage() {
                             className="block w-full rounded-lg border-slate-600 px-4 py-[10.5px] bg-white text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.25)] focus:border-primary focus:ring-primary sm:text-sm"
                         >
                             <option value="">Ninguna</option>
-                            {warehouses.map(w => <option key={w.id} value={w.id}>{w.name} ({w.id})</option>)}
+                            {warehouses
+                              .filter(w => {
+                                if (productForm.product_type === 'alquiler') return w.warehouse_type === 'alquiler' || w.warehouse_type === 'ambos';
+                                return w.warehouse_type === 'venta' || w.warehouse_type === 'ambos' || !w.warehouse_type;
+                              })
+                              .map(w => <option key={w.id} value={w.id}>{w.name} ({w.id})</option>)}
                         </select>
                     </div>
                     {productForm.auxiliary_warehouse_id && (
@@ -1538,12 +1779,64 @@ export default function AdminProductsPage() {
             </div>
           </div>
 
-          {/* Bloque de Precios (Azul) */}
-          <div className="bg-blue-50/50 p-6 rounded-2xl border border-blue-100 space-y-6">
-            <h3 className="text-sm font-bold text-blue-900 flex items-center gap-2 border-b border-blue-100 pb-2">
-              <span className="material-symbols-outlined text-[20px]">payments</span>
-              Gestión de Costos y Precios
-            </h3>
+          {/* Bloque de Precios */}
+          {productForm.product_type === 'alquiler' ? (
+            /* === PRECIOS DE ALQUILER === */
+            <div className="bg-violet-50/50 p-6 rounded-2xl border border-violet-100 space-y-6">
+              <h3 className="text-sm font-bold text-violet-900 flex items-center gap-2 border-b border-violet-100 pb-2">
+                <span className="material-symbols-outlined text-[20px]">real_estate_agent</span>
+                Gestión de Precios de Alquiler
+              </h3>
+              
+              <div>
+                <label className="block text-xs font-bold text-violet-800 mb-2 uppercase tracking-tight">Valor del producto en alquiler <span className="text-red-500">*</span></label>
+                <input 
+                  type="number" 
+                  name="rental_price" 
+                  value={productForm.rental_price} 
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setProductForm(prev => ({ ...prev, rental_price: val }));
+                  }}
+                  required 
+                  placeholder="0" 
+                  className="block w-full rounded-lg border-violet-200 px-4 py-2.5 bg-white text-slate-900 shadow-sm focus:border-violet-500 focus:ring-violet-500 sm:text-sm font-bold" 
+                />
+              </div>
+
+              <div className="flex items-center gap-3">
+                <input 
+                  id="includes-iva" 
+                  type="checkbox" 
+                  checked={!!productForm.includes_iva} 
+                  onChange={e => setProductForm(prev => ({ ...prev, includes_iva: e.target.checked }))}
+                  className="h-4 w-4 rounded border-violet-300 text-violet-600 focus:ring-violet-500"
+                />
+                <label htmlFor="includes-iva" className="text-sm font-medium text-violet-800">¿Incluye IVA?</label>
+              </div>
+
+              {productForm.includes_iva && (
+                <div className="animate-in slide-in-from-top-2 duration-300">
+                  <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-tight">Valor Final + IVA (19%) - Lectura</label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-3 flex items-center text-slate-400 font-bold">$</span>
+                    <input 
+                      type="number" 
+                      value={productForm.rental_price ? Math.round(parseFloat(productForm.rental_price as string) * 1.19) : ''} 
+                      readOnly 
+                      className="block w-full rounded-lg border-slate-200 pl-8 pr-4 py-2.5 bg-slate-100 text-slate-500 shadow-inner sm:text-sm font-mono cursor-not-allowed" 
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* === PRECIOS DE VENTA (original) === */
+            <div className="bg-blue-50/50 p-6 rounded-2xl border border-blue-100 space-y-6">
+              <h3 className="text-sm font-bold text-blue-900 flex items-center gap-2 border-b border-blue-100 pb-2">
+                <span className="material-symbols-outlined text-[20px]">payments</span>
+                Gestión de Costos y Precios
+              </h3>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
@@ -1658,6 +1951,7 @@ export default function AdminProductsPage() {
               </div>
             </div>
           </div>
+          )}
 
           <div className="flex items-center gap-3">
              <input id="is-offer" type="checkbox" checked={isOfferActive} onChange={e => setIsOfferActive(e.target.checked)} className="h-4 w-4 rounded border-slate-600 text-primary focus:ring-primary"/>

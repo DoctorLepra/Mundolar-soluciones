@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import RoleGuard from '@/components/admin/RoleGuard';
@@ -15,6 +15,7 @@ interface Warehouse {
   description: string | null;
   location: string | null;
   status: string;
+  warehouse_type: string;
   created_at: string;
   total_stock?: number;
   total_value?: number;
@@ -44,11 +45,18 @@ function AdminWarehousesPageContent() {
     name: '',
     description: '',
     location: '',
-    status: 'Activo'
+    status: 'Activo',
+    warehouse_type: 'venta'
   });
 
   // Search State
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Filter States
+  const [selectedWarehouseTypeFilter, setSelectedWarehouseTypeFilter] = useState('all');
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState('all');
+  const [isFiltersDropdownOpen, setIsFiltersDropdownOpen] = useState(false);
+  const filtersRef = useRef<HTMLDivElement>(null);
 
   // Delete State
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -57,6 +65,14 @@ function AdminWarehousesPageContent() {
 
   useEffect(() => {
     fetchWarehouses();
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (filtersRef.current && !filtersRef.current.contains(event.target as Node)) {
+        setIsFiltersDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const fetchWarehouses = async () => {
@@ -105,14 +121,17 @@ function AdminWarehousesPageContent() {
   const filteredWarehouses = useMemo(() => {
     return warehouses.filter(w => {
       const search = searchTerm.toLowerCase();
-      return (
-        w.id.toLowerCase().includes(search) ||
+      const matchesSearch = w.id.toLowerCase().includes(search) ||
         w.name.toLowerCase().includes(search) ||
         (w.location && w.location.toLowerCase().includes(search)) ||
-        (w.description && w.description.toLowerCase().includes(search))
-      );
+        (w.description && w.description.toLowerCase().includes(search));
+        
+      const matchesType = selectedWarehouseTypeFilter === 'all' || w.warehouse_type === selectedWarehouseTypeFilter;
+      const matchesStatus = selectedStatusFilter === 'all' || w.status === selectedStatusFilter;
+
+      return matchesSearch && matchesType && matchesStatus;
     });
-  }, [warehouses, searchTerm]);
+  }, [warehouses, searchTerm, selectedWarehouseTypeFilter, selectedStatusFilter]);
 
   const handleOpenCreateModal = () => {
     setWarehouseToEdit(null);
@@ -121,7 +140,8 @@ function AdminWarehousesPageContent() {
       name: '',
       description: '',
       location: '',
-      status: 'Activo'
+      status: 'Activo',
+      warehouse_type: 'venta'
     });
     setFormError(null);
     setIsModalOpen(true);
@@ -134,7 +154,8 @@ function AdminWarehousesPageContent() {
       name: warehouse.name,
       description: warehouse.description || '',
       location: warehouse.location || '',
-      status: warehouse.status
+      status: warehouse.status,
+      warehouse_type: warehouse.warehouse_type || 'venta'
     });
     setFormError(null);
     setIsModalOpen(true);
@@ -175,7 +196,8 @@ function AdminWarehousesPageContent() {
             name: formData.name,
             description: formData.description,
             location: formData.location,
-            status: formData.status
+            status: formData.status,
+            warehouse_type: formData.warehouse_type
           })
           .eq('id', warehouseToEdit.id)
           .select();
@@ -254,6 +276,7 @@ function AdminWarehousesPageContent() {
     if (filteredWarehouses.length === 0) return;
     const exportData = filteredWarehouses.map(w => ({
       ID: w.id,
+      Tipo: w.warehouse_type === 'alquiler' ? 'Alquiler' : w.warehouse_type === 'ambos' ? 'Ambos' : 'Venta',
       Nombre: w.name,
       Ubicación: w.location,
       "Stock Total": w.total_stock || 0,
@@ -305,6 +328,64 @@ function AdminWarehousesPageContent() {
               type="text"
             />
           </div>
+          <div className="flex flex-wrap gap-3 w-full lg:w-auto">
+            <div className="relative" ref={filtersRef}>
+              <button 
+                onClick={() => setIsFiltersDropdownOpen(prev => !prev)} 
+                className="group w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-lg bg-white border border-slate-200 hover:border-primary transition-all shadow-[0_2px_4px_rgba(0,0,0,0.05)] font-display"
+              >
+                <span className="material-symbols-outlined text-[20px] text-slate-500">tune</span>
+                <span className="text-sm font-medium text-slate-900">Filtros Avanzados</span>
+                <span className="material-symbols-outlined text-slate-400 group-hover:text-primary text-[20px] transition-transform">expand_more</span>
+              </button>
+              {isFiltersDropdownOpen && (
+                <div className="absolute right-0 mt-2 w-72 origin-top-right rounded-xl bg-white shadow-xl ring-1 ring-black ring-opacity-5 focus:outline-none z-50 border border-slate-100 p-4 space-y-4">
+                  
+                  {/* Tipo de Bodega */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Tipo de Bodega</label>
+                    <select 
+                      value={selectedWarehouseTypeFilter} 
+                      onChange={e => setSelectedWarehouseTypeFilter(e.target.value)}
+                      className="block w-full rounded-lg border-slate-200 px-3 py-2 text-sm text-slate-700 focus:ring-primary focus:border-primary"
+                    >
+                      <option value="all">Todos</option>
+                      <option value="venta">Venta</option>
+                      <option value="alquiler">Alquiler</option>
+                      <option value="ambos">Ambos</option>
+                    </select>
+                  </div>
+
+                  {/* Estado */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Estado</label>
+                    <select 
+                      value={selectedStatusFilter} 
+                      onChange={e => setSelectedStatusFilter(e.target.value)}
+                      className="block w-full rounded-lg border-slate-200 px-3 py-2 text-sm text-slate-700 focus:ring-primary focus:border-primary"
+                    >
+                      <option value="all">Todos</option>
+                      <option value="Activo">Activo</option>
+                      <option value="Inactivo">Inactivo</option>
+                    </select>
+                  </div>
+
+                  <div className="pt-2">
+                    <button 
+                      onClick={() => {
+                        setSelectedWarehouseTypeFilter('all');
+                        setSelectedStatusFilter('all');
+                      }}
+                      className="w-full py-2 text-xs font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                    >
+                      Limpiar Filtros
+                    </button>
+                  </div>
+
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </header>
 
@@ -316,6 +397,7 @@ function AdminWarehousesPageContent() {
                 <tr className="bg-slate-50 border-b border-slate-200">
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Código Bodega</th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Nombre</th>
+                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Tipo</th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Ubicación</th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Stock Total</th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Valor Stock</th>
@@ -325,9 +407,9 @@ function AdminWarehousesPageContent() {
               </thead>
               <tbody className="divide-y divide-slate-200">
                 {loading ? (
-                  <tr><td colSpan={7} className="text-center p-8 text-slate-500 font-display">Cargando bodegas...</td></tr>
+                  <tr><td colSpan={8} className="text-center p-8 text-slate-500 font-display">Cargando bodegas...</td></tr>
                 ) : error ? (
-                  <tr><td colSpan={7} className="text-center p-8 text-red-600 bg-red-50 font-display">{error}</td></tr>
+                  <tr><td colSpan={8} className="text-center p-8 text-red-600 bg-red-50 font-display">{error}</td></tr>
                 ) : filteredWarehouses.length > 0 ? (
                   filteredWarehouses.map((w) => (
                     <tr key={w.id} className="hover:bg-slate-50 transition-colors group">
@@ -339,6 +421,17 @@ function AdminWarehousesPageContent() {
                           <span className="text-sm font-semibold text-slate-900 group-hover:text-primary transition-colors">{w.name}</span>
                           <span className="text-xs text-slate-500 truncate max-w-[200px]">{w.description}</span>
                         </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold ${
+                          w.warehouse_type === 'alquiler' 
+                            ? 'bg-violet-50 text-violet-700' 
+                            : w.warehouse_type === 'ambos'
+                              ? 'bg-amber-50 text-amber-700'
+                              : 'bg-emerald-50 text-emerald-700'
+                        }`}>
+                          {w.warehouse_type === 'alquiler' ? 'Alquiler' : w.warehouse_type === 'ambos' ? 'Ambos' : 'Venta'}
+                        </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">{w.location}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-center">
@@ -380,7 +473,7 @@ function AdminWarehousesPageContent() {
                     </tr>
                   ))
                 ) : (
-                  <tr><td colSpan={7} className="text-center p-8 text-slate-500 font-display">No se encontraron bodegas.</td></tr>
+                  <tr><td colSpan={8} className="text-center p-8 text-slate-500 font-display">No se encontraron bodegas.</td></tr>
                 )}
               </tbody>
             </table>
@@ -444,6 +537,20 @@ function AdminWarehousesPageContent() {
                       </span>
                     </div>
                   </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Tipo de Bodega *</label>
+                  <select 
+                    name="warehouse_type" 
+                    value={formData.warehouse_type} 
+                    onChange={handleFormChange}
+                    className="block w-full rounded-xl border-slate-200 px-4 py-2.5 text-sm font-bold focus:ring-primary focus:border-primary transition-all"
+                  >
+                    <option value="venta">Venta</option>
+                    <option value="alquiler">Alquiler</option>
+                    <option value="ambos">Ambos</option>
+                  </select>
                 </div>
 
                 <div className="space-y-1.5">

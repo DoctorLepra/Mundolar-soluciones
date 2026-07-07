@@ -34,6 +34,7 @@ export default function AdminDashboard() {
   });
   const [recentInventory, setRecentInventory] = useState<any[]>([]);
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
+  const [recentRentals, setRecentRentals] = useState<any[]>([]);
   const [salesTrend, setSalesTrend] = useState<any[]>([]);
   const [statusDistribution, setStatusDistribution] = useState<any[]>([]);
   const [topProducts, setTopProducts] = useState<any[]>([]);
@@ -220,6 +221,14 @@ export default function AdminDashboard() {
       }
       const { data: recentOrdersData } = await recentOrdersQuery;
       setRecentOrders(recentOrdersData || []);
+
+      const { data: recentRentalsData } = await supabase
+        .from('order_items')
+        .select('order_id, quantity, rental_days, is_rental, products(name), orders(created_at, status)')
+        .eq('is_rental', true)
+        .order('id', { ascending: false })
+        .limit(5);
+      setRecentRentals(recentRentalsData || []);
 
     } catch (error) {
       console.error('Error dashboard:', error);
@@ -582,6 +591,70 @@ export default function AdminDashboard() {
 
         </div>
 
+        {/* Historial de Alquileres */}
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden mt-6">
+          <div className="p-6 pb-0 flex justify-between items-center">
+            <h3 className="text-lg font-black text-slate-900 font-display">Alquileres recientes</h3>
+          </div>
+          <div className="overflow-x-auto p-4 pt-4">
+            <table className="w-full text-left border-collapse min-w-[600px]">
+              <thead>
+                <tr className="bg-slate-50/50 border-y border-slate-100">
+                  <th className="py-4 px-6 text-xs font-semibold text-slate-500 font-sans uppercase tracking-wider">Pedido</th>
+                  <th className="py-4 px-6 text-xs font-semibold text-slate-500 font-sans uppercase tracking-wider">Producto</th>
+                  <th className="py-4 px-6 text-xs font-semibold text-slate-500 font-sans uppercase tracking-wider text-center">Cantidad</th>
+                  <th className="py-4 px-6 text-xs font-semibold text-slate-500 font-sans uppercase tracking-wider text-center">Tiempo (Días)</th>
+                  <th className="py-4 px-6 text-xs font-semibold text-slate-500 font-sans uppercase tracking-wider">Fecha</th>
+                  <th className="py-4 px-6 text-xs font-semibold text-slate-500 font-sans uppercase tracking-wider text-center">Estado</th>
+                  <th className="py-4 px-6"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {recentRentals.length > 0 ? recentRentals.map((rental, idx) => (
+                  <tr key={idx} 
+                      className="group hover:bg-slate-50/50 transition-colors cursor-pointer"
+                      onClick={() => window.location.href = `/admin/pedidos?id=${rental.order_id}`}>
+                    <td className="py-4 px-6 text-sm font-black text-primary font-mono tracking-tighter">
+                      #{rental.order_id?.toString().padStart(5, '0')}
+                    </td>
+                    <td className="py-4 px-6">
+                      <span className="text-sm font-bold text-slate-800 font-display line-clamp-1 group-hover:text-primary transition-colors">
+                        {rental.products?.name || 'Producto desconocido'}
+                      </span>
+                    </td>
+                    <td className="py-4 px-6 text-center">
+                      <span className="text-sm font-black text-slate-900 font-mono bg-slate-100 px-3 py-1 rounded-lg">{rental.quantity}</span>
+                    </td>
+                    <td className="py-4 px-6 text-center">
+                      <span className="text-sm font-bold text-amber-600 bg-amber-50 px-3 py-1 rounded-lg">{rental.rental_days || 0}</span>
+                    </td>
+                    <td className="py-4 px-6">
+                      <span className="text-sm font-medium text-slate-500">{rental.orders?.created_at ? new Date(rental.orders.created_at).toLocaleDateString('es-CO', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}</span>
+                    </td>
+                    <td className="py-4 px-6 text-center">
+                      <span className={`px-3 py-1 rounded-xl text-[11px] font-bold uppercase tracking-wider ${
+                        rental.orders?.status === 'Completado' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'
+                      }`}>
+                        {rental.orders?.status || 'Pendiente'}
+                      </span>
+                    </td>
+                    <td className="py-4 px-6 text-right">
+                      <div className="p-1.5 bg-slate-50 text-slate-400 rounded-lg group-hover:bg-primary group-hover:text-white transition-all inline-flex">
+                        <span className="material-symbols-outlined text-[18px]">east</span>
+                      </div>
+                    </td>
+                  </tr>
+                )) : (
+                  <tr>
+                    <td colSpan={7} className="py-8 text-center text-sm font-medium text-slate-400">
+                      No hay alquileres recientes.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </main>
   );

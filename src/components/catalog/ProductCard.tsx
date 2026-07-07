@@ -82,6 +82,11 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
           <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-100 text-[11px] font-medium text-slate-600">
             {product.categories?.name || 'General'}
           </span>
+          {product.product_type === 'alquiler' && (
+            <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-amber-100 text-[11px] font-medium text-amber-700">
+              Alquiler
+            </span>
+          )}
         </div>
         
         <p className="text-xs text-slate-500 line-clamp-2 mb-4 leading-relaxed">

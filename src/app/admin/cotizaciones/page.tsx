@@ -32,6 +32,8 @@ interface Product {
   price: number;
   image_urls: string | null;
   stock_quantity: number;
+  product_type?: string;
+  rental_price?: number | null;
 }
 
 interface UserProfile {
@@ -44,6 +46,8 @@ interface QuoteItem {
   product: Product;
   quantity: number;
   unit_price: number;
+  is_rental?: boolean;
+  rental_days?: number;
 }
 
 interface Quote {
@@ -66,8 +70,7 @@ interface Quote {
 }
 
 const DEFAULT_CONDITIONS = {
-  venta: `* Vigencia: 3 días hábiles
-* Disponibilidad: Inmediata, sujeto rotación inventario almacén
+  venta: `* Disponibilidad: Inmediata, sujeto rotación inventario almacén
 * Tiempo de entrega: Despacho una vez cancelada la factura
 * Cuenta Bancaria: Bancolombia ahorros No. 74300004050 Mundolar Soluciones Sas
 * Cuenta Bancaria: Banco Caja Social ahorros No. 24122592885 Mundolar Soluciones Sas
@@ -75,8 +78,7 @@ const DEFAULT_CONDITIONS = {
 * Transporte a nivel nacional: el envìo y/o despacho se realiza por la transportadora que 
    indique el cliente final  y bajo la responsabilidad de este.
 * Obsequio. Programación de radios de comunicaciones`,
-  alquiler: `* Vigencia: 3 días hábiles
-* Radios Incluyen: bateria, clip, antena y cargador completo  -  En perfectas condiciones para la operación
+  alquiler: `* Radios Incluyen: bateria, clip, antena y cargador completo  -  En perfectas condiciones para la operación
 * Se debe tener registro de cliente actualizado a la fecha de solicitar el servicio
 * Todo alquiler maneja un deposito en efectivo, valor que se devuelve al momento de recibir los equipos
 * Al momento de entregar el servicio de alquiler se emite carta compromisoria para firmas y compromisos
@@ -85,8 +87,7 @@ const DEFAULT_CONDITIONS = {
    indique el cliente final  y bajo la responsabilidad de este.
 * Cuenta Bancaria: Bancolombia ahorros No. 74300004050 Mundolar Soluciones Sas
 * Cuenta Bancaria: Banco Caja Social ahorros No. 24122592885 Mundolar Soluciones Sas`,
-  mantenimiento: `* Vigencia: 3 días hábiles
-* Garantìa mano de obra: 40 dìas sobre las mismas reparaciones efectuadas
+  mantenimiento: `* Garantìa mano de obra: 40 dìas sobre las mismas reparaciones efectuadas
 * Todo radio es diagnosticado bajo una orden de servicio, permitiendo un historial tècnico de cada equipo.
 * Forma de pago: Contado, en caso de no aprobaciòn el valor por cada equipo diagnosticado es de $18.000
 * Cuenta Bancaria: Bancolombia ahorros No. 74300004050 Mundolar Soluciones Sas
@@ -136,6 +137,7 @@ function AdminQuotesPageContent() {
   
   // Product search states
   const [productSearchTerm, setProductSearchTerm] = useState('');
+  const [productTypeFilter, setProductTypeFilter] = useState('all');
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProducts, setSelectedProducts] = useState<QuoteItem[]>([]);
 
@@ -254,6 +256,8 @@ function AdminQuotesPageContent() {
         .select(`
           quantity,
           unit_price,
+          is_rental,
+          rental_days,
           products (*)
         `)
         .eq('quote_id', quoteId);
@@ -282,19 +286,28 @@ function AdminQuotesPageContent() {
     }
   };
 
-  const fetchProducts = async (search: string = '') => {
+  const fetchProducts = async (search: string = '', type: string = productTypeFilter) => {
     try {
       let query = supabase.from('products').select('*').eq('status', 'Activo');
       if (search) {
         query = query.or(`name.ilike.%${search}%,sku.ilike.%${search}%`);
       }
-      const { data, error } = await query.limit(10);
+      if (type !== 'all') {
+        query = query.eq('product_type', type);
+      }
+      const { data, error } = await query.limit(20);
       if (error) throw error;
       setProducts(data || []);
     } catch (error: any) {
       console.error('Error fetching products:', error);
     }
   };
+
+  useEffect(() => {
+    if (isProductSearchModalOpen) {
+      fetchProducts(productSearchTerm, productTypeFilter);
+    }
+  }, [productTypeFilter, isProductSearchModalOpen]);
 
   // Handle client selection from modal
   // Auto-selección de cliente por documento/NIT en Cotizaciones
@@ -389,41 +402,59 @@ function AdminQuotesPageContent() {
       alert('Producto sin stock disponible');
       return;
     }
-    const existing = selectedProducts.find(p => p.product.id === product.id);
-    if (existing) {
-      if (existing.quantity + 1 > product.stock_quantity) {
-        alert('No se puede exceder el stock disponible');
-        return;
+    const isRental = product.product_type === 'alquiler';
+    const unitPrice = isRental && product.rental_price ? product.rental_price : product.price;
+
+    setSelectedProducts(prev => {
+      const existing = prev.find(p => p.product.id === product.id);
+      if (existing) {
+        if (existing.quantity + 1 > product.stock_quantity) {
+          alert('No se puede exceder el stock disponible');
+          return prev;
+        }
+        return prev.map(p => 
+          p.product.id === product.id ? { ...p, quantity: p.quantity + 1 } : p
+        );
+      } else {
+        return [...prev, {
+          product,
+          quantity: 1,
+          unit_price: unitPrice,
+          is_rental: isRental,
+          rental_days: isRental ? 1 : undefined
+        }];
       }
-      setSelectedProducts(selectedProducts.map(p => 
-        p.product.id === product.id ? { ...p, quantity: p.quantity + 1 } : p
-      ));
-    } else {
-      setSelectedProducts([...selectedProducts, {
-        product,
-        quantity: 1,
-        unit_price: product.price
-      }]);
-    }
+    });
   };
 
   const handleQuantityChange = (productId: string, quantity: number) => {
-    if (quantity <= 0) {
-      setSelectedProducts(selectedProducts.filter(p => p.product.id !== productId));
-    } else {
-      const item = selectedProducts.find(p => p.product.id === productId);
-      if (item && quantity > item.product.stock_quantity) {
-        alert(`Solo hay ${item.product.stock_quantity} unidades disponibles`);
-        return;
+    setSelectedProducts(prev => {
+      if (quantity <= 0) {
+        return prev.filter(p => p.product.id !== productId);
+      } else {
+        const item = prev.find(p => p.product.id === productId);
+        if (item && quantity > item.product.stock_quantity) {
+          alert(`Solo hay ${item.product.stock_quantity} unidades disponibles`);
+          return prev;
+        }
+        return prev.map(p =>
+          p.product.id === productId ? { ...p, quantity } : p
+        );
       }
-      setSelectedProducts(selectedProducts.map(p =>
-        p.product.id === productId ? { ...p, quantity } : p
-      ));
-    }
+    });
+  };
+
+  const handleRentalDaysChange = (productId: string, days: number) => {
+    setSelectedProducts(prev => prev.map(p =>
+      p.product.id === productId ? { ...p, rental_days: Math.max(1, days) } : p
+    ));
   };
 
   const calculateSubtotal = () => {
-    return selectedProducts.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0);
+    return selectedProducts.reduce((sum, item) => {
+      const multiplier = item.is_rental && item.rental_days ? item.rental_days : 1;
+      return sum + ((item.unit_price * item.quantity) * multiplier);
+    }, 0);
   };
 
   const calculateTotal = () => {
@@ -502,7 +533,9 @@ function AdminQuotesPageContent() {
         product_id: p.product.id,
         quantity: p.quantity,
         unit_price: p.unit_price,
-        total_price: p.unit_price * p.quantity
+        total_price: p.unit_price * p.quantity * (p.is_rental && p.rental_days ? p.rental_days : 1),
+        is_rental: p.is_rental || false,
+        rental_days: p.is_rental ? (p.rental_days || 1) : null
       }));
 
       const { error: itemsError } = await supabase.from('quote_items').insert(items);
@@ -581,6 +614,25 @@ function AdminQuotesPageContent() {
     }
   };
 
+  const handleOpenCreateModal = () => {
+    setIsEditMode(false);
+    setSelectedClient(null);
+    setSelectedProducts([]);
+    setQuoteForm({ 
+      observations: '', 
+      discount_percentage: '0', 
+      valid_until: '',
+      conditions: {
+        venta: { enabled: false, text: DEFAULT_CONDITIONS.venta },
+        alquiler: { enabled: false, text: DEFAULT_CONDITIONS.alquiler },
+        mantenimiento: { enabled: false, text: DEFAULT_CONDITIONS.mantenimiento }
+      }
+    });
+    setClientSearchTerm('');
+    setProductSearchTerm('');
+    setIsCreateModalOpen(true);
+  };
+
   const handleEditQuote = (quote: Quote) => {
     setSelectedClient(quote.clients || null);
     setClientSearchTerm(quote.clients?.document_number || quote.clients?.nit || '');
@@ -620,7 +672,9 @@ function AdminQuotesPageContent() {
       setSelectedProducts(selectedQuoteItems.map(item => ({
         product: item.products,
         quantity: item.quantity,
-        unit_price: item.unit_price
+        unit_price: item.unit_price,
+        is_rental: item.is_rental,
+        rental_days: item.rental_days
       })));
     }
     
@@ -651,7 +705,7 @@ function AdminQuotesPageContent() {
         </div>
         <div className="hidden lg:flex">
           <button 
-            onClick={() => setIsCreateModalOpen(true)}
+            onClick={handleOpenCreateModal}
             className="flex items-center justify-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95 hover:bg-primary-dark shadow-primary/20"
           >
             <span className="material-symbols-outlined text-[20px]">add</span>
@@ -994,14 +1048,21 @@ function AdminQuotesPageContent() {
                               )}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-bold text-slate-900 truncate font-display">{item.products?.name || 'Producto desconocido'}</p>
-                              <p className="text-xs text-slate-500 font-display">
-                                {item.quantity} x ${formatCurrency(item.unit_price)}
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-bold text-slate-900 truncate font-display">{item.products?.name || 'Producto desconocido'}</p>
+                                {item.is_rental && (
+                                  <span className="px-1.5 py-0.5 bg-purple-100 text-purple-600 text-[9px] font-black rounded uppercase tracking-widest flex-shrink-0">
+                                    Alquiler
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-slate-500 font-display mt-0.5">
+                                {item.quantity} x ${formatCurrency(item.unit_price)} {item.is_rental && item.rental_days ? `x ${item.rental_days} días` : ''}
                               </p>
                             </div>
                             <div className="text-right">
                               <p className="text-sm font-bold text-slate-900 font-display">
-                                ${formatCurrency(item.quantity * item.unit_price)}
+                                ${formatCurrency(item.quantity * item.unit_price * (item.is_rental && item.rental_days ? item.rental_days : 1))}
                               </p>
                             </div>
                           </div>
@@ -1292,6 +1353,7 @@ function AdminQuotesPageContent() {
                         <tr className="bg-slate-50/50 border-b border-slate-100">
                           <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Producto</th>
                           <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Cantidad</th>
+                          <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Días</th>
                           <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Unitario</th>
                           <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Subtotal</th>
                           <th className="p-4"></th>
@@ -1354,11 +1416,38 @@ function AdminQuotesPageContent() {
                                 </button>
                               </div>
                             </td>
+                            <td className="p-4">
+                              <div className="flex justify-center">
+                                {item.is_rental ? (
+                                  <div className="flex items-center justify-center border border-slate-200 rounded-xl w-fit mx-auto overflow-hidden bg-white shadow-sm">
+                                    <button
+                                      onClick={() => handleRentalDaysChange(item.product.id, (item.rental_days || 1) - 1)}
+                                      className="px-2 py-1.5 hover:bg-slate-50 text-slate-400 hover:text-slate-600 transition-colors"
+                                    >
+                                      <span className="material-symbols-outlined text-[18px]">remove</span>
+                                    </button>
+                                    <span className="px-3 py-1.5 text-xs font-black text-slate-900 border-x border-slate-100 min-w-[32px] text-center">
+                                      {item.rental_days || 1}
+                                    </span>
+                                    <button
+                                      onClick={() => handleRentalDaysChange(item.product.id, (item.rental_days || 1) + 1)}
+                                      className="px-2 py-1.5 hover:bg-slate-50 text-slate-400 hover:text-slate-600 transition-colors"
+                                    >
+                                      <span className="material-symbols-outlined text-[18px]">add</span>
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-slate-400">N/A</span>
+                                )}
+                              </div>
+                            </td>
                             <td className="p-4 text-right">
                               <span className="text-sm font-bold text-slate-500">${formatCurrency(item.unit_price)}</span>
                             </td>
                             <td className="p-4 text-right">
-                              <span className="text-sm font-black text-slate-900">${formatCurrency(item.unit_price * item.quantity)}</span>
+                              <span className="text-sm font-black text-slate-900">
+                                ${formatCurrency(item.unit_price * item.quantity * (item.is_rental && item.rental_days ? item.rental_days : 1))}
+                              </span>
                             </td>
                             <td className="p-4 text-right">
                               <button
@@ -1372,7 +1461,7 @@ function AdminQuotesPageContent() {
                           {/* Fila expandible del editor de descripción — ocupa todo el ancho */}
                           {editingDescIdx === idx && (
                             <tr className="bg-slate-50/30">
-                              <td colSpan={5} className="px-4 pb-4 pt-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                              <td colSpan={6} className="px-4 pb-4 pt-2 animate-in fade-in slide-in-from-top-1 duration-200">
                                 <div className="flex items-center gap-2 mb-2">
                                   <span className="material-symbols-outlined text-primary text-[14px]">edit_note</span>
                                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Descripción para PDF — {item.product.name}</span>
@@ -1675,8 +1764,8 @@ function AdminQuotesPageContent() {
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
-            <div className="p-6 border-b border-slate-100 bg-white">
-              <div className="relative">
+            <div className="p-6 border-b border-slate-100 bg-white flex flex-col md:flex-row gap-4">
+              <div className="relative flex-1">
                 <input
                   type="text"
                   placeholder="Buscar productos por nombre o SKU..."
@@ -1689,6 +1778,18 @@ function AdminQuotesPageContent() {
                   autoFocus
                 />
                 <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+              </div>
+              <div className="w-full md:w-48">
+                <select 
+                  value={productTypeFilter} 
+                  onChange={e => setProductTypeFilter(e.target.value)}
+                  className="w-full py-3 px-4 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary outline-none font-display text-slate-700"
+                >
+                  <option value="all">Todos los tipos</option>
+                  <option value="venta">Venta</option>
+                  <option value="alquiler">Alquiler</option>
+                  <option value="ambos">Ambos</option>
+                </select>
               </div>
             </div>
             <div className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-slate-50/30">
@@ -1720,6 +1821,11 @@ function AdminQuotesPageContent() {
                             <p className="font-bold text-slate-900 font-display group-hover:text-primary transition-colors">
                               {product.name}
                             </p>
+                            {product.product_type === 'alquiler' && (
+                              <span className="px-2 py-0.5 bg-purple-100 text-purple-600 text-[10px] font-black rounded uppercase tracking-widest">
+                                Alquiler
+                              </span>
+                            )}
                             {isOutOfStock && (
                               <span className="px-2 py-0.5 bg-red-100 text-red-600 text-[10px] font-black rounded uppercase tracking-widest">
                                 Agotado
@@ -1746,22 +1852,7 @@ function AdminQuotesPageContent() {
       )}
       <AdminActionFooter>
         <button 
-          onClick={() => {
-            setIsEditMode(false);
-            setSelectedClient(null);
-            setSelectedProducts([]);
-            setQuoteForm({ 
-              observations: DEFAULT_NOTE, 
-              discount_percentage: '0', 
-              valid_until: '',
-              conditions: {
-                venta: { enabled: false, text: DEFAULT_CONDITIONS.venta },
-                alquiler: { enabled: false, text: DEFAULT_CONDITIONS.alquiler },
-                mantenimiento: { enabled: false, text: DEFAULT_CONDITIONS.mantenimiento }
-              }
-            });
-            setIsCreateModalOpen(true);
-          }}
+          onClick={handleOpenCreateModal}
           className="flex-1 flex items-center justify-center gap-2 bg-primary text-white p-4 rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all active:scale-95"
         >
           <Plus size={20} />

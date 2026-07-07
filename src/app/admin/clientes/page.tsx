@@ -73,6 +73,11 @@ interface Task {
   client_id: string | null;
   created_by: string | null;
   created_by_id: string | null;
+  is_rental_return?: boolean;
+  product_id?: number | null;
+  warehouse_id?: string | null;
+  quantity?: number | null;
+  order_id?: number | null;
   client?: {
     full_name: string | null;
     company_name: string | null;
@@ -197,6 +202,7 @@ const AdminClientsPageContent = () => {
   // User Profile & Roles State
   const [currentUserProfile, setCurrentUserProfile] =
     useState<UserProfile | null>(null);
+  const [rentalReturnTaskConfirm, setRentalReturnTaskConfirm] = useState<Task | null>(null);
   const [allProfiles, setAllProfiles] = useState<UserProfile[]>([]);
 
   const [taskFormData, setTaskFormData] = useState({
@@ -390,8 +396,8 @@ const AdminClientsPageContent = () => {
     
     let query = supabase
       .from("client_tasks")
-      .select("*")
-      .order("due_date", { ascending: true });
+      .select("*, client:clients(full_name, company_name)")
+      .order("created_at", { ascending: false });
 
     // Role-based filtering: Vendors only see tasks they are assigned to OR tasks they created
     if (profile && profile.role === 'Ejecutivo de cuenta') {
@@ -476,6 +482,27 @@ const AdminClientsPageContent = () => {
         }
       }
 
+      // Expiration warning logic
+      if (taskData.due_date && taskData.assigned_to_id) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const [year, month, day] = taskData.due_date.split("-").map(Number);
+        const due = new Date(year, month - 1, day);
+        
+        const diffTime = due.getTime() - today.getTime();
+        const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+        
+        if (diffDays >= 0 && diffDays <= 3) {
+          await createNotification({
+            user_id: taskData.assigned_to_id,
+            title: '¡Atención! Tarea próxima a vencer',
+            message: `La tarea "${taskData.title}" vence ${diffDays === 0 ? 'hoy' : `en ${diffDays} día(s)`}.`,
+            type: 'task',
+            related_id: taskId || undefined
+          });
+        }
+      }
+
       setIsTaskModalOpen(false);
       setIsEditingTask(false);
       setEditingTaskId(null);
@@ -501,6 +528,19 @@ const AdminClientsPageContent = () => {
     taskId: string,
     newStatus: Task["status"],
   ) => {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+
+    if (task.is_rental_return && newStatus === "Completada") {
+      setRentalReturnTaskConfirm(task);
+      return;
+    }
+
+    if (task.is_rental_return && newStatus === "Cancelada") {
+      alert("Las tareas de retorno de alquiler no se pueden cancelar.");
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from("client_tasks")
@@ -527,6 +567,70 @@ const AdminClientsPageContent = () => {
       }
     } catch (error: any) {
       alert(`Error al actualizar estado: ${error.message}`);
+    }
+  };
+
+  const confirmRentalReturn = async () => {
+    if (!rentalReturnTaskConfirm) return;
+    const task = rentalReturnTaskConfirm;
+    
+    try {
+      // 1. Fetch current product to check warehouse stock
+      if (!task.product_id || !task.warehouse_id || !task.quantity) {
+         throw new Error("La tarea no contiene la información necesaria de producto, bodega o cantidad.");
+      }
+
+      const { data: productData, error: productError } = await supabase
+        .from('products')
+        .select('main_warehouse_stock, auxiliary_warehouse_stock, warehouse_id, auxiliary_warehouse_id, stock_quantity')
+        .eq('id', task.product_id)
+        .single();
+        
+      if (productError || !productData) throw productError || new Error("Producto no encontrado");
+
+      // 2. Add stock back to the original warehouse and total stock
+      let updateData: any = {
+        stock_quantity: (productData.stock_quantity || 0) + task.quantity
+      };
+      
+      if (task.warehouse_id === productData.warehouse_id) {
+        updateData.main_warehouse_stock = (productData.main_warehouse_stock || 0) + task.quantity;
+      } else if (task.warehouse_id === productData.auxiliary_warehouse_id) {
+        updateData.auxiliary_warehouse_stock = (productData.auxiliary_warehouse_stock || 0) + task.quantity;
+      } else {
+         throw new Error("La bodega de origen ya no coincide con las bodegas del producto.");
+      }
+
+      const { error: stockUpdateError } = await supabase
+        .from('products')
+        .update(updateData)
+        .eq('id', task.product_id);
+
+      if (stockUpdateError) throw stockUpdateError;
+
+      // 3. Mark task as completed
+      const { error: taskUpdateError } = await supabase
+        .from("client_tasks")
+        .update({ status: "Completada" })
+        .eq("id", task.id);
+
+      if (taskUpdateError) throw taskUpdateError;
+
+      // Update local state
+      setTasks((prev) =>
+        prev.map((t) => (t.id === task.id ? { ...t, status: "Completada" } : t)),
+      );
+
+      setMetrics((prev) => ({
+        ...prev,
+        pendingTasks: Math.max(0, prev.pendingTasks - 1),
+      }));
+      
+      alert("Se han retornado los productos al inventario y la tarea ha sido completada exitosamente.");
+    } catch (error: any) {
+      alert(`Error al completar la tarea de retorno: ${error.message}`);
+    } finally {
+      setRentalReturnTaskConfirm(null);
     }
   };
 
@@ -4487,6 +4591,69 @@ const AdminClientsPageContent = () => {
           </div>
         </div>
       )}
+      {/* RENTAL RETURN TASK CONFIRMATION MODAL */}
+      {rentalReturnTaskConfirm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
+          <div
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity"
+            onClick={() => setRentalReturnTaskConfirm(null)}
+          ></div>
+
+          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-3">
+                <div className="size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+                  <span className="material-symbols-outlined text-[20px]">
+                    inventory_2
+                  </span>
+                </div>
+                <h3 className="text-base font-bold text-slate-800 font-display">
+                  Confirmar Retorno de Alquiler
+                </h3>
+              </div>
+              <button
+                onClick={() => setRentalReturnTaskConfirm(null)}
+                className="text-slate-400 hover:text-slate-600 transition-colors rounded-lg p-1 hover:bg-slate-100"
+              >
+                <span className="material-symbols-outlined text-xl">close</span>
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6">
+              <p className="text-sm text-slate-600 mb-4 font-medium leading-relaxed">
+                ¿Deseas completar esta tarea? El stock del producto alquilado ({rentalReturnTaskConfirm.quantity} unidades) retornará automáticamente al inventario de la bodega origen.
+              </p>
+              
+              <div className="bg-primary/5 border border-primary/10 rounded-xl p-4 flex gap-3">
+                <span className="material-symbols-outlined text-primary shrink-0">info</span>
+                <p className="text-xs text-primary leading-relaxed font-medium">
+                  Esta acción es irreversible y actualizará el inventario actual de la bodega asociada al producto.
+                </p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3">
+              <button
+                onClick={() => setRentalReturnTaskConfirm(null)}
+                className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-200 bg-slate-100 rounded-xl transition-colors font-display"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmRentalReturn}
+                className="px-4 py-2 text-sm font-bold text-white bg-primary hover:bg-primary-dark rounded-xl shadow-sm shadow-primary/20 transition-all active:scale-[0.98] font-display flex items-center gap-2"
+              >
+                <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                Completar y Retornar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* CLIENT SELECTION MODAL FOR CRM TASKS */}
       {isClientSearchModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">

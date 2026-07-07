@@ -6,7 +6,7 @@ import { usePageTitle } from '@/hooks/usePageTitle';
 import RoleGuard from '@/components/admin/RoleGuard';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { notifyAdmins } from '@/lib/notifications';
+import { notifyAdmins, createNotification } from '@/lib/notifications';
 import { formatCurrency, formatOrderId } from '@/lib/utils';
 import { colombiaData } from '@/lib/colombia-data';
 import AdminActionFooter from '@/components/admin/AdminActionFooter';
@@ -49,6 +49,8 @@ interface Product {
   auxiliary_warehouse_id: string | null;
   main_warehouse_stock: number;
   auxiliary_warehouse_stock: number;
+  product_type?: string;
+  rental_price?: number | null;
 }
 
 interface OrderItem {
@@ -56,6 +58,8 @@ interface OrderItem {
   quantity: number;
   unit_price: number;
   selected_warehouse_id?: string | null;
+  is_rental?: boolean;
+  rental_days?: number | null;
 }
 
 interface Order {
@@ -72,6 +76,8 @@ interface Order {
     quantity: number;
     price_at_purchase: number;
     products: Product;
+    is_rental?: boolean;
+    rental_days?: number | null;
   }[];
   created_by_id?: string | null;
   profiles?: {
@@ -112,6 +118,7 @@ function AdminOrdersPageContent() {
   
   // Product search states
   const [productSearchTerm, setProductSearchTerm] = useState('');
+  const [productTypeFilter, setProductTypeFilter] = useState<'all' | 'venta' | 'alquiler'>('all');
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProducts, setSelectedProducts] = useState<OrderItem[]>([]);
 
@@ -224,7 +231,9 @@ function AdminOrdersPageContent() {
           product: item.products,
           quantity: item.quantity,
           unit_price: item.unit_price,
-          selected_warehouse_id: item.products.warehouse_id
+          selected_warehouse_id: item.products.warehouse_id,
+          is_rental: item.is_rental,
+          rental_days: item.rental_days
         }));
         setSelectedProducts(mappedProducts);
       }
@@ -366,7 +375,9 @@ function AdminOrdersPageContent() {
           quantity,
           price_at_purchase,
           products (*),
-          warehouse_id
+          warehouse_id,
+          is_rental,
+          rental_days
         `)
         .eq('order_id', orderId);
 
@@ -417,7 +428,9 @@ function AdminOrdersPageContent() {
       product: item.products,
       quantity: item.quantity,
       unit_price: item.price_at_purchase,
-      selected_warehouse_id: item.warehouse_id
+      selected_warehouse_id: item.warehouse_id,
+      is_rental: item.is_rental,
+      rental_days: item.rental_days
     }));
     
     setSelectedProducts(mappedProducts);
@@ -476,7 +489,7 @@ function AdminOrdersPageContent() {
   };
 
   // Fetch products for search
-  const fetchProducts = async (search: string = '') => {
+  const fetchProducts = async (search: string = '', type: 'all' | 'venta' | 'alquiler' = productTypeFilter) => {
     try {
       let query = supabase.from('products').select(`
         *,
@@ -485,6 +498,12 @@ function AdminOrdersPageContent() {
       
       if (search) {
         query = query.or(`name.ilike.%${search}%,sku.ilike.%${search}%`);
+      }
+
+      if (type === 'alquiler') {
+        query = query.in('product_type', ['alquiler', 'ambos']);
+      } else if (type === 'venta') {
+        query = query.in('product_type', ['venta', 'ambos']);
       }
 
       const { data, error } = await query.limit(50);
@@ -576,11 +595,14 @@ function AdminOrdersPageContent() {
           : p
       ));
     } else {
+      const isRental = product.product_type === 'alquiler' || product.product_type === 'ambos';
       setSelectedProducts([...selectedProducts, {
         product,
         quantity: 1,
-        unit_price: product.price,
-        selected_warehouse_id: warehouseId
+        unit_price: isRental && product.rental_price ? product.rental_price : product.price,
+        selected_warehouse_id: warehouseId,
+        is_rental: isRental,
+        rental_days: isRental ? 1 : null
       }]);
     }
     setIsWarehouseSwitchModalOpen(false);
@@ -609,13 +631,23 @@ function AdminOrdersPageContent() {
     }
   };
 
+  const handleRentalDaysChange = (productId: string, days: number, warehouseId?: string | null) => {
+    if (days < 1) return;
+    setSelectedProducts(selectedProducts.map(p =>
+      (p.product.id === productId && p.selected_warehouse_id === warehouseId) ? { ...p, rental_days: days } : p
+    ));
+  };
+
   const handleRemoveProduct = (productId: string, warehouseId?: string | null) => {
     setSelectedProducts(selectedProducts.filter(p => !(p.product.id === productId && p.selected_warehouse_id === warehouseId)));
   };
 
   // Calculate subtotal and total
   const calculateSubtotal = () => {
-    return selectedProducts.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0);
+    return selectedProducts.reduce((sum, item) => {
+      const itemDays = item.is_rental && item.rental_days ? item.rental_days : 1;
+      return sum + (item.unit_price * item.quantity * itemDays);
+    }, 0);
   };
 
   const calculateTotal = () => {
@@ -750,7 +782,9 @@ function AdminOrdersPageContent() {
         product_id: parseInt(item.product.id),
         quantity: item.quantity,
         price_at_purchase: item.unit_price,
-        warehouse_id: item.selected_warehouse_id
+        warehouse_id: item.selected_warehouse_id,
+        is_rental: item.is_rental || false,
+        rental_days: item.rental_days || null
       }));
 
       const { error: itemsError } = await supabase
@@ -758,6 +792,57 @@ function AdminOrdersPageContent() {
         .insert(orderItems);
 
       if (itemsError) throw itemsError;
+
+      // NEW: Generate CRM tasks for rented products automatically (only on new orders to avoid duplicates)
+      if (!isEditMode && currentUserProfile?.id) {
+        const rentalTasks = selectedProducts
+          .filter(item => item.is_rental && item.rental_days)
+          .map(item => {
+            const dueDate = new Date();
+            dueDate.setDate(dueDate.getDate() + (item.rental_days || 0));
+            
+            const formattedOrderId = `PED-${String(orderId).padStart(4, '0')}`;
+            return {
+              title: `Retornar ${item.product.name} x ${item.quantity}, alquilado en el pedido ${formattedOrderId}`,
+              description: `Retornar al inventario ${item.product.name} x ${item.quantity}, alquilado en el pedido ${formattedOrderId} alquilado x ${item.rental_days} dias. Fecha aproximada.`,
+              status: 'Pendiente',
+              client_id: selectedClient.id,
+              assigned_to_id: currentUserProfile.id,
+              assigned_to: currentUserProfile.full_name,
+              created_by_id: currentUserProfile.id,
+              created_by: currentUserProfile.full_name,
+              due_date: dueDate.toISOString().split("T")[0],
+              is_rental_return: true,
+              product_id: parseInt(item.product.id),
+              warehouse_id: item.selected_warehouse_id,
+              quantity: item.quantity,
+              order_id: orderId
+            };
+          });
+
+        if (rentalTasks.length > 0) {
+          const { error: tasksError } = await supabase
+            .from('client_tasks')
+            .insert(rentalTasks);
+            
+          if (tasksError) {
+            console.error("Error auto-generating rental tasks:", tasksError);
+          } else {
+            // Generar notificaciones usando el array original
+            const notificationOrderId = `PED-${String(orderId).padStart(4, '0')}`;
+            for (const task of rentalTasks) {
+              if (task.assigned_to_id) {
+                await createNotification({
+                  user_id: task.assigned_to_id,
+                  title: 'Nueva Tarea de Retorno de Alquiler',
+                  message: `Se ha generado la tarea de retorno para el pedido ${notificationOrderId}: ${task.title}`,
+                  type: 'task'
+                });
+              }
+            }
+          }
+        }
+      }
 
       // Notification Logic
       if (currentUserProfile?.role === 'Ejecutivo de cuenta') {
@@ -1248,9 +1333,17 @@ function AdminOrdersPageContent() {
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-bold text-slate-900 truncate font-display">{item.products?.name || 'Producto desconocido'}</p>
+                            <div className="flex items-center gap-2 mb-1">
+                              <p className="text-sm font-bold text-slate-900 truncate font-display">{item.products?.name || 'Producto desconocido'}</p>
+                              {item.is_rental && (
+                                <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[9px] font-bold rounded-full font-display border border-blue-200">
+                                  Alquiler
+                                </span>
+                              )}
+                            </div>
                             <p className="text-xs text-slate-500 font-display flex items-center gap-2">
                               {item.quantity} x ${formatCurrency(item.price_at_purchase)}
+                              {item.is_rental && item.rental_days ? ` x ${item.rental_days} días` : ''}
                               <span className="text-[10px] font-bold text-primary bg-primary/5 px-1.5 py-0.5 rounded uppercase">
                                 {warehouses.find(w => w.id === item.warehouse_id)?.name || 'Bodega'}
                               </span>
@@ -1258,7 +1351,7 @@ function AdminOrdersPageContent() {
                           </div>
                           <div className="text-right">
                             <p className="text-sm font-bold text-slate-900 font-display">
-                              ${formatCurrency(item.quantity * item.price_at_purchase)}
+                              ${formatCurrency(item.quantity * item.price_at_purchase * (item.is_rental && item.rental_days ? item.rental_days : 1))}
                             </p>
                           </div>
                         </div>
@@ -1528,6 +1621,9 @@ function AdminOrdersPageContent() {
                           <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
                             Cantidad
                           </th>
+                          <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                            Días
+                          </th>
                           <th scope="col" className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">
                             Total
                           </th>
@@ -1581,9 +1677,32 @@ function AdminOrdersPageContent() {
                                 </button>
                               </div>
                             </td>
+                            <td className="px-4 py-4 whitespace-nowrap">
+                              {item.is_rental ? (
+                                <div className="flex items-center border border-slate-200 rounded-lg w-fit overflow-hidden bg-white shadow-sm">
+                                  <button
+                                    onClick={() => handleRentalDaysChange(item.product.id, (item.rental_days || 1) - 1, item.selected_warehouse_id)}
+                                    className="px-3 py-1 bg-slate-50 hover:bg-slate-100 text-slate-600 transition-colors"
+                                  >
+                                    <span className="material-symbols-outlined text-[18px] leading-none">remove</span>
+                                  </button>
+                                  <div className="px-4 py-1 text-sm font-bold text-slate-900 min-w-[40px] text-center border-x border-slate-200">
+                                    {item.rental_days || 1}
+                                  </div>
+                                  <button
+                                    onClick={() => handleRentalDaysChange(item.product.id, (item.rental_days || 1) + 1, item.selected_warehouse_id)}
+                                    className="px-3 py-1 bg-slate-50 hover:bg-slate-100 text-slate-600 transition-colors"
+                                  >
+                                    <span className="material-symbols-outlined text-[18px] leading-none">add</span>
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="text-slate-400 text-sm italic">N/A</span>
+                              )}
+                            </td>
                             <td className="px-4 py-4 whitespace-nowrap text-right">
-                              <p className="font-bold text-slate-900 font-display">${formatCurrency(item.unit_price * item.quantity)}</p>
-                              <p className="text-xs text-slate-500 font-display">${formatCurrency(item.unit_price)} c/u</p>
+                              <p className="font-bold text-slate-900 font-display">${formatCurrency(item.unit_price * item.quantity * (item.is_rental && item.rental_days ? item.rental_days : 1))}</p>
+                              <p className="text-xs text-slate-500 font-display">${formatCurrency(item.unit_price)} c/u {item.is_rental && item.rental_days ? `x ${item.rental_days} días` : ''}</p>
                             </td>
                             <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-medium">
                               <button
@@ -1701,16 +1820,31 @@ function AdminOrdersPageContent() {
               </button>
             </div>
             <div className="p-6">
-              <input
-                type="text"
-                placeholder="Buscar productos..."
-                value={productSearchTerm}
-                onChange={(e) => {
-                  setProductSearchTerm(e.target.value);
-                  fetchProducts(e.target.value);
-                }}
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent font-display mb-4"
-              />
+              <div className="flex gap-4 mb-4">
+                <input
+                  type="text"
+                  placeholder="Buscar productos..."
+                  value={productSearchTerm}
+                  onChange={(e) => {
+                    setProductSearchTerm(e.target.value);
+                    fetchProducts(e.target.value);
+                  }}
+                  className="flex-1 px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent font-display"
+                />
+                <select
+                  value={productTypeFilter}
+                  onChange={(e) => {
+                    const type = e.target.value as 'all' | 'venta' | 'alquiler';
+                    setProductTypeFilter(type);
+                    fetchProducts(productSearchTerm, type);
+                  }}
+                  className="px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent font-display bg-white min-w-[150px]"
+                >
+                  <option value="all">Todos los tipos</option>
+                  <option value="venta">Solo Venta</option>
+                  <option value="alquiler">Solo Alquiler</option>
+                </select>
+              </div>
             </div>
             <div className="flex-1 overflow-y-auto px-6 pb-6">
               <div className="space-y-2">
@@ -1738,6 +1872,11 @@ function AdminOrdersPageContent() {
                           }`}>
                             {product.name}
                           </p>
+                          {(product.product_type === 'alquiler' || product.product_type === 'ambos') && (
+                            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-bold rounded-full font-display border border-blue-200">
+                              Alquiler
+                            </span>
+                          )}
                           {isOutOfStock && (
                             <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded-full font-display">
                               Sin Stock

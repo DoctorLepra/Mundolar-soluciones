@@ -27,6 +27,7 @@ const Sidebar: React.FC = () => {
   const selectedCategories = searchParams.get('categoria')?.split(',').filter(Boolean) || [];
   const selectedBrands = searchParams.get('marca')?.split(',').filter(Boolean) || [];
   const isOferta = searchParams.get('oferta') === 'true';
+  const isAlquiler = searchParams.get('alquiler') === 'true';
 
   // Price Range States
   const [minPriceLimit, setMinPriceLimit] = useState(0);
@@ -152,6 +153,16 @@ const Sidebar: React.FC = () => {
     router.push(`/catalogo?${params.toString()}`);
   };
 
+  const handleAlquilerChange = (checked: boolean) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (checked) {
+      params.set('alquiler', 'true');
+    } else {
+      params.delete('alquiler');
+    }
+    router.push(`/catalogo?${params.toString()}`);
+  };
+
   const clearAll = () => {
     router.push('/catalogo');
     setPriceRange({ min: minPriceLimit, max: maxPriceLimit });
@@ -189,7 +200,7 @@ const Sidebar: React.FC = () => {
           </button>
         </div>
 
-        {/* Ofertas */}
+        {/* Ofertas y Alquiler */}
         <div className="space-y-4">
             <label className="flex items-center gap-3 group cursor-pointer bg-red-50 p-3 rounded-lg border border-red-100">
               <input 
@@ -198,7 +209,19 @@ const Sidebar: React.FC = () => {
                 onChange={(e) => handleOfertaChange(e.target.checked)}
                 className="rounded border-red-300 text-red-600 focus:ring-red-500 size-4 cursor-pointer" 
               />
-              <span className="text-sm font-bold text-red-700 group-hover:text-red-800 transition-colors">En Oferta</span>
+              <span className="text-sm font-bold text-red-700 flex-1">Ver solo Ofertas</span>
+              <span className="material-symbols-outlined text-red-500">local_fire_department</span>
+            </label>
+
+            <label className="flex items-center gap-3 group cursor-pointer bg-amber-50 p-3 rounded-lg border border-amber-100">
+              <input 
+                type="checkbox" 
+                checked={isAlquiler}
+                onChange={(e) => handleAlquilerChange(e.target.checked)}
+                className="rounded border-amber-300 text-amber-600 focus:ring-amber-500 size-4 cursor-pointer" 
+              />
+              <span className="text-sm font-bold text-amber-700 flex-1">Ver solo Alquileres</span>
+              <span className="material-symbols-outlined text-amber-500">calendar_clock</span>
             </label>
         </div>
 

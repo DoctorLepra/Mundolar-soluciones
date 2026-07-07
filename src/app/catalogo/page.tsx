@@ -8,6 +8,7 @@ async function getProducts(params: {
   categoria?: string; 
   marca?: string; 
   oferta?: string; 
+  alquiler?: string;
   minPrice?: string; 
   maxPrice?: string; 
   sort?: string;
@@ -35,6 +36,10 @@ async function getProducts(params: {
 
   if (params.oferta === 'true') {
     query = query.not('original_price', 'is', null);
+  }
+
+  if (params.alquiler === 'true') {
+    query = query.eq('product_type', 'alquiler');
   }
 
   if (params.minPrice) {

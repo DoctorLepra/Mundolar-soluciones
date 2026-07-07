@@ -254,12 +254,20 @@ export const generateQuotePDF = async ({ quote, items, advisor, customDescriptio
     // Usar descripción personalizada si existe, sino la original del producto
     const customDesc = customDescriptions?.[itemIndex];
     const description = customDesc !== undefined ? customDesc : (item.products?.description || '');
+    
+    let namePrefix = '';
+    if (item.is_rental && item.rental_days) {
+      namePrefix = `**Alquiler por: ${item.rental_days} días**\n`;
+    }
+    const productName = `**${item.products?.name || 'Producto'}**`;
+    const finalDescription = `${namePrefix}${productName}${description ? '\n' + description : ''}`;
+
     return {
       sku: item.products?.sku || 'N/A',
-      name: `${item.products?.name || 'Producto'}${description ? '\n\n' + description : ''}`,
+      name: finalDescription,
       qty: item.quantity.toString(),
       price: `$ ${formatCurrency(item.unit_price)}`, // Added space
-      total: `$ ${formatCurrency(item.quantity * item.unit_price)}`, // Added space
+      total: `$ ${formatCurrency(item.quantity * item.unit_price * (item.is_rental && item.rental_days ? item.rental_days : 1))}`, // Added space
       imgBase64,
       format
     };
@@ -278,6 +286,15 @@ export const generateQuotePDF = async ({ quote, items, advisor, customDescriptio
     styles: { fontSize: 9, cellPadding: 1.5, lineColor: [0, 0, 0], lineWidth: 0.1, halign: 'center', valign: 'middle', fillColor: false },
     headStyles: { fillColor: primaryRed as [number, number, number], textColor: [255, 255, 255],fontSize:8, fontStyle: 'bold', halign: 'center', lineWidth: 0 },
     columnStyles: { 0: { cellWidth: 10 }, 1: { cellWidth: 30, minCellHeight: 25 }, 2: { halign: 'left', cellWidth: 'auto', cellPadding: { top: 1.5, right: 6, bottom: 1.5, left: 2 } }, 3: { cellWidth: 12 }, 4: { cellWidth: 25 }, 5: { cellWidth: 25 } },
+    willDrawCell: (data) => {
+      // Evitar que autotable dibuje el texto con los asteriscos, así no tenemos que taparlo con fondo blanco
+      if (data.section === 'body' && data.column.index === 2) {
+        const item = tableData[data.row.index];
+        if (item?.name && item.name.includes('**')) {
+          data.cell.text = []; // Limpiamos el texto para que autotable no lo dibuje
+        }
+      }
+    },
     didDrawCell: (data) => {
       if (data.section === 'head' && data.column.index === 4) {
         col4X = data.cell.x;
@@ -322,22 +339,15 @@ export const generateQuotePDF = async ({ quote, items, advisor, customDescriptio
       if (data.section === 'body' && data.column.index === 2) {
         const item = tableData[data.row.index];
         if (item?.name && item.name.includes('**')) {
-          // Limpiar el texto que autotable ya dibujó
-          doc.setFillColor(255, 255, 255);
           const pad = data.cell.styles.cellPadding as any;
           const padTop = typeof pad === 'number' ? pad : (pad?.top || 1.5);
           const padLeft = typeof pad === 'number' ? pad : (pad?.left || 2);
           const padRight = typeof pad === 'number' ? pad : (pad?.right || 6);
-          doc.rect(data.cell.x + 0.1, data.cell.y + 0.1, data.cell.width - 0.2, data.cell.height - 0.2, 'F');
-          // Redibujar bordes de la celda que fueron tapados por el relleno blanco
-          doc.setDrawColor(0, 0, 0);
-          doc.setLineWidth(0.1);
-          doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'S');
           
           doc.setTextColor(textDark[0], textDark[1], textDark[2]);
           const cellContentWidth = data.cell.width - padLeft - padRight;
           const cellBottomY = data.cell.y + data.cell.height - 1;
-          drawFormattedText(doc, item.name, data.cell.x + padLeft, data.cell.y + padTop + 3, cellContentWidth, 3.5, 9, cellBottomY);
+          drawFormattedText(doc, item.name, data.cell.x + padLeft, data.cell.y + padTop + 3, cellContentWidth, 4.5, 9, cellBottomY);
         }
       }
     },
@@ -484,6 +494,25 @@ export const generateQuotePDF = async ({ quote, items, advisor, customDescriptio
     doc.text(splitNote, 20, currentY);
     currentY += (splitNote.length * 5) + 10;
     doc.restoreGraphicsState();
+  }
+  // Vigencia de cotización
+  if (quote.valid_until) {
+    doc.setFontSize(7.5);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Vigencia de cotización: ', 20, currentY);
+    const vigenciaOffset = doc.getTextWidth('Vigencia de cotización: ');
+    
+    doc.setFont('helvetica', 'normal');
+    let formattedDate = quote.valid_until;
+    try {
+      const vigDate = new Date(quote.valid_until + 'T12:00:00Z');
+      if (!isNaN(vigDate.getTime())) {
+        formattedDate = vigDate.toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' });
+      }
+    } catch(e) {}
+    
+    doc.text(formattedDate, 20 + vigenciaOffset, currentY);
+    currentY += 10;
   }
 
   // Firma: siempre 3 renglones (~15mm) debajo del último texto

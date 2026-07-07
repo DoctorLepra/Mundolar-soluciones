@@ -22,6 +22,7 @@ export default function FloatingNotifications() {
   const [isOpen, setIsOpen] = useState(false);
   const [toast, setToast] = useState<{title: string, message: string} | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -31,6 +32,7 @@ export default function FloatingNotifications() {
   const setupNotifications = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+    setCurrentUserId(user.id);
 
     // Initial Fetch
     fetchNotifications(user.id);
@@ -129,7 +131,10 @@ export default function FloatingNotifications() {
     <>
       {/* Inline Button */}
       <button
-        onClick={() => setIsOpen(true)}
+        onClick={() => {
+          setIsOpen(true);
+          if (currentUserId) fetchNotifications(currentUserId);
+        }}
         className="relative size-10 bg-white text-slate-600 rounded-full border border-slate-200 flex items-center justify-center hover:bg-slate-50 hover:text-primary transition-colors ml-auto shrink-0"
       >
         <Bell size={20} className="transition-transform" />

@@ -64,7 +64,8 @@ const drawFormattedText = (
   maxWidth: number,
   lineHeight: number = 4,
   fontSize: number = 9,
-  maxY?: number
+  maxY?: number,
+  dryRun: boolean = false
 ): number => {
   doc.setFontSize(fontSize);
   // Split text into lines first
@@ -110,10 +111,14 @@ const drawFormattedText = (
           currentX = x;
           // Re-draw without leading space
           const cleanWord = words[i];
-          doc.text(cleanWord, currentX, currentY);
+          if (!dryRun) {
+            doc.text(cleanWord, currentX, currentY);
+          }
           currentX += doc.getTextWidth(cleanWord);
         } else {
-          doc.text(word, currentX, currentY);
+          if (!dryRun) {
+            doc.text(word, currentX, currentY);
+          }
           currentX += wordWidth;
         }
       }
@@ -277,6 +282,8 @@ export const generateQuotePDF = async ({ quote, items, advisor, customDescriptio
   let col4W = 25;
   let col5W = 25;
 
+  const descColWidth = pageWidth - 40 - (10 + 30 + 12 + 25 + 25);
+
   autoTable(doc, {
     startY: 120,
     margin: { top: 55, bottom: 30, left: 20, right: 20 },
@@ -286,6 +293,23 @@ export const generateQuotePDF = async ({ quote, items, advisor, customDescriptio
     styles: { fontSize: 9, cellPadding: 1.5, lineColor: [0, 0, 0], lineWidth: 0.1, halign: 'center', valign: 'middle', fillColor: false },
     headStyles: { fillColor: primaryRed as [number, number, number], textColor: [255, 255, 255],fontSize:8, fontStyle: 'bold', halign: 'center', lineWidth: 0 },
     columnStyles: { 0: { cellWidth: 10 }, 1: { cellWidth: 30, minCellHeight: 25 }, 2: { halign: 'left', cellWidth: 'auto', cellPadding: { top: 1.5, right: 6, bottom: 1.5, left: 2 } }, 3: { cellWidth: 12 }, 4: { cellWidth: 25 }, 5: { cellWidth: 25 } },
+    didParseCell: (data) => {
+      if (data.section === 'body' && data.column.index === 2) {
+        const item = tableData[data.row.index];
+        if (item?.name) {
+          const pad = data.cell.styles.cellPadding as any;
+          const padTop = typeof pad === 'number' ? pad : (pad?.top ?? 1.5);
+          const padBottom = typeof pad === 'number' ? pad : (pad?.bottom ?? 1.5);
+          const padLeft = typeof pad === 'number' ? pad : (pad?.left ?? 2);
+          const padRight = typeof pad === 'number' ? pad : (pad?.right ?? 6);
+          const cellContentWidth = descColWidth - padLeft - padRight;
+
+          const textHeight = drawFormattedText(doc, item.name, 0, 0, cellContentWidth, 4.5, 9, undefined, true);
+          const requiredHeight = textHeight + padTop + padBottom + 1.5;
+          data.cell.styles.minCellHeight = Math.max(25, requiredHeight);
+        }
+      }
+    },
     willDrawCell: (data) => {
       // Evitar que autotable dibuje el texto con los asteriscos, así no tenemos que taparlo con fondo blanco
       if (data.section === 'body' && data.column.index === 2) {
@@ -346,8 +370,7 @@ export const generateQuotePDF = async ({ quote, items, advisor, customDescriptio
           
           doc.setTextColor(textDark[0], textDark[1], textDark[2]);
           const cellContentWidth = data.cell.width - padLeft - padRight;
-          const cellBottomY = data.cell.y + data.cell.height - 1;
-          drawFormattedText(doc, item.name, data.cell.x + padLeft, data.cell.y + padTop + 3, cellContentWidth, 4.5, 9, cellBottomY);
+          drawFormattedText(doc, item.name, data.cell.x + padLeft, data.cell.y + padTop + 3, cellContentWidth, 4.5, 9);
         }
       }
     },

@@ -65,9 +65,12 @@ const drawFormattedText = (
   lineHeight: number = 4,
   fontSize: number = 9,
   maxY?: number,
-  dryRun: boolean = false
+  dryRun: boolean = false,
+  normalFontSize?: number,
+  normalLineHeight?: number
 ): number => {
-  doc.setFontSize(fontSize);
+  const bodyFontSize = normalFontSize ?? fontSize;
+  const bodyLineHeight = normalLineHeight ?? lineHeight;
   // Split text into lines first
   const lines = text.split('\n');
   let currentY = y;
@@ -93,11 +96,15 @@ const drawFormattedText = (
       parts.push({ text: line, bold: false });
     }
 
+    const hasBold = parts.some(p => p.bold);
+    const activeLineHeight = hasBold ? lineHeight : bodyLineHeight;
+
     // Word-wrap the formatted line manually
     let currentX = x;
     
     for (const part of parts) {
       doc.setFont('helvetica', part.bold ? 'bold' : 'normal');
+      doc.setFontSize(part.bold ? fontSize : bodyFontSize);
       const words = part.text.split(' ');
       
       for (let i = 0; i < words.length; i++) {
@@ -106,7 +113,7 @@ const drawFormattedText = (
         
         if (currentX + wordWidth > x + maxWidth && currentX > x) {
           // Wrap to next line
-          currentY += lineHeight;
+          currentY += activeLineHeight;
           if (maxY && currentY > maxY) return currentY;
           currentX = x;
           // Re-draw without leading space
@@ -123,7 +130,7 @@ const drawFormattedText = (
         }
       }
     }
-    currentY += lineHeight;
+    currentY += activeLineHeight;
     if (maxY && currentY > maxY) return currentY;
     // Reset X for new line
   }
@@ -304,7 +311,7 @@ export const generateQuotePDF = async ({ quote, items, advisor, customDescriptio
           const padRight = typeof pad === 'number' ? pad : (pad?.right ?? 6);
           const cellContentWidth = descColWidth - padLeft - padRight;
 
-          const textHeight = drawFormattedText(doc, item.name, 0, 0, cellContentWidth, 4.5, 9, undefined, true);
+          const textHeight = drawFormattedText(doc, item.name, 0, 0, cellContentWidth, 4.5, 9, undefined, true, 7.5, 3.8);
           const requiredHeight = textHeight + padTop + padBottom + 1.5;
           data.cell.styles.minCellHeight = Math.max(25, requiredHeight);
         }
@@ -370,7 +377,7 @@ export const generateQuotePDF = async ({ quote, items, advisor, customDescriptio
           
           doc.setTextColor(textDark[0], textDark[1], textDark[2]);
           const cellContentWidth = data.cell.width - padLeft - padRight;
-          drawFormattedText(doc, item.name, data.cell.x + padLeft, data.cell.y + padTop + 3, cellContentWidth, 4.5, 9);
+          drawFormattedText(doc, item.name, data.cell.x + padLeft, data.cell.y + padTop + 3, cellContentWidth, 4.5, 9, undefined, false, 7.5, 3.8);
         }
       }
     },

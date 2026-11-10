@@ -311,7 +311,7 @@ export const generateQuotePDF = async ({ quote, items, advisor, customDescriptio
           const padRight = typeof pad === 'number' ? pad : (pad?.right ?? 6);
           const cellContentWidth = descColWidth - padLeft - padRight;
 
-          const textHeight = drawFormattedText(doc, item.name, 0, 0, cellContentWidth, 4.5, 9, undefined, true, 7.5, 3.8);
+          const textHeight = drawFormattedText(doc, item.name, 0, 0, cellContentWidth, 3.8, 7.5, undefined, true);
           const requiredHeight = textHeight + padTop + padBottom + 1.5;
           data.cell.styles.minCellHeight = Math.max(25, requiredHeight);
         }
@@ -377,7 +377,7 @@ export const generateQuotePDF = async ({ quote, items, advisor, customDescriptio
           
           doc.setTextColor(textDark[0], textDark[1], textDark[2]);
           const cellContentWidth = data.cell.width - padLeft - padRight;
-          drawFormattedText(doc, item.name, data.cell.x + padLeft, data.cell.y + padTop + 3, cellContentWidth, 4.5, 9, undefined, false, 7.5, 3.8);
+          drawFormattedText(doc, item.name, data.cell.x + padLeft, data.cell.y + padTop + 3, cellContentWidth, 3.8, 7.5);
         }
       }
     },

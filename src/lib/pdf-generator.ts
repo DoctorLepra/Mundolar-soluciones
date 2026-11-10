@@ -265,13 +265,13 @@ export const generateQuotePDF = async ({ quote, items, advisor, customDescriptio
     }
     // Usar descripción personalizada si existe, sino la original del producto
     const customDesc = customDescriptions?.[itemIndex];
-    const description = customDesc !== undefined ? customDesc : (item.products?.description || '');
+    const description = (customDesc !== undefined ? customDesc : (item.products?.description || '')).trim();
     
     let namePrefix = '';
     if (item.is_rental && item.rental_days) {
       namePrefix = `**Alquiler por: ${item.rental_days} días**\n`;
     }
-    const productName = `**${item.products?.name || 'Producto'}**`;
+    const productName = `**${(item.products?.name || 'Producto').trim()}**`;
     const finalDescription = `${namePrefix}${productName}${description ? '\n' + description : ''}`;
 
     return {
@@ -294,12 +294,13 @@ export const generateQuotePDF = async ({ quote, items, advisor, customDescriptio
   autoTable(doc, {
     startY: 120,
     margin: { top: 55, bottom: 30, left: 20, right: 20 },
+    rowPageBreak: 'avoid',
     head: [['Nº', 'IMAGEN', 'DESCRIPCIÓN', 'CANT', 'VALOR UNIT', 'VALOR TOTAL']],
     body: tableData.map((d: any, index: number) => [(index + 1).toString(), '', d.name, d.qty, d.price, d.total]),
     theme: 'grid',
     styles: { fontSize: 9, cellPadding: 1.5, lineColor: [0, 0, 0], lineWidth: 0.1, halign: 'center', valign: 'middle', fillColor: false },
     headStyles: { fillColor: primaryRed as [number, number, number], textColor: [255, 255, 255],fontSize:8, fontStyle: 'bold', halign: 'center', lineWidth: 0 },
-    columnStyles: { 0: { cellWidth: 10 }, 1: { cellWidth: 30, minCellHeight: 25 }, 2: { halign: 'left', cellWidth: 'auto', cellPadding: { top: 1.5, right: 6, bottom: 1.5, left: 2 } }, 3: { cellWidth: 12 }, 4: { cellWidth: 25 }, 5: { cellWidth: 25 } },
+    columnStyles: { 0: { cellWidth: 10 }, 1: { cellWidth: 30, minCellHeight: 18 }, 2: { halign: 'left', cellWidth: 'auto', cellPadding: { top: 1.5, right: 6, bottom: 1.5, left: 2 } }, 3: { cellWidth: 12 }, 4: { cellWidth: 25 }, 5: { cellWidth: 25 } },
     didParseCell: (data) => {
       if (data.section === 'body' && data.column.index === 2) {
         const item = tableData[data.row.index];
@@ -312,8 +313,10 @@ export const generateQuotePDF = async ({ quote, items, advisor, customDescriptio
           const cellContentWidth = descColWidth - padLeft - padRight;
 
           const textHeight = drawFormattedText(doc, item.name, 0, 0, cellContentWidth, 3.8, 7.5, undefined, true);
-          const requiredHeight = textHeight + padTop + padBottom + 1.5;
-          data.cell.styles.minCellHeight = Math.max(25, requiredHeight);
+          const requiredHeight = Math.max(0, textHeight - 3.8) + padTop + 2.5 + padBottom + 0.5;
+          data.cell.styles.minCellHeight = requiredHeight;
+          // Vaciar el texto desde didParseCell para que autoTable no calcule altura extra con fontSize 9
+          data.cell.text = [];
         }
       }
     },
@@ -377,7 +380,7 @@ export const generateQuotePDF = async ({ quote, items, advisor, customDescriptio
           
           doc.setTextColor(textDark[0], textDark[1], textDark[2]);
           const cellContentWidth = data.cell.width - padLeft - padRight;
-          drawFormattedText(doc, item.name, data.cell.x + padLeft, data.cell.y + padTop + 3, cellContentWidth, 3.8, 7.5);
+          drawFormattedText(doc, item.name, data.cell.x + padLeft, data.cell.y + padTop + 2.5, cellContentWidth, 3.8, 7.5);
         }
       }
     },
